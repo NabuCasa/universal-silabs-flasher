@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=34.4.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+safe = true
+quiet = true
+
+[tool.isort]
+multi_line_output = 3
+length_sort = true
+balanced_wrapping = true
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+line_length = 88
+indent = "    "
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+default_section = "THIRDPARTY"
+known_first_party = ["universal_silabs_flasher", "tests"]
+forced_separate = "tests"
+combine_as_imports = true
+
+[tool.pytest.ini_options]
+addopts = "--showlocals --verbose"
+testpaths = ["tests"]
+timeout = 20
+log_format = "%(asctime)s.%(msecs)03d %(levelname)s %(message)s"
+log_date_format = "%Y-%m-%d %H:%M:%S"
+asyncio_mode = "auto"
+
+[tool.flake8]
+exclude = ".venv,.git,.tox,docs,venv,bin,lib,deps,build"
+# To work with Black
+max-line-length = 88
+# W503: Line break occurred before a binary operator
+# E203: Whitespace before ':'
+# D202 No blank lines allowed after function docstring
+ignore = "W503,E203,D202"
+
+[tool.mypy]
+check_untyped_defs = true
+show_error_codes = true
+show_error_context = true
+
+[tool.coverage.run]
+source = ["universal_silabs_flasher"]
+
+[tool.pyupgrade]
+py37plus = true
