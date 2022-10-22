@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import enum
+import asyncio
 import logging
 
 from .common import StateMachine, SerialProtocol
@@ -9,6 +10,7 @@ from .common import StateMachine, SerialProtocol
 _LOGGER = logging.getLogger(__name__)
 
 
+RUN_APPLICATION_DELAY = 0.5
 MENU_REGEX = re.compile(
     rb"\r\n"
     rb"Gecko Bootloader v(?P<version>.*?)\r\n"
@@ -37,7 +39,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
     def __init__(self) -> None:
         super().__init__()
         self._state_machine = StateMachine(
-            states=list(State._members_),
+            states=list(State),
             initial=State.WAITING_FOR_MENU,
         )
         self._version: str | None = None
@@ -53,6 +55,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         elif option == GeckoBootloaderOption.RUN_FIRMWARE:
             self._state_machine.set_state(State.RUNNING_FIRMWARE)
             self.send_data(option)
+            await asyncio.sleep(RUN_APPLICATION_DELAY)
         elif option == GeckoBootloaderOption.UPLOAD_GBL:
             self._state_machine.set_state(State.WAITING_FOR_XMODEM_READY)
             self.send_data(option)

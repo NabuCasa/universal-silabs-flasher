@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import typing
 import asyncio
 import logging
 import collections
+
+import serial_asyncio
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -14,7 +17,9 @@ class StateMachine:
         self.states = states
         self.state = initial
 
-        self.futures_for_state = collections.defaultdict(list)
+        self.futures_for_state: typing.DefaultDict[
+            str, list[asyncio.Future]
+        ] = collections.defaultdict(list)
 
     async def wait_for_state(self, state: str) -> None:
         assert state in self.states
@@ -38,13 +43,13 @@ class StateMachine:
 class SerialProtocol(asyncio.Protocol):
     def __init__(self) -> None:
         self._buffer = bytearray()
-        self._transport = None
+        self._transport: serial_asyncio.SerialTransport | None = None
         self._connected_event = asyncio.Event()
 
-    async def wait_until_connected(self):
+    async def wait_until_connected(self) -> None:
         await self._connected_event.wait()
 
-    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+    def connection_made(self, transport: serial_asyncio.SerialTransport) -> None:
         _LOGGER.debug("Connection made: %s", transport)
 
         self._transport = transport
@@ -58,3 +63,9 @@ class SerialProtocol(asyncio.Protocol):
     def data_received(self, data: bytes) -> None:
         _LOGGER.debug("Received data %s", data)
         self._buffer += data
+
+    def disconnect(self) -> None:
+        if self._transport is not None:
+            self._transport.close()
+            self._buffer.clear()
+            self._connected_event.clear()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import typing
 import asyncio
 import logging
 import functools
@@ -226,7 +227,7 @@ class CPCProtocol(SerialProtocol):
     def __init__(self) -> None:
         super().__init__()
         self._command_seq = 0
-        self._pending_frames = {}
+        self._pending_frames: dict[int, asyncio.Future] = {}
 
     async def get_secondary_version(self) -> str:
         rsp = await self.send_unnumbered_frame(
@@ -250,7 +251,8 @@ class CPCProtocol(SerialProtocol):
 
         while self._buffer:
             try:
-                frame, self._buffer = CPCFrame.deserialize(self._buffer)
+                frame, new_buffer = CPCFrame.deserialize(self._buffer)
+                self._buffer = typing.cast(bytearray, new_buffer)
             except BufferTooShort:
                 break
             except ValueError as e:
@@ -292,7 +294,7 @@ class CPCProtocol(SerialProtocol):
             header_checksum=None,
             payload_checksum=None,
         )
-        self._command_seq = (self._command_seq + 1) % 0xFF
+        self._command_seq = (self._command_seq + 1) & 0xFF
 
         assert self._command_seq not in self._pending_frames
 
