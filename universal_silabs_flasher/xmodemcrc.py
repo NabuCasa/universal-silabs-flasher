@@ -12,7 +12,9 @@ _LOGGER = logging.getLogger(__name__)
 BLOCK_SIZE = 128
 
 
-class Symbol(zigpy.types.enum8):
+class PacketType(zigpy.types.enum8):
+    """XModem packet type byte."""
+
     SOH = 0x01  # Start of Header
     EOT = 0x04  # End of Transmission
     CAN = 0x18  # Cancel
@@ -22,20 +24,24 @@ class Symbol(zigpy.types.enum8):
 
 
 @dataclasses.dataclass(frozen=True)
-class Xmodem128CRCPacket:
+class XmodemCRCPacket:
+    """XModem CRC packet implementing the zigpy `serialize` API."""
+
     number: zigpy.types.uint8_t
     payload: bytes
 
     def serialize(self) -> bytes:
+        """Serialize the packet, computing header and payload checksums."""
+        assert len(self.payload) == BLOCK_SIZE
         return (
-            bytes([Symbol.SOH, self.number, 0xFF - self.number])
+            bytes([PacketType.SOH, self.number, 0xFF - self.number])
             + self.payload
             + crc16_ccitt(self.payload).to_bytes(2, "big")
         )
 
 
 class ReceiverCancelled(Exception):
-    pass
+    """Receiver cancelled the transmission with a `CAN` status."""
 
 
 async def send_xmodem128_crc_data(
@@ -45,6 +51,8 @@ async def send_xmodem128_crc_data(
     writer: asyncio.StreamReader,
     max_failures: int,
 ) -> None:
+    """Send `data` to an XModem receiver until an ACK is received."""
+
     for attempt in range(max_failures + 1):
         # Send off the data
         _LOGGER.debug("Sending data %r (attempt %d)", data, attempt)
@@ -55,14 +63,14 @@ async def send_xmodem128_crc_data(
         rsp_byte = await reader.readexactly(1)
         _LOGGER.debug("Got response: %r", rsp_byte)
 
-        if rsp_byte[0] == Symbol.ACK:
+        if rsp_byte[0] == PacketType.ACK:
             return
-        elif rsp_byte[0] == Symbol.NAK:
+        elif rsp_byte[0] == PacketType.NAK:
             _LOGGER.debug("Got a NAK, retrying")
 
             if attempt >= max_failures:
                 raise ValueError(f"Received {max_failures} consecutive failures")
-        elif rsp_byte[0] == Symbol.CAN:
+        elif rsp_byte[0] == PacketType.CAN:
             raise ReceiverCancelled()
         else:
             raise ValueError(f"Invalid response: {rsp_byte!r}")
@@ -75,11 +83,14 @@ async def send_xmodem128_crc(
     max_failures: int = 3,
     progress_callback: typing.Callable[[int, int], typing.Any] | None = None,
 ) -> None:
+    """Send `data` over `transport` using XModemCRC with a 128 byte block size."""
+
     if len(data) % BLOCK_SIZE != 0:
         raise ValueError(f"Data length must be divisible by {BLOCK_SIZE}: {len(data)}")
 
     loop = asyncio.get_running_loop()
 
+    # Initialization of the reader and writer objects is from `asyncio.open_connection`
     reader = asyncio.StreamReader(limit=65536, loop=loop)
     protocol = asyncio.StreamReaderProtocol(reader, loop=loop)
     writer = asyncio.StreamWriter(transport, protocol, reader, loop)
@@ -99,12 +110,12 @@ async def send_xmodem128_crc(
         reader._buffer.clear()
 
         for index in range(0, len(data) // BLOCK_SIZE):
-            packet = Xmodem128CRCPacket(
+            packet = XmodemCRCPacket(
                 number=(index + 1) & 0xFF,  # `seq` starts at 1 and then wraps
                 payload=data[BLOCK_SIZE * index : BLOCK_SIZE * (index + 1)],
             )
 
-            # Send off the packet
+            # Send the packet
             await send_xmodem128_crc_data(
                 data=packet.serialize(),
                 reader=reader,
@@ -115,9 +126,9 @@ async def send_xmodem128_crc(
             if progress_callback is not None:
                 progress_callback((index + 1) * BLOCK_SIZE, len(data))
 
-        # Once we are done, finalize the transmission
+        # Once we are done, finalize the upload
         await send_xmodem128_crc_data(
-            data=bytes([Symbol.EOT]),
+            data=bytes([PacketType.EOT]),
             reader=reader,
             writer=writer,
             max_failures=max_failures,

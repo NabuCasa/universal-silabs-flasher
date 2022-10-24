@@ -54,11 +54,14 @@ class GeckoBootloaderProtocol(SerialProtocol):
             initial=State.WAITING_FOR_MENU,
         )
         self._version: str | None = None
+        self._upload_status: str | None = None
 
-    async def probe(self):
+    async def probe(self) -> str:
+        """Attempt to communicate with the bootloader."""
         return await self.ebl_info(wait_for_menu=False)
 
-    async def ebl_info(self, *, wait_for_menu: bool = True):
+    async def ebl_info(self, *, wait_for_menu: bool = True) -> str:
+        """Select `ebl info` in the menu and return the bootloader version."""
         if wait_for_menu:
             await self._state_machine.wait_for_state(State.IN_MENU)
 
@@ -70,7 +73,8 @@ class GeckoBootloaderProtocol(SerialProtocol):
         assert self._version is not None
         return self._version
 
-    async def run_firmware(self):
+    async def run_firmware(self) -> None:
+        """Select `run` in the menu."""
         await self._state_machine.wait_for_state(State.IN_MENU)
         self._state_machine.set_state(State.RUNNING_FIRMWARE)
         self.send_data(GeckoBootloaderOption.RUN_FIRMWARE)
@@ -83,16 +87,18 @@ class GeckoBootloaderProtocol(SerialProtocol):
         max_failures: int = 3,
         progress_callback: typing.Callable[[int, int], typing.Any] | None = None,
     ) -> None:
+        """Select `upload gbl` in the menu and upload GBL firmware."""
         await self._state_machine.wait_for_state(State.IN_MENU)
 
-        _LOGGER.debug("Choosing GBL upload")
+        # Select the option
         self._state_machine.set_state(State.WAITING_XMODEM_READY)
         self.send_data(GeckoBootloaderOption.UPLOAD_GBL)
 
-        _LOGGER.debug("Waiting for XMODEM to be ready")
+        # Wait for the XMODEM `C` byte
         await self._state_machine.wait_for_state(State.XMODEM_READY)
 
-        _LOGGER.debug("Beginning XMODEM transfer")
+        # Swap protocols and transfer the data
+        self._upload_status = None
         await send_xmodem128_crc(
             firmware,
             transport=self._transport,
@@ -100,8 +106,12 @@ class GeckoBootloaderProtocol(SerialProtocol):
             progress_callback=progress_callback,
         )
 
+        # Wait for the upload status to be returned
         self._state_machine.set_state(State.WAITING_UPLOAD_DONE)
         await self._state_machine.wait_for_state(State.IN_MENU)
+
+        if self._upload_status != "complete":
+            raise UploadError(self._upload_status)
 
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
@@ -133,9 +143,10 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
                 status = match.group("status").decode("ascii")
 
-                if status != "complete":
-                    status = match.group("abort_status")
-                    raise UploadError(status)
+                if status == "complete":
+                    self._upload_status = status
+                else:
+                    self._upload_status = match.group("abort_status").decode("ascii")
 
                 del self._buffer[: match.span()[1]]
                 self._state_machine.set_state(State.WAITING_FOR_MENU)

@@ -9,7 +9,8 @@ AFTER_DISCONNECT_DELAY = 0.1
 
 
 @contextlib.asynccontextmanager
-async def connect_ezsp(port, baudrate):
+async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
+    """Context manager to return a connected EZSP instance for a serial port."""
     app_config = config.CONFIG_SCHEMA(
         {
             config.CONF_DEVICE: {

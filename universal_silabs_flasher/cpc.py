@@ -14,15 +14,24 @@ from .common import BufferTooShort, SerialProtocol, crc16_ccitt
 _LOGGER = logging.getLogger(__name__)
 
 
-def extract_frame(cpc_frame: CPCFrame):
-    if cpc_frame.frame_type() != cpc_types.FrameType.UNNUMBERED:
-        raise ValueError("Unsupported frame type")
+def parse_subframe(cpc_frame: CPCTransportFrame) -> UnnumberedFrame:
+    """Parses a CPC sub-frame from a CPC frame. Only `UnnumberedFrame` is supported."""
+    frame_type = cpc_frame.frame_type()
+
+    if frame_type != cpc_types.FrameType.UNNUMBERED:
+        raise ValueError(f"Unsupported frame type: {frame_type!r}")
 
     return UnnumberedFrame.from_bytes(cpc_frame.payload)
 
 
+class Command:
+    """Base class for unnumbered commands."""
+
+
 @dataclasses.dataclass(frozen=True)
-class PropertyCommand:
+class PropertyCommand(Command):
+    """Unnumbered frame command to get/set/read a property."""
+
     property_id: cpc_types.PropertyId
     value: bytes
 
@@ -40,7 +49,10 @@ class PropertyCommand:
 
 
 @dataclasses.dataclass(frozen=True)
-class ResetCommand:
+class ResetCommand(Command):
+    """Unnumbered frame command to reset the device."""
+
+    # The `status` field is set when the device responds
     status: cpc_types.Status | None
 
     @classmethod
@@ -59,6 +71,8 @@ class ResetCommand:
 
 @dataclasses.dataclass(frozen=True)
 class UnnumberedFrame:
+    """Unnumbered CPC frame"""
+
     command_id: cpc_types.UnnumberedFrameCommandId
     command_seq: zigpy.types.uint8_t
     payload: bytes
@@ -102,12 +116,15 @@ class UnnumberedFrame:
 
 
 @dataclasses.dataclass(frozen=True)
-class CPCFrame:
+class CPCTransportFrame:
+    """CPC transport frame"""
+
     endpoint: cpc_types.EndpointId
     control: zigpy.types.uint8_t
     payload: bytes
 
     def serialize(self) -> bytes:
+        """Serialize the transport frame and compute lengths and checksums."""
         payload = self.payload.to_bytes()
         length = zigpy.types.uint16_t(len(payload) + 2)
 
@@ -124,7 +141,7 @@ class CPCFrame:
         return header + header_checksum + payload + payload_checksum
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[CPCFrame, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[CPCTransportFrame, bytes]:
         if len(data) < 7:
             raise BufferTooShort("Data is too short to contain packet header")
 
@@ -158,12 +175,12 @@ class CPCFrame:
         )
 
         frame_with_parsed_payload = dataclasses.replace(
-            frame, payload=extract_frame(frame)
+            frame, payload=parse_subframe(frame)
         )
 
         return frame_with_parsed_payload, data
 
-    def frame_type(self):
+    def frame_type(self) -> cpc_types.FrameType:
         frame_type = (self.control & 0b11000000) >> 6
 
         if frame_type == 0:
@@ -171,31 +188,37 @@ class CPCFrame:
 
         return cpc_types.FrameType(frame_type)
 
-    def seq(self):
+    def seq(self) -> int:
         return (self.control & 0b01110000) >> 4
 
-    def supervisory_function(self):
+    def supervisory_function(self) -> int:
         assert self.frame_type() == cpc_types.FrameType.SUPERVISORY
         return (self.control & 0b00110000) >> 4
 
-    def ack(self):
+    def ack(self) -> int:
         return (self.control & 0b00000111) >> 0
 
     def unnumbered_type(self) -> cpc_types.UnnumberedFrameType:
         assert self.frame_type() == cpc_types.FrameType.UNNUMBERED
         return cpc_types.UnnumberedFrameType((self.control & 0b00111111) >> 0)
 
-    def poll_final(self):
-        return (self.control & 0b00001000) >> 3
+    def poll_final(self) -> bool:
+        return bool((self.control & 0b00001000) >> 3)
 
 
 class CPCProtocol(SerialProtocol):
+    """Partial implementation of the CPC protocol."""
+
     def __init__(self) -> None:
         super().__init__()
-        self._command_seq = 0
+        self._command_seq: int = 0
         self._pending_frames: dict[int, asyncio.Future] = {}
 
+    async def probe(self) -> str:
+        return await self.get_secondary_version()
+
     async def get_secondary_version(self) -> str:
+        """Read the secondary app version from the device."""
         rsp = await self.send_unnumbered_frame(
             command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET,
             command_payload=PropertyCommand(
@@ -209,15 +232,12 @@ class CPCProtocol(SerialProtocol):
 
         return version_bytes.split(b"\x00", 1)[0].decode("ascii")
 
-    async def probe(self):
-        return await self.get_secondary_version()
-
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
 
         while self._buffer:
             try:
-                frame, new_buffer = CPCFrame.deserialize(self._buffer)
+                frame, new_buffer = CPCTransportFrame.deserialize(self._buffer)
                 self._buffer = typing.cast(bytearray, new_buffer)
             except BufferTooShort:
                 break
@@ -229,7 +249,7 @@ class CPCProtocol(SerialProtocol):
             else:
                 self.frame_received(frame)
 
-    def frame_received(self, frame: CPCFrame) -> None:
+    def frame_received(self, frame: CPCTransportFrame) -> None:
         _LOGGER.debug("Parsed frame %s %s", frame.unnumbered_type(), frame)
 
         if frame.unnumbered_type() == cpc_types.UnnumberedFrameType.POLL_FINAL:
@@ -241,9 +261,16 @@ class CPCProtocol(SerialProtocol):
             future.set_result(frame)
 
     async def send_unnumbered_frame(
-        self, command_id, command_payload, *, retries=3, timeout=1, retry_delay=0.1
-    ):
-        frame = CPCFrame(
+        self,
+        command_id: cpc_types.UnnumberedFrameCommandId,
+        command_payload: Command,
+        *,
+        retries: int = 3,
+        timeout: float = 1,
+        retry_delay: float = 0.1,
+    ) -> Command:
+        """Send an unnumbered frame to the device and return the response."""
+        frame = CPCTransportFrame(
             endpoint=cpc_types.EndpointId.SYSTEM,
             control=zigpy.types.uint8_t(
                 (cpc_types.FrameType.UNNUMBERED << 6)
@@ -279,9 +306,11 @@ class CPCProtocol(SerialProtocol):
                         retries + 1,
                     )
 
-                    if attempt == retries:
+                    if attempt >= retries:
                         raise
 
                     await asyncio.sleep(retry_delay)
         finally:
             self._pending_frames.pop(frame.payload.command_seq, None)
+
+        raise AssertionError("Unreachable")
