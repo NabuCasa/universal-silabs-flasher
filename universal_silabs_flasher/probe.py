@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import sys
+import math
 import typing
 import asyncio
 import logging
+import pathlib
 import contextlib
 
+import tqdm
 import bellows.ezsp
 import zigpy.serial
 import async_timeout
@@ -14,8 +17,12 @@ import bellows.config
 
 from . import cpc_types
 from .cpc import CPCProtocol, ResetCommand, PropertyCommand
+from .common import validate_silabs_gbl, patch_pyserial_asyncio
 from .emberznet import connect_ezsp
-from .gecko_bootloader import GeckoBootloaderOption, GeckoBootloaderProtocol
+from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
+from .gecko_bootloader import GeckoBootloaderProtocol
+
+patch_pyserial_asyncio()
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +55,7 @@ async def get_application_version(
 ) -> tuple[
     str, type[CPCProtocol] | type[GeckoBootloaderProtocol] | typing.Literal["EZSP"]
 ]:
-    # Start the application if we are in the bootloader
+    # If we are in the bootloader, start the application
     async with connect_protocol(port, baudrate, GeckoBootloaderProtocol) as gecko:
         try:
             async with async_timeout.timeout(PROBE_TIMEOUT):
@@ -57,7 +64,7 @@ async def get_application_version(
             _LOGGER.debug("Failed to probe Gecko Bootloader: %r", e)
         else:
             _LOGGER.debug("Starting application from bootloader")
-            await gecko.choose_option(GeckoBootloaderOption.RUN_FIRMWARE)
+            await gecko.run_firmware()
 
     # Next, try EZSP
     try:
@@ -120,6 +127,20 @@ async def enter_bootloader(port, baudrate, protocol_cls):
 async def main():
     port = sys.argv[1]
     baudrate = int(sys.argv[2])
+    firmware_path = pathlib.Path(sys.argv[3])
+
+    firmware = firmware_path.read_bytes()
+
+    if len(firmware) % XMODEM_BLOCK_SIZE != 0:
+        _LOGGER.warning("Padding image to a multiple of %s bytes", XMODEM_BLOCK_SIZE)
+
+        padding_count = math.ceil(
+            len(firmware) / XMODEM_BLOCK_SIZE
+        ) * XMODEM_BLOCK_SIZE - len(firmware)
+        firmware += b"\xFF" * padding_count
+
+    # Ensure the firmware is a valid GBL file with checksum
+    validate_silabs_gbl(firmware)
 
     version, protocol_cls = await get_application_version(port, baudrate)
 
@@ -131,7 +152,20 @@ async def main():
 
     async with connect_protocol(port, baudrate, GeckoBootloaderProtocol) as gecko:
         await gecko.probe()
-        await gecko.choose_option(GeckoBootloaderOption.RUN_FIRMWARE)
+
+        with tqdm.tqdm(
+            desc=firmware_path.name,
+            total=len(firmware),
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as pbar:
+            await gecko.upload_firmware(
+                firmware,
+                progress_callback=lambda current, _: pbar.update(XMODEM_BLOCK_SIZE),
+            )
+
+        await gecko.run_firmware()
 
     _LOGGER.info("Rebooted application")
 
@@ -139,5 +173,5 @@ async def main():
 if __name__ == "__main__":
     import coloredlogs
 
-    coloredlogs.install(level="DEBUG")
+    coloredlogs.install(level="INFO")
     asyncio.run(main())

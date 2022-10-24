@@ -3,38 +3,15 @@ from __future__ import annotations
 import typing
 import asyncio
 import logging
-import functools
 import dataclasses
 
 import zigpy.types
 import async_timeout
 
 from . import cpc_types
-from .common import SerialProtocol
+from .common import BufferTooShort, SerialProtocol, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class BufferTooShort(Exception):
-    pass
-
-
-def crc16(data: bytes, polynomial: int) -> int:
-    crc = 0x0000
-
-    for c in data:
-        crc ^= c << 8
-
-        for _ in range(8):
-            if crc & 0x8000:
-                crc = ((crc << 1) & 0xFFFF) ^ polynomial
-            else:
-                crc = (crc << 1) & 0xFFFF
-
-    return crc
-
-
-crc16_ccitt = functools.partial(crc16, polynomial=0x1021)
 
 
 def extract_frame(cpc_frame: CPCFrame):
@@ -84,7 +61,6 @@ class ResetCommand:
 class UnnumberedFrame:
     command_id: cpc_types.UnnumberedFrameCommandId
     command_seq: zigpy.types.uint8_t
-    length: zigpy.types.uint16_t = dataclasses.field(repr=False)
     payload: bytes
 
     _COMMANDS = {
@@ -111,7 +87,6 @@ class UnnumberedFrame:
         return cls(
             command_id=command_id,
             command_seq=command_seq,
-            length=None,
             payload=cls._COMMANDS[command_id].from_bytes(payload),
         )
 
@@ -128,21 +103,16 @@ class UnnumberedFrame:
 
 @dataclasses.dataclass(frozen=True)
 class CPCFrame:
-    flag: zigpy.types.uint8_t = dataclasses.field(repr=False)
     endpoint: cpc_types.EndpointId
-    length: zigpy.types.uint16_t = dataclasses.field(repr=False)
     control: zigpy.types.uint8_t
-    header_checksum: zigpy.types.uint16_t = dataclasses.field(repr=False)
-
     payload: bytes
-    payload_checksum: zigpy.types.uint16_t = dataclasses.field(repr=False)
 
     def serialize(self) -> bytes:
         payload = self.payload.to_bytes()
         length = zigpy.types.uint16_t(len(payload) + 2)
 
         header = (
-            self.flag.serialize()
+            cpc_types.FLAG.serialize()
             + self.endpoint.serialize()
             + length.serialize()
             + self.control.serialize()
@@ -182,13 +152,9 @@ class CPCFrame:
             raise ValueError("Invalid payload checksum")
 
         frame = cls(
-            flag=flag,
             endpoint=endpoint,
-            length=length,
             control=control,
-            header_checksum=header_checksum,
             payload=payload,
-            payload_checksum=payload_checksum,
         )
 
         frame_with_parsed_payload = dataclasses.replace(
@@ -264,7 +230,7 @@ class CPCProtocol(SerialProtocol):
                 self.frame_received(frame)
 
     def frame_received(self, frame: CPCFrame) -> None:
-        _LOGGER.info("Parsed frame %s %s", frame.unnumbered_type(), frame)
+        _LOGGER.debug("Parsed frame %s %s", frame.unnumbered_type(), frame)
 
         if frame.unnumbered_type() == cpc_types.UnnumberedFrameType.POLL_FINAL:
             if frame.payload.command_seq not in self._pending_frames:
@@ -278,7 +244,6 @@ class CPCProtocol(SerialProtocol):
         self, command_id, command_payload, *, retries=3, timeout=1, retry_delay=0.1
     ):
         frame = CPCFrame(
-            flag=cpc_types.FLAG,
             endpoint=cpc_types.EndpointId.SYSTEM,
             control=zigpy.types.uint8_t(
                 (cpc_types.FrameType.UNNUMBERED << 6)
@@ -287,12 +252,8 @@ class CPCProtocol(SerialProtocol):
             payload=UnnumberedFrame(
                 command_id=command_id,
                 command_seq=zigpy.types.uint8_t(self._command_seq),
-                length=None,
                 payload=command_payload,
             ),
-            length=None,
-            header_checksum=None,
-            payload_checksum=None,
         )
         self._command_seq = (self._command_seq + 1) & 0xFF
 
@@ -303,7 +264,7 @@ class CPCProtocol(SerialProtocol):
 
         try:
             for attempt in range(retries + 1):
-                _LOGGER.info("Sending frame %s", frame)
+                _LOGGER.debug("Sending frame %s", frame)
                 self.send_data(frame.serialize())
 
                 try:
