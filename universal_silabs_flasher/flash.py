@@ -6,18 +6,21 @@ import typing
 import asyncio
 import logging
 import pathlib
-import contextlib
 
 import tqdm
 import bellows.ezsp
-import zigpy.serial
 import async_timeout
 import bellows.types
 import bellows.config
 
 from . import cpc_types
 from .cpc import CPCProtocol, ResetCommand, PropertyCommand
-from .common import validate_silabs_gbl, patch_pyserial_asyncio
+from .common import (
+    PROBE_TIMEOUT,
+    connect_protocol,
+    validate_silabs_gbl,
+    patch_pyserial_asyncio,
+)
 from .emberznet import connect_ezsp
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 from .gecko_bootloader import GeckoBootloaderProtocol
@@ -25,29 +28,6 @@ from .gecko_bootloader import GeckoBootloaderProtocol
 patch_pyserial_asyncio()
 
 _LOGGER = logging.getLogger(__name__)
-
-INTER_PROBE_DELAY = 0.5
-CONNECT_TIMEOUT = 1
-PROBE_TIMEOUT = 2
-
-
-@contextlib.asynccontextmanager
-async def connect_protocol(port, baudrate, factory):
-    loop = asyncio.get_running_loop()
-
-    async with async_timeout.timeout(CONNECT_TIMEOUT):
-        _, protocol = await zigpy.serial.create_serial_connection(
-            loop=loop,
-            protocol_factory=factory,
-            url=port,
-            baudrate=baudrate,
-        )
-        await protocol.wait_until_connected()
-
-    try:
-        yield protocol
-    finally:
-        protocol.disconnect()
 
 
 async def get_application_version(

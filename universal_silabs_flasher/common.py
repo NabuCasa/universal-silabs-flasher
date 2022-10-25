@@ -4,12 +4,18 @@ import typing
 import asyncio
 import logging
 import functools
+import contextlib
 import collections
 
+import zigpy.serial
+import async_timeout
 import serial_asyncio
 from zigpy.ota.validators import parse_silabs_gbl
 
 _LOGGER = logging.getLogger(__name__)
+
+CONNECT_TIMEOUT = 1
+PROBE_TIMEOUT = 2
 
 
 def crc16(data: bytes, polynomial: int) -> int:
@@ -117,6 +123,12 @@ def validate_silabs_gbl(data: bytes) -> None:
 def patch_pyserial_asyncio() -> None:
     """Patches pyserial-asyncio's `SerialTransport` to support swapping protocols."""
 
+    if (
+        serial_asyncio.SerialTransport.get_protocol
+        is not asyncio.BaseTransport.get_protocol
+    ):
+        return
+
     def get_protocol(self) -> asyncio.Protocol:
         return self._protocol
 
@@ -125,3 +137,22 @@ def patch_pyserial_asyncio() -> None:
 
     serial_asyncio.SerialTransport.get_protocol = get_protocol
     serial_asyncio.SerialTransport.set_protocol = set_protocol
+
+
+@contextlib.asynccontextmanager
+async def connect_protocol(port, baudrate, factory):
+    loop = asyncio.get_running_loop()
+
+    async with async_timeout.timeout(CONNECT_TIMEOUT):
+        _, protocol = await zigpy.serial.create_serial_connection(
+            loop=loop,
+            protocol_factory=factory,
+            url=port,
+            baudrate=baudrate,
+        )
+        await protocol.wait_until_connected()
+
+    try:
+        yield protocol
+    finally:
+        protocol.disconnect()
