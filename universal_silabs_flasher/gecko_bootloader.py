@@ -18,7 +18,11 @@ class UploadError(Exception):
     pass
 
 
-RUN_APPLICATION_DELAY = 0.5
+class NoFirmwareError(Exception):
+    pass
+
+
+RUN_APPLICATION_DELAY = 0.1
 MENU_REGEX = re.compile(
     rb"\r\nGecko Bootloader v(?P<version>.*?)\r\n"
     rb"1\. upload gbl\r\n"
@@ -39,7 +43,6 @@ class State(str, enum.Enum):
     WAITING_XMODEM_READY = "waiting_xmodem_ready"
     XMODEM_READY = "xmodem_ready"
     WAITING_UPLOAD_DONE = "waiting_upload_done"
-    RUNNING_FIRMWARE = "running_firmware"
 
 
 class GeckoBootloaderOption(bytes, enum.Enum):
@@ -79,9 +82,19 @@ class GeckoBootloaderProtocol(SerialProtocol):
     async def run_firmware(self) -> None:
         """Select `run` in the menu."""
         await self._state_machine.wait_for_state(State.IN_MENU)
-        self._state_machine.set_state(State.RUNNING_FIRMWARE)
+
+        # If the firmware fails to launch, the menu will appear again
+        self._state_machine.set_state(State.WAITING_FOR_MENU)
         self.send_data(GeckoBootloaderOption.RUN_FIRMWARE)
-        await asyncio.sleep(RUN_APPLICATION_DELAY)
+
+        try:
+            async with async_timeout.timeout(RUN_APPLICATION_DELAY):
+                await self._state_machine.wait_for_state(State.IN_MENU)
+        except asyncio.TimeoutError:
+            # The menu did not appear so the application must be running
+            return
+        else:
+            raise NoFirmwareError("No firmware exists on the device")
 
     async def upload_firmware(
         self,

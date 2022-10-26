@@ -20,7 +20,7 @@ from .gbl import GBLImage, FirmwareImageType
 from .common import PROBE_TIMEOUT, connect_protocol, patch_pyserial_asyncio
 from .emberznet import connect_ezsp
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
-from .gecko_bootloader import GeckoBootloaderProtocol
+from .gecko_bootloader import NoFirmwareError, GeckoBootloaderProtocol
 
 patch_pyserial_asyncio()
 
@@ -78,11 +78,14 @@ async def _enter_bootloader(ctx):
         async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
             try:
                 res = await ezsp.launchStandaloneBootloader(0x01)
-            except asyncio.TimeoutError:
                 return
+            except asyncio.TimeoutError as e:
+                _LOGGER.info("Failed to probe EZSP: %r", e)
             else:
                 if res[0] != bellows.types.EmberStatus.SUCCESS:
                     click.echo(f"Failed to enter bootloader via EZSP: {res[0]}")
+
+                return
     except asyncio.TimeoutError as e:
         _LOGGER.info("Failed to probe EZSP: %r", e)
 
@@ -146,7 +149,6 @@ async def flash(
     _LOGGER.debug("Extracted GBL metadata: %s", metadata)
 
     app_version, application_type = await _get_application_version(ctx)
-    assert application_type != CommunicationMethod.GECKO_BOOTLOADER
 
     if application_type == CommunicationMethod.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
@@ -154,37 +156,26 @@ async def flash(
         # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154
         running_image_type = FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154
 
-    if (
-        not force
-        and metadata is not None
-        and metadata.image_type is not None
-        and metadata.image_type != running_image_type
-        and not allow_cross_flashing
-    ):
-        raise click.ClickException(
-            f"Running image type {running_image_type}"
-            f" does not match firmware image type {metadata.image_type}"
-        )
+    if not force and app_version is not None and metadata is not None:
+        if (
+            metadata.image_type is not None
+            and metadata.image_type != running_image_type
+            and not allow_cross_flashing
+        ):
+            raise click.ClickException(
+                f"Running image type {running_image_type}"
+                f" does not match firmware image type {metadata.image_type}"
+            )
 
-    if (
-        not force
-        and metadata is not None
-        and app_version == metadata.get_public_version()
-        and skip_if_version_matches
-    ):
-        click.echo(f"Firmware version {app_version} is already running, not upgrading")
-        return
+        if app_version == metadata.get_public_version() and skip_if_version_matches:
+            click.echo(f"Firmware version {app_version} is flashed, not upgrading")
+            return
 
-    if (
-        not force
-        and metadata is not None
-        and app_version > metadata.get_public_version()
-        and not allow_downgrades
-    ):
-        raise click.ClickException(
-            f"Firmware version {metadata.get_public_version()} does not upgrade"
-            f" current version {app_version}"
-        )
+        if app_version > metadata.get_public_version() and not allow_downgrades:
+            raise click.ClickException(
+                f"Firmware version {metadata.get_public_version()} does not upgrade"
+                f" current version {app_version}"
+            )
 
     await _enter_bootloader(ctx)
 
@@ -220,13 +211,20 @@ async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMe
             _LOGGER.debug("Failed to probe Gecko Bootloader: %r", e)
         else:
             _LOGGER.debug("Starting application from bootloader")
-            await gecko.run_firmware()
+
+            try:
+                await gecko.run_firmware()
+            except NoFirmwareError:
+                return None, CommunicationMethod.GECKO_BOOTLOADER
 
     # Next, try EZSP
     try:
         async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
             brd_manuf, brd_name, version = await ezsp.get_board_info()
-            return AwesomeVersion(version), CommunicationMethod.EZSP
+            return (
+                AwesomeVersion(version.replace(" build ", ".")),
+                CommunicationMethod.EZSP,
+            )
     except asyncio.TimeoutError as e:
         _LOGGER.debug("Failed to probe EZSP: %r", e)
 

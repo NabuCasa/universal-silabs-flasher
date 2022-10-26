@@ -65,10 +65,7 @@ class NabuCasaMetadata:
     image_type: FirmwareImageType | None
 
     def get_public_version(self) -> AwesomeVersion | None:
-        if self.image_type == FirmwareImageType.NCP_UART_HW:
-            return self.ezsp_version
-        else:
-            return self.sdk_version
+        return self.ezsp_version or self.sdk_version
 
     @classmethod
     def from_json(cls, obj: dict[str, typing.Any]) -> NabuCasaMetadata:
