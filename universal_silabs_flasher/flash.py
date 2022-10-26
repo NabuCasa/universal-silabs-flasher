@@ -8,6 +8,7 @@ import os.path
 import functools
 
 import click
+import coloredlogs
 import bellows.ezsp
 import async_timeout
 import bellows.types
@@ -24,6 +25,7 @@ from .gecko_bootloader import GeckoBootloaderProtocol
 patch_pyserial_asyncio()
 
 _LOGGER = logging.getLogger(__name__)
+LOG_LEVELS = ["WARNING", "INFO", "DEBUG"]
 
 
 def click_coroutine(f):
@@ -41,11 +43,14 @@ class CommunicationMethod(enum.Enum):
 
 
 @click.group()
+@click.option("-v", "--verbose", count=True)
 @click.option("--device", required=True)
 @click.option("--baudrate", default=115200, show_default=True)
 @click.option("--bootloader-baudrate", default=None, show_default=True)
 @click.pass_context
-def main(ctx, device, baudrate, bootloader_baudrate):
+def main(ctx, verbose, device, baudrate, bootloader_baudrate):
+    coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
+
     ctx.obj = {
         "device": device,
         "baudrate": baudrate,
@@ -264,10 +269,3 @@ async def enter_bootloader(port, baudrate, protocol_cls):
                     raise RuntimeError(f"Failed to enter bootloader via EZSP: {res[0]}")
     else:
         raise ValueError(f"Invalid protocol class: {protocol_cls!r}")
-
-
-if __name__ == "__main__":
-    import coloredlogs
-
-    coloredlogs.install(level="INFO")
-    main()
