@@ -7,6 +7,7 @@ import dataclasses
 
 import zigpy.types
 import async_timeout
+from awesomeversion import AwesomeVersion
 
 from . import cpc_types
 from .common import BufferTooShort, SerialProtocol, crc16_ccitt
@@ -215,9 +216,43 @@ class CPCProtocol(SerialProtocol):
         self._pending_frames: dict[int, asyncio.Future] = {}
 
     async def probe(self) -> str:
-        return await self.get_secondary_version()
+        return await self.get_cpc_version()
 
-    async def get_secondary_version(self) -> str:
+    async def enter_bootloader(self) -> None:
+        """Reboot into the bootloader."""
+        await self.send_unnumbered_frame(
+            command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_SET,
+            command_payload=PropertyCommand(
+                property_id=cpc_types.PropertyId.BOOTLOADER_REBOOT_MODE,
+                value=cpc_types.RebootMode.BOOTLOADER.serialize(),
+            ),
+        )
+
+        await self.send_unnumbered_frame(
+            command_id=cpc_types.UnnumberedFrameCommandId.RESET,
+            command_payload=ResetCommand(status=None),
+        )
+
+    async def get_cpc_version(self) -> AwesomeVersion:
+        """Read the secondary CPC version from the device."""
+        rsp = await self.send_unnumbered_frame(
+            command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET,
+            command_payload=PropertyCommand(
+                property_id=cpc_types.PropertyId.SECONDARY_CPC_VERSION,
+                value=b"",
+            ),
+            retries=3,
+        )
+
+        version_bytes = rsp.payload.payload.value
+        major, version_bytes = zigpy.types.uint32_t.deserialize(version_bytes)
+        minor, version_bytes = zigpy.types.uint32_t.deserialize(version_bytes)
+        patch, version_bytes = zigpy.types.uint32_t.deserialize(version_bytes)
+        assert not version_bytes
+
+        return AwesomeVersion(f"{major}.{minor}.{patch}")
+
+    async def get_secondary_version(self) -> AwesomeVersion:
         """Read the secondary app version from the device."""
         rsp = await self.send_unnumbered_frame(
             command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET,
@@ -230,7 +265,7 @@ class CPCProtocol(SerialProtocol):
 
         version_bytes = rsp.payload.payload.value
 
-        return version_bytes.split(b"\x00", 1)[0].decode("ascii")
+        return AwesomeVersion(version_bytes.split(b"\x00", 1)[0].decode("ascii"))
 
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
@@ -298,7 +333,7 @@ class CPCProtocol(SerialProtocol):
                     async with async_timeout.timeout(timeout):
                         return await asyncio.shield(future)
                 except asyncio.TimeoutError:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         "Failed to send %s, trying again in %0.2fs (attempt %s of %s)",
                         frame,
                         retry_delay,

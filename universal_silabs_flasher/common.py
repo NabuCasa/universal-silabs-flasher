@@ -10,7 +10,6 @@ import collections
 import zigpy.serial
 import async_timeout
 import serial_asyncio
-from zigpy.ota.validators import parse_silabs_gbl
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -112,12 +111,6 @@ class SerialProtocol(asyncio.Protocol):
             self._transport.close()
             self._buffer.clear()
             self._connected_event.clear()
-
-
-def validate_silabs_gbl(data: bytes) -> None:
-    """Validates a Silicon Labs GBL firmware image structure and checksum."""
-    for _tag, _value in parse_silabs_gbl(data):
-        pass
 
 
 def patch_pyserial_asyncio() -> None:

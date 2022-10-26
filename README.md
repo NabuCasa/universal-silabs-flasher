@@ -8,7 +8,7 @@ checksums are verified before upload.
 
 ```console
 $ pip install git+https://github.com/puddly/universal-silabs-flasher.git
-$ python -m universal_silabs_flasher.flash /dev/serial/by-id/... 115200 /path/to/firmware.gbl
+$ $ universal-silabs-flasher --device /dev/cu.SLAB_USBtoUART --baudrate 230400 --bootloader-baudrate 230400 flash --firmware NabuCasa_RCP_v4.1.3_rcp-uart-hw-802154_230400.gbl
 ```
 
 ## TODO
