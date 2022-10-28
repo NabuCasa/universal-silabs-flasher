@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import os
 import enum
 import math
+import time
 import asyncio
 import logging
 import os.path
+import warnings
 import functools
 
 import click
+import gpiozero
 import coloredlogs
 import bellows.ezsp
 import async_timeout
@@ -58,7 +62,25 @@ def main(ctx, verbose, device, baudrate, bootloader_baudrate):
     }
 
 
-async def _enter_bootloader(ctx):
+def _enter_yellow_bootloader():
+    with warnings.catch_warnings():
+        warnings.simplefilter(action="ignore", category=gpiozero.PinFactoryFallback)
+
+        gpio24 = gpiozero.OutputDevice(pin=24, initial_value=True)
+        gpio25 = gpiozero.OutputDevice(pin=25, initial_value=True)
+
+        with gpio24, gpio25:
+            gpio24.off()  # Assert Reset
+            gpio25.off()  # 0=BL mode, 1=Firmware
+            time.sleep(0.1)
+            gpio25.on()  # Deassert Reset
+            time.sleep(0.1)
+
+
+async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
+    if yellow_gpio_reset:
+        await asyncio.get_running_loop().run_in_executor(None, _enter_yellow_bootloader)
+
     # Try connecting with the bootloader first
     try:
         async with connect_protocol(
@@ -99,9 +121,10 @@ async def _enter_bootloader(ctx):
 
 @main.command()
 @click.pass_context
+@click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
 @click_coroutine
-async def bootloader(ctx):
-    await _enter_bootloader(ctx)
+async def bootloader(ctx, yellow_gpio_reset):
+    await _enter_bootloader(ctx, yellow_gpio_reset=yellow_gpio_reset)
 
     # Make sure we are in the bootloader
     async with connect_protocol(
@@ -119,6 +142,7 @@ async def bootloader(ctx):
 @click.option(
     "--skip-if-version-matches", is_flag=True, default=True, show_default=True
 )
+@click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
 @click.pass_context
 @click_coroutine
 async def flash(
@@ -128,6 +152,7 @@ async def flash(
     allow_downgrades,
     allow_cross_flashing,
     skip_if_version_matches,
+    yellow_gpio_reset,
 ):
     # Parse and validate the firmware image
     firmware_data = firmware.read()
@@ -153,7 +178,7 @@ async def flash(
     if application_type == CommunicationMethod.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
     else:
-        # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154
+        # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
         running_image_type = FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154
 
     if not force and app_version is not None and metadata is not None:
@@ -177,7 +202,7 @@ async def flash(
                 f" current version {app_version}"
             )
 
-    await _enter_bootloader(ctx)
+    await _enter_bootloader(ctx, yellow_gpio_reset=yellow_gpio_reset)
 
     # Flash the image
     async with connect_protocol(
@@ -247,23 +272,3 @@ async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMe
             return version, CommunicationMethod.CPC
 
     raise RuntimeError("Could not probe protocol version")
-
-
-async def enter_bootloader(port, baudrate, protocol_cls):
-    if protocol_cls == GeckoBootloaderProtocol:
-        return
-    elif protocol_cls == CPCProtocol:
-        async with connect_protocol(port, baudrate, CPCProtocol) as cpc:
-            await cpc.probe()
-            await cpc.enter_bootloader()
-    elif protocol_cls == "EZSP":
-        async with connect_ezsp(port, baudrate) as ezsp:
-            try:
-                res = await ezsp.launchStandaloneBootloader(0x01)
-            except asyncio.TimeoutError:
-                pass
-            else:
-                if res[0] != bellows.types.EmberStatus.SUCCESS:
-                    raise RuntimeError(f"Failed to enter bootloader via EZSP: {res[0]}")
-    else:
-        raise ValueError(f"Invalid protocol class: {protocol_cls!r}")
