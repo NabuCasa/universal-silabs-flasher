@@ -7,7 +7,6 @@ import time
 import asyncio
 import logging
 import os.path
-import warnings
 import functools
 
 import click
@@ -63,18 +62,17 @@ def main(ctx, verbose, device, baudrate, bootloader_baudrate):
 
 
 def _enter_yellow_bootloader():
-    with warnings.catch_warnings():
-        warnings.simplefilter(action="ignore", category=gpiozero.PinFactoryFallback)
+    os.environ.setdefault("GPIOZERO_PIN_FACTORY", "native")
 
-        gpio24 = gpiozero.OutputDevice(pin=24, initial_value=True)
-        gpio25 = gpiozero.OutputDevice(pin=25, initial_value=True)
+    gpio24 = gpiozero.OutputDevice(pin=24, initial_value=True)
+    gpio25 = gpiozero.OutputDevice(pin=25, initial_value=True)
 
-        with gpio24, gpio25:
-            gpio24.off()  # Assert Reset
-            gpio25.off()  # 0=BL mode, 1=Firmware
-            time.sleep(0.1)
-            gpio25.on()  # Deassert Reset
-            time.sleep(0.1)
+    with gpio24, gpio25:
+        gpio24.off()  # Assert Reset
+        gpio25.off()  # 0=BL mode, 1=Firmware
+        time.sleep(0.1)
+        gpio25.on()  # Deassert Reset
+        time.sleep(0.1)
 
 
 async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
