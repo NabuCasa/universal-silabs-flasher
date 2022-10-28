@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 import asyncio
 import logging
-import functools
+import binascii
 import contextlib
 import collections
 
@@ -17,24 +17,9 @@ CONNECT_TIMEOUT = 1
 PROBE_TIMEOUT = 2
 
 
-def crc16(data: bytes, polynomial: int) -> int:
-    """Calculate a CRC-16 checksum with a bit-packed polynomial."""
-    crc = 0x0000
-
-    for c in data:
-        crc ^= c << 8
-
-        for _ in range(8):
-            if crc & 0x8000:
-                crc = ((crc << 1) & 0xFFFF) ^ polynomial
-            else:
-                crc = (crc << 1) & 0xFFFF
-
-    return crc
-
-
 # Used by both CPC and XModem
-crc16_ccitt = functools.partial(crc16, polynomial=0x1021)
+def crc16_ccitt(data: bytes) -> int:
+    return binascii.crc_hqx(data, 0x0000)
 
 
 class BufferTooShort(Exception):
