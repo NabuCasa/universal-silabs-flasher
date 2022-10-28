@@ -71,7 +71,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         if wait_for_menu:
             await self._state_machine.wait_for_state(State.IN_MENU)
 
-        self._state_machine.set_state(State.WAITING_FOR_MENU)
+        self._state_machine.state = State.WAITING_FOR_MENU
         self.send_data(GeckoBootloaderOption.EBL_INFO)
 
         await self._state_machine.wait_for_state(State.IN_MENU)
@@ -84,7 +84,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         await self._state_machine.wait_for_state(State.IN_MENU)
 
         # If the firmware fails to launch, the menu will appear again
-        self._state_machine.set_state(State.WAITING_FOR_MENU)
+        self._state_machine.state = State.WAITING_FOR_MENU
         self.send_data(GeckoBootloaderOption.RUN_FIRMWARE)
 
         try:
@@ -107,7 +107,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         await self._state_machine.wait_for_state(State.IN_MENU)
 
         # Select the option
-        self._state_machine.set_state(State.WAITING_XMODEM_READY)
+        self._state_machine.state = State.WAITING_XMODEM_READY
         self.send_data(GeckoBootloaderOption.UPLOAD_GBL)
 
         # Wait for the XMODEM `C` byte
@@ -123,7 +123,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         )
 
         # Wait for the upload status to be returned
-        self._state_machine.set_state(State.WAITING_UPLOAD_DONE)
+        self._state_machine.state = State.WAITING_UPLOAD_DONE
         await self._state_machine.wait_for_state(State.IN_MENU)
 
         if self._upload_status != "complete":
@@ -144,13 +144,13 @@ class GeckoBootloaderProtocol(SerialProtocol):
                 _LOGGER.debug("Detected version string %r", self._version)
 
                 self._buffer.clear()
-                self._state_machine.set_state(State.IN_MENU)
+                self._state_machine.state = State.IN_MENU
             elif self._state_machine.state == State.WAITING_XMODEM_READY:
                 if b"\r\nbegin upload\r\n\x00" not in self._buffer:
                     break
 
                 self._buffer.clear()
-                self._state_machine.set_state(State.XMODEM_READY)
+                self._state_machine.state = State.XMODEM_READY
             elif self._state_machine.state == State.WAITING_UPLOAD_DONE:
                 match = UPLOAD_STATUS_REGEX.search(self._buffer)
 
@@ -165,7 +165,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
                     self._upload_status = match.group("abort_status").decode("ascii")
 
                 del self._buffer[: match.span()[1]]
-                self._state_machine.set_state(State.WAITING_FOR_MENU)
+                self._state_machine.state = State.WAITING_FOR_MENU
             else:
                 # Ignore data otherwise
                 break

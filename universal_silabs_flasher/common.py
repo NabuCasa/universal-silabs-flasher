@@ -30,37 +30,45 @@ class StateMachine:
     """Asyncio-friendly state machine."""
 
     def __init__(self, states: set[str], initial: str) -> None:
-        assert initial in states
+        if initial not in states:
+            raise ValueError(f"Unknown initial state {initial!r}: expected {states!r}")
 
-        self.states = states
-        self.state = initial
+        self._states = states
+        self._state = initial
 
-        self.futures_for_state: typing.DefaultDict[
+        self._futures_for_state: typing.DefaultDict[
             str, list[asyncio.Future]
         ] = collections.defaultdict(list)
 
+    @property
+    def state(self) -> str:
+        return self._state
+
+    @state.setter
+    def state(self, state: str) -> None:
+        if state not in self._states:
+            raise ValueError(f"Unknown state {state!r}: expected {self._states!r}")
+
+        self._state = state
+
+        for future in self._futures_for_state[state]:
+            future.set_result(None)
+
     async def wait_for_state(self, state: str) -> None:
         """Waits for a state. Returns immediately if the state is active."""
-        assert state in self.states
+        assert state in self._states
 
         if self.state == state:
             return
 
         future = asyncio.get_running_loop().create_future()
-        self.futures_for_state[state].append(future)
+        self._futures_for_state[state].append(future)
 
         try:
             return await future
         finally:
             # Always clean up the future
-            self.futures_for_state[state].remove(future)
-
-    def set_state(self, state: str) -> None:
-        assert state in self.states
-        self.state = state
-
-        for future in self.futures_for_state[state]:
-            future.set_result(None)
+            self._futures_for_state[state].remove(future)
 
 
 class SerialProtocol(asyncio.Protocol):
