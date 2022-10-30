@@ -23,7 +23,7 @@ from .cpc import CPCProtocol
 from .gbl import GBLImage, FirmwareImageType
 from .common import PROBE_TIMEOUT, connect_protocol, patch_pyserial_asyncio
 from .emberznet import connect_ezsp
-from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
+from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 from .gecko_bootloader import NoFirmwareError, GeckoBootloaderProtocol
 
 patch_pyserial_asyncio()
@@ -242,10 +242,11 @@ async def flash(
             return
 
         if app_version > metadata.get_public_version() and not allow_downgrades:
-            raise click.ClickException(
+            click.echo(
                 f"Firmware version {metadata.get_public_version()} does not upgrade"
                 f" current version {app_version}"
             )
+            return
 
     await _enter_bootloader(ctx, yellow_gpio_reset=yellow_gpio_reset)
 
@@ -261,10 +262,16 @@ async def flash(
             show_eta=True,
             show_percent=True,
         ) as pbar:
-            await gecko.upload_firmware(
-                firmware_data,
-                progress_callback=lambda current, _: pbar.update(XMODEM_BLOCK_SIZE),
-            )
+            try:
+                await gecko.upload_firmware(
+                    firmware_data,
+                    progress_callback=lambda current, _: pbar.update(XMODEM_BLOCK_SIZE),
+                )
+            except ReceiverCancelled:
+                raise click.ClickException(
+                    "Firmware image was rejected by the device. Ensure this is the"
+                    " correct image for this device."
+                )
 
         await gecko.run_firmware()
 
