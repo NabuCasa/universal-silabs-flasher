@@ -4,12 +4,14 @@ import logging
 import dataclasses
 
 import zigpy.types
+import async_timeout
 
 from .common import crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
 BLOCK_SIZE = 128
+RECEIVE_TIMEOUT = 2
 
 
 class PacketType(zigpy.types.enum8):
@@ -60,7 +62,9 @@ async def send_xmodem128_crc_data(
         await writer.drain()
 
         # And wait for a response
-        rsp_byte = await reader.readexactly(1)
+        async with async_timeout.timeout(RECEIVE_TIMEOUT):
+            rsp_byte = await reader.readexactly(1)
+
         _LOGGER.debug("Got response: %r", rsp_byte)
 
         if rsp_byte[0] == PacketType.ACK:
