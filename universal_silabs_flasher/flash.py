@@ -13,6 +13,7 @@ import functools
 import click
 import gpiozero
 import coloredlogs
+import zigpy.types
 import bellows.ezsp
 import async_timeout
 import bellows.types
@@ -109,7 +110,6 @@ def _enter_yellow_bootloader():
 
 
 async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
-
     if yellow_gpio_reset:
         await asyncio.get_running_loop().run_in_executor(None, _enter_yellow_bootloader)
 
@@ -162,19 +162,91 @@ async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
                 await cpc.enter_bootloader()
 
 
+async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMethod]:
+    # If we are in the bootloader, start the application
+    if CommunicationMethod.GECKO_BOOTLOADER in ctx.obj["probe_methods"]:
+        click.echo("Connecting with Gecko bootloader")
+
+        async with connect_protocol(
+            ctx.obj["device"], ctx.obj["bootloader_baudrate"], GeckoBootloaderProtocol
+        ) as gecko:
+            try:
+                async with async_timeout.timeout(PROBE_TIMEOUT):
+                    await gecko.probe()
+            except asyncio.TimeoutError as e:
+                _LOGGER.debug("Failed to probe Gecko Bootloader: %r", e)
+            else:
+                _LOGGER.debug("Starting application from bootloader")
+
+                try:
+                    await gecko.run_firmware()
+                except NoFirmwareError:
+                    return None, CommunicationMethod.GECKO_BOOTLOADER
+
+    # Next, try EZSP
+    if CommunicationMethod.EZSP in ctx.obj["probe_methods"]:
+        click.echo("Connecting with EZSP")
+
+        try:
+            async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
+                brd_manuf, brd_name, version = await ezsp.get_board_info()
+                return (
+                    AwesomeVersion(version.replace(" build ", ".")),
+                    CommunicationMethod.EZSP,
+                )
+        except asyncio.TimeoutError as e:
+            _LOGGER.debug("Failed to probe EZSP: %r", e)
+
+    # Finally, try CPC
+    if CommunicationMethod.CPC in ctx.obj["probe_methods"]:
+        click.echo("Connecting with CPC")
+
+        async with connect_protocol(
+            ctx.obj["device"], ctx.obj["baudrate"], CPCProtocol
+        ) as cpc:
+            try:
+                async with async_timeout.timeout(PROBE_TIMEOUT):
+                    await cpc.probe()
+            except asyncio.TimeoutError:
+                raise RuntimeError("Failed to probe CPC")
+
+            try:
+                # Now that we have connected, probe the application version
+                version = await cpc.get_cpc_version()
+            except asyncio.TimeoutError as e:
+                _LOGGER.debug("Failed to probe CPC: %r", e)
+            else:
+                return version, CommunicationMethod.CPC
+
+    raise RuntimeError("Could not probe protocol version")
+
+
 @main.command()
 @click.pass_context
-@click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
+@click.option("--ieee", required=True, type=zigpy.types.EUI64.convert)
 @click_coroutine
-async def bootloader(ctx, yellow_gpio_reset):
-    await _enter_bootloader(ctx, yellow_gpio_reset=yellow_gpio_reset)
+async def write_ieee(ctx, ieee):
+    new_eui64 = bellows.types.EmberEUI64(ieee)
 
-    # Make sure we are in the bootloader
-    async with connect_protocol(
-        ctx.obj["device"], ctx.obj["bootloader_baudrate"], GeckoBootloaderProtocol
-    ) as gecko:
-        async with async_timeout.timeout(PROBE_TIMEOUT):
-            await gecko.probe()
+    async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
+        (current_eui64,) = await ezsp.getEui64()
+        click.echo(f"Current device IEEE: {current_eui64}")
+
+        if current_eui64 == new_eui64:
+            click.echo("Device IEEE address already matches, not overwriting")
+            return
+
+        if not await ezsp.can_write_custom_eui64():
+            raise click.ClickException(
+                "IEEE address has already been written once, cannot write again"
+            )
+
+        (status,) = await ezsp.setMfgToken(
+            bellows.types.EzspMfgTokenId.MFG_CUSTOM_EUI_64, new_eui64.serialize()
+        )
+
+        if status != bellows.types.EmberStatus.SUCCESS:
+            raise click.ClickException(f"Failed to write IEEE address: {status}")
 
 
 @main.command()
@@ -274,62 +346,3 @@ async def flash(
                 )
 
         await gecko.run_firmware()
-
-
-async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMethod]:
-    # If we are in the bootloader, start the application
-    if CommunicationMethod.GECKO_BOOTLOADER in ctx.obj["probe_methods"]:
-        click.echo("Connecting with Gecko bootloader")
-
-        async with connect_protocol(
-            ctx.obj["device"], ctx.obj["bootloader_baudrate"], GeckoBootloaderProtocol
-        ) as gecko:
-            try:
-                async with async_timeout.timeout(PROBE_TIMEOUT):
-                    await gecko.probe()
-            except asyncio.TimeoutError as e:
-                _LOGGER.debug("Failed to probe Gecko Bootloader: %r", e)
-            else:
-                _LOGGER.debug("Starting application from bootloader")
-
-                try:
-                    await gecko.run_firmware()
-                except NoFirmwareError:
-                    return None, CommunicationMethod.GECKO_BOOTLOADER
-
-    # Next, try EZSP
-    if CommunicationMethod.EZSP in ctx.obj["probe_methods"]:
-        click.echo("Connecting with EZSP")
-
-        try:
-            async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
-                brd_manuf, brd_name, version = await ezsp.get_board_info()
-                return (
-                    AwesomeVersion(version.replace(" build ", ".")),
-                    CommunicationMethod.EZSP,
-                )
-        except asyncio.TimeoutError as e:
-            _LOGGER.debug("Failed to probe EZSP: %r", e)
-
-    # Finally, try CPC
-    if CommunicationMethod.CPC in ctx.obj["probe_methods"]:
-        click.echo("Connecting with CPC")
-
-        async with connect_protocol(
-            ctx.obj["device"], ctx.obj["baudrate"], CPCProtocol
-        ) as cpc:
-            try:
-                async with async_timeout.timeout(PROBE_TIMEOUT):
-                    await cpc.probe()
-            except asyncio.TimeoutError:
-                raise RuntimeError("Failed to probe CPC")
-
-            try:
-                # Now that we have connected, probe the application version
-                version = await cpc.get_cpc_version()
-            except asyncio.TimeoutError as e:
-                _LOGGER.debug("Failed to probe CPC: %r", e)
-            else:
-                return version, CommunicationMethod.CPC
-
-    raise RuntimeError("Could not probe protocol version")
