@@ -255,7 +255,7 @@ async def write_ieee(ctx, ieee):
 @click.option("--allow-downgrades", is_flag=True, default=False, show_default=True)
 @click.option("--allow-cross-flashing", is_flag=True, default=False, show_default=True)
 @click.option(
-    "--skip-if-version-matches", is_flag=True, default=True, show_default=True
+    "--allow-reflash-same-version", is_flag=True, default=False, show_default=True
 )
 @click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
 @click.pass_context
@@ -266,7 +266,7 @@ async def flash(
     force,
     allow_downgrades,
     allow_cross_flashing,
-    skip_if_version_matches,
+    allow_reflash_same_version,
     yellow_gpio_reset,
 ):
     # Parse and validate the firmware image
@@ -309,7 +309,10 @@ async def flash(
                 f" does not match firmware image type {metadata.image_type}"
             )
 
-        if app_version == metadata.get_public_version() and skip_if_version_matches:
+        if (
+            app_version == metadata.get_public_version()
+            and not allow_reflash_same_version
+        ):
             click.echo(f"Firmware version {app_version} is flashed, not upgrading")
             return
 
