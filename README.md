@@ -3,7 +3,7 @@ Automatically communicates with radios over CPC or EZSP to enter the bootloader 
 
 ## Installation
 ```console
-$ pip install git+https://github.com/puddly/universal-silabs-flasher.git
+$ pip install universal-silabs-flasher
 ```
 
 ## Flashing firmware
