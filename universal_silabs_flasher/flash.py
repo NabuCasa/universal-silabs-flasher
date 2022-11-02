@@ -30,7 +30,7 @@ from .gecko_bootloader import NoFirmwareError, GeckoBootloaderProtocol
 patch_pyserial_asyncio()
 
 _LOGGER = logging.getLogger(__name__)
-LOG_LEVELS = ["WARNING", "INFO", "DEBUG"]
+LOG_LEVELS = ["INFO", "DEBUG"]
 
 
 def click_coroutine(f: typing.Callable) -> typing.Callable:
@@ -114,7 +114,7 @@ async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
         await asyncio.get_running_loop().run_in_executor(None, _enter_yellow_bootloader)
 
     if CommunicationMethod.GECKO_BOOTLOADER in ctx.obj["probe_methods"]:
-        click.echo("Probing Gecko bootloader")
+        _LOGGER.info("Probing Gecko bootloader")
 
         # Try connecting with the bootloader first
         try:
@@ -126,15 +126,15 @@ async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
                 try:
                     await gecko.probe()
                 except asyncio.TimeoutError as e:
-                    _LOGGER.info("Failed to probe Gecko Bootloader: %r", e)
+                    _LOGGER.debug("Failed to probe Gecko Bootloader: %r", e)
                 else:
                     return
         except asyncio.TimeoutError as e:
-            _LOGGER.info("Failed to probe bootloader: %r", e)
+            _LOGGER.debug("Failed to probe bootloader: %r", e)
 
     # Next, try EZSP
     if CommunicationMethod.EZSP in ctx.obj["probe_methods"]:
-        click.echo("Probing EZSP")
+        _LOGGER.info("Probing EZSP")
 
         try:
             async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
@@ -142,18 +142,20 @@ async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
                     res = await ezsp.launchStandaloneBootloader(0x01)
                     return
                 except asyncio.TimeoutError as e:
-                    _LOGGER.info("Failed to probe EZSP: %r", e)
+                    _LOGGER.debug("Failed to probe EZSP: %r", e)
                 else:
                     if res[0] != bellows.types.EmberStatus.SUCCESS:
-                        click.echo(f"Failed to enter bootloader via EZSP: {res[0]}")
+                        _LOGGER.warning(
+                            "Failed to enter bootloader via EZSP: %r", res[0]
+                        )
 
                     return
         except asyncio.TimeoutError as e:
-            _LOGGER.info("Failed to probe EZSP: %r", e)
+            _LOGGER.debug("Failed to probe EZSP: %r", e)
 
     # Finally, try CPC
     if CommunicationMethod.CPC in ctx.obj["probe_methods"]:
-        click.echo("Probing CPC")
+        _LOGGER.info("Probing CPC")
 
         async with connect_protocol(
             ctx.obj["device"], ctx.obj["baudrate"], CPCProtocol
@@ -165,7 +167,7 @@ async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
 async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMethod]:
     # If we are in the bootloader, start the application
     if CommunicationMethod.GECKO_BOOTLOADER in ctx.obj["probe_methods"]:
-        click.echo("Connecting with Gecko bootloader")
+        _LOGGER.info("Connecting with Gecko bootloader")
 
         async with connect_protocol(
             ctx.obj["device"], ctx.obj["bootloader_baudrate"], GeckoBootloaderProtocol
@@ -185,7 +187,7 @@ async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMe
 
     # Next, try EZSP
     if CommunicationMethod.EZSP in ctx.obj["probe_methods"]:
-        click.echo("Connecting with EZSP")
+        _LOGGER.info("Connecting with EZSP")
 
         try:
             async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
@@ -199,7 +201,7 @@ async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMe
 
     # Finally, try CPC
     if CommunicationMethod.CPC in ctx.obj["probe_methods"]:
-        click.echo("Connecting with CPC")
+        _LOGGER.info("Connecting with CPC")
 
         async with connect_protocol(
             ctx.obj["device"], ctx.obj["baudrate"], CPCProtocol
@@ -230,10 +232,10 @@ async def write_ieee(ctx, ieee):
 
     async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
         (current_eui64,) = await ezsp.getEui64()
-        click.echo(f"Current device IEEE: {current_eui64}")
+        _LOGGER.info("Current device IEEE: %s", current_eui64)
 
         if current_eui64 == new_eui64:
-            click.echo("Device IEEE address already matches, not overwriting")
+            _LOGGER.info("Device IEEE address already matches, not overwriting")
             return
 
         if not await ezsp.can_write_custom_eui64():
@@ -286,11 +288,13 @@ async def flash(
     except KeyError:
         metadata = None
     else:
-        click.echo(f"Extracted GBL metadata: {metadata}")
+        _LOGGER.info("Extracted GBL metadata: %s", metadata)
 
     app_version, application_type = await _get_application_version(ctx)
 
-    click.echo(f"Detected running firmware {application_type}, version {app_version}")
+    _LOGGER.info(
+        "Detected running firmware %s, version %s", application_type, app_version
+    )
 
     if application_type == CommunicationMethod.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
@@ -313,7 +317,7 @@ async def flash(
             app_version == metadata.get_public_version()
             and not allow_reflash_same_version
         ):
-            click.echo(f"Firmware version {app_version} is flashed, not upgrading")
+            _LOGGER.info("Firmware version %s is flashed, not upgrading", app_version)
             return
 
         if (
@@ -321,9 +325,10 @@ async def flash(
             and app_version > metadata.get_public_version()
             and not allow_downgrades
         ):
-            click.echo(
-                f"Firmware version {metadata.get_public_version()} does not upgrade"
-                f" current version {app_version}"
+            _LOGGER.info(
+                "Firmware version %s does not upgrade current version %s",
+                metadata.get_public_version(),
+                app_version,
             )
             return
 
@@ -334,6 +339,8 @@ async def flash(
         ctx.obj["device"], ctx.obj["bootloader_baudrate"], GeckoBootloaderProtocol
     ) as gecko:
         await gecko.probe()
+
+        _LOGGER.info("Flashing firwmare")
 
         with click.progressbar(
             label=os.path.basename(firmware.name),
