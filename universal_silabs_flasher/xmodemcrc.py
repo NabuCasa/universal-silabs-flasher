@@ -129,8 +129,12 @@ async def send_xmodem128_crc(
                 max_failures=max_failures,
             )
 
+            offset = (index + 1) * BLOCK_SIZE
+
             if progress_callback is not None:
-                progress_callback((index + 1) * BLOCK_SIZE, len(data))
+                progress_callback(offset, len(data))
+
+            _LOGGER.debug("Firmware upload progress: %0.2f%%", 100 * offset / len(data))
 
         # Once we are done, finalize the upload
         await send_xmodem128_crc_data(
