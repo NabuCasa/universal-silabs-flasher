@@ -116,8 +116,6 @@ async def _enter_bootloader(
         await asyncio.get_running_loop().run_in_executor(None, _enter_yellow_bootloader)
 
     if method == CommunicationMethod.GECKO_BOOTLOADER:
-        _LOGGER.info("Probing Gecko bootloader")
-
         # Try connecting with the bootloader first
         try:
             async with connect_protocol(
@@ -134,8 +132,6 @@ async def _enter_bootloader(
         except asyncio.TimeoutError as e:
             _LOGGER.debug("Failed to probe bootloader: %r", e)
     elif method == CommunicationMethod.EZSP:
-        _LOGGER.info("Probing EZSP")
-
         try:
             async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
                 try:
@@ -155,8 +151,6 @@ async def _enter_bootloader(
 
     # Finally, try CPC
     elif method == CommunicationMethod.CPC:
-        _LOGGER.info("Probing CPC")
-
         async with connect_protocol(
             ctx.obj["device"], ctx.obj["baudrate"], CPCProtocol
         ) as cpc:
@@ -364,5 +358,7 @@ async def flash(
                     "Firmware image was rejected by the device. Ensure this is the"
                     " correct image for this device."
                 )
+
+        _LOGGER.info("Launching application")
 
         await gecko.run_firmware()
