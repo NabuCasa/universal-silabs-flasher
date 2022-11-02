@@ -6,7 +6,7 @@ on:
 
 env:
   CACHE_VERSION: 1
-  DEFAULT_PYTHON: 3.10.8
+  DEFAULT_PYTHON: 3.9.15
   PRE_COMMIT_HOME: ~/.cache/pre-commit
   PYTHON_MODULE_NAME: universal_silabs_flasher
 
