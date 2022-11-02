@@ -109,11 +109,13 @@ def _enter_yellow_bootloader():
         time.sleep(0.1)
 
 
-async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
+async def _enter_bootloader(
+    ctx, method: CommunicationMethod, *, yellow_gpio_reset: bool = False
+) -> None:
     if yellow_gpio_reset:
         await asyncio.get_running_loop().run_in_executor(None, _enter_yellow_bootloader)
 
-    if CommunicationMethod.GECKO_BOOTLOADER in ctx.obj["probe_methods"]:
+    if method == CommunicationMethod.GECKO_BOOTLOADER:
         _LOGGER.info("Probing Gecko bootloader")
 
         # Try connecting with the bootloader first
@@ -131,9 +133,7 @@ async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
                     return
         except asyncio.TimeoutError as e:
             _LOGGER.debug("Failed to probe bootloader: %r", e)
-
-    # Next, try EZSP
-    if CommunicationMethod.EZSP in ctx.obj["probe_methods"]:
+    elif method == CommunicationMethod.EZSP:
         _LOGGER.info("Probing EZSP")
 
         try:
@@ -154,7 +154,7 @@ async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
             _LOGGER.debug("Failed to probe EZSP: %r", e)
 
     # Finally, try CPC
-    if CommunicationMethod.CPC in ctx.obj["probe_methods"]:
+    elif method == CommunicationMethod.CPC:
         _LOGGER.info("Probing CPC")
 
         async with connect_protocol(
@@ -162,12 +162,14 @@ async def _enter_bootloader(ctx, *, yellow_gpio_reset: bool = False):
         ) as cpc:
             async with async_timeout.timeout(PROBE_TIMEOUT):
                 await cpc.enter_bootloader()
+    else:
+        raise ValueError(f"Invalid communication method: {method!r}")
 
 
 async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMethod]:
     # If we are in the bootloader, start the application
     if CommunicationMethod.GECKO_BOOTLOADER in ctx.obj["probe_methods"]:
-        _LOGGER.info("Connecting with Gecko bootloader")
+        _LOGGER.info("Probing Gecko bootloader")
 
         async with connect_protocol(
             ctx.obj["device"], ctx.obj["bootloader_baudrate"], GeckoBootloaderProtocol
@@ -187,7 +189,7 @@ async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMe
 
     # Next, try EZSP
     if CommunicationMethod.EZSP in ctx.obj["probe_methods"]:
-        _LOGGER.info("Connecting with EZSP")
+        _LOGGER.info("Probing EZSP")
 
         try:
             async with connect_ezsp(ctx.obj["device"], ctx.obj["baudrate"]) as ezsp:
@@ -201,7 +203,7 @@ async def _get_application_version(ctx) -> tuple[AwesomeVersion, CommunicationMe
 
     # Finally, try CPC
     if CommunicationMethod.CPC in ctx.obj["probe_methods"]:
-        _LOGGER.info("Connecting with CPC")
+        _LOGGER.info("Probing CPC")
 
         async with connect_protocol(
             ctx.obj["device"], ctx.obj["baudrate"], CPCProtocol
@@ -290,13 +292,13 @@ async def flash(
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
 
-    app_version, application_type = await _get_application_version(ctx)
+    app_version, communication_method = await _get_application_version(ctx)
 
     _LOGGER.info(
-        "Detected running firmware %s, version %s", application_type, app_version
+        "Detected running firmware %s, version %s", communication_method, app_version
     )
 
-    if application_type == CommunicationMethod.EZSP:
+    if communication_method == CommunicationMethod.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
     else:
         # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
@@ -332,7 +334,11 @@ async def flash(
             )
             return
 
-    await _enter_bootloader(ctx, yellow_gpio_reset=yellow_gpio_reset)
+    await _enter_bootloader(
+        ctx,
+        method=communication_method,
+        yellow_gpio_reset=yellow_gpio_reset,
+    )
 
     # Flash the image
     async with connect_protocol(
