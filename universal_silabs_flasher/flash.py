@@ -299,14 +299,14 @@ async def flash(
         running_image_type = FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154
 
     if not force and app_version is not None and metadata is not None:
-        if (
-            metadata.image_type is not None
-            and metadata.image_type != running_image_type
-            and not allow_cross_flashing
-        ):
+        cross_flashing = (
+            metadata.fw_type is not None and metadata.fw_type != running_image_type
+        )
+
+        if cross_flashing and not allow_cross_flashing:
             raise click.ClickException(
                 f"Running image type {running_image_type}"
-                f" does not match firmware image type {metadata.image_type}"
+                f" does not match firmware image type {metadata.fw_type}"
             )
 
         if (
@@ -316,7 +316,11 @@ async def flash(
             click.echo(f"Firmware version {app_version} is flashed, not upgrading")
             return
 
-        if app_version > metadata.get_public_version() and not allow_downgrades:
+        if (
+            not cross_flashing
+            and app_version > metadata.get_public_version()
+            and not allow_downgrades
+        ):
             click.echo(
                 f"Firmware version {metadata.get_public_version()} does not upgrade"
                 f" current version {app_version}"

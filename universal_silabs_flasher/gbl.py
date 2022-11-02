@@ -3,12 +3,15 @@ from __future__ import annotations
 import enum
 import json
 import typing
+import logging
 import dataclasses
 
 from awesomeversion import AwesomeVersion
 from zigpy.ota.validators import parse_silabs_gbl
 
 from .cpc_types import enum32
+
+_LOGGER = logging.getLogger(__name__)
 
 NABUCASA_METADATA_VERSION = 1
 
@@ -62,14 +65,14 @@ class NabuCasaMetadata:
     metadata_version: int
     sdk_version: AwesomeVersion | None
     ezsp_version: AwesomeVersion | None
-    image_type: FirmwareImageType | None
+    fw_type: FirmwareImageType | None
 
     def get_public_version(self) -> AwesomeVersion | None:
         return self.ezsp_version or self.sdk_version
 
     @classmethod
     def from_json(cls, obj: dict[str, typing.Any]) -> NabuCasaMetadata:
-        metadata_version = obj["metadata_version"]
+        metadata_version = obj.pop("metadata_version")
 
         if metadata_version > NABUCASA_METADATA_VERSION:
             raise ValueError(
@@ -77,20 +80,23 @@ class NabuCasaMetadata:
                 f" expected {NABUCASA_METADATA_VERSION}"
             )
 
-        if sdk_version := obj.get("sdk_version"):
-            sdk_version = AwesomeVersion(obj["sdk_version"])
+        if sdk_version := obj.pop("sdk_version", None):
+            sdk_version = AwesomeVersion(sdk_version)
 
-        if ezsp_version := obj.get("ezsp_version"):
-            ezsp_version = AwesomeVersion(obj["ezsp_version"])
+        if ezsp_version := obj.pop("ezsp_version", None):
+            ezsp_version = AwesomeVersion(ezsp_version)
 
-        if image_type := obj.get("image_type"):
-            image_type = FirmwareImageType(obj["image_type"])
+        if fw_type := obj.pop("fw_type", None):
+            fw_type = FirmwareImageType(fw_type)
+
+        if obj:
+            _LOGGER.warning("Unexpected keys in JSON remain: %r", obj)
 
         return cls(
             metadata_version=metadata_version,
             sdk_version=sdk_version,
             ezsp_version=ezsp_version,
-            image_type=image_type,
+            fw_type=fw_type,
         )
 
 
