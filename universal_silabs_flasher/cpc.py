@@ -215,7 +215,7 @@ class CPCProtocol(SerialProtocol):
         self._command_seq: int = 0
         self._pending_frames: dict[int, asyncio.Future] = {}
 
-    async def probe(self) -> str:
+    async def probe(self) -> AwesomeVersion:
         return await self.get_cpc_version()
 
     async def enter_bootloader(self) -> None:

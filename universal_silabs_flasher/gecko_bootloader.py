@@ -7,6 +7,7 @@ import asyncio
 import logging
 
 import async_timeout
+from awesomeversion import AwesomeVersion
 
 from .common import PROBE_TIMEOUT, StateMachine, SerialProtocol
 from .xmodemcrc import send_xmodem128_crc
@@ -61,12 +62,12 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self._version: str | None = None
         self._upload_status: str | None = None
 
-    async def probe(self) -> str:
+    async def probe(self) -> AwesomeVersion:
         """Attempt to communicate with the bootloader."""
         async with async_timeout.timeout(PROBE_TIMEOUT):
             return await self.ebl_info(wait_for_menu=False)
 
-    async def ebl_info(self, *, wait_for_menu: bool = True) -> str:
+    async def ebl_info(self, *, wait_for_menu: bool = True) -> AwesomeVersion:
         """Select `ebl info` in the menu and return the bootloader version."""
         if wait_for_menu:
             await self._state_machine.wait_for_state(State.IN_MENU)
@@ -77,7 +78,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         await self._state_machine.wait_for_state(State.IN_MENU)
 
         assert self._version is not None
-        return self._version
+        return AwesomeVersion(self._version)
 
     async def run_firmware(self) -> None:
         """Select `run` in the menu."""
