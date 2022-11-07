@@ -115,7 +115,12 @@ class GBLImage:
         return cls(tags=tags)
 
     def serialize(self) -> bytes:
-        return b"".join([tag_id.serialize() + value for tag_id, value in self.tags])
+        return b"".join(
+            [
+                tag_id.serialize() + len(value).to_bytes(4, "little") + value
+                for tag_id, value in self.tags
+            ]
+        )
 
     def get_first_tag(self, tag_id: TagId) -> bytes:
         try:
