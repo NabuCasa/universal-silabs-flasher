@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+		<title>Universal SiLabs Flasher</title>
+
+		<script defer src="https://pyscript.net/latest/pyscript.js"></script>
+		<py-config>
+			paths = [
+				"./install_dependencies.py",
+				"./webserial_transport.py",
+			]
+		</py-config>
+
+		<style type="text/css">
+			div[id^="py-"] {
+				font-family: monospace;
+				white-space: pre;
+			}
+		</style>
+	</head>
+
+	<body>
+		<h1>Universal SiLabs Flasher</h1>
+
+		<button id="select-port">Select a serial port</button>
+
+		<pre id="output"></pre>
+
+		<py-script>
+			from install_dependencies import install
+			await install()
+
+
+			from webserial_transport import prompt_serial_port, patch_pyserial
+			patch_pyserial()
+
+			# Patch yarl to be no-op
+			import yarl
+			
+			def URL(url=None):
+			    class output:
+			        scheme = None
+
+			    return output
+
+			yarl.URL = URL
+
+
+			# Get the serial port
+			import webserial_transport
+			webserial_transport.SERIAL_PORT = await prompt_serial_port("#select-port")
+
+
+			import coloredlogs
+			from universal_silabs_flasher.flasher import Flasher
+			coloredlogs.install(level="DEBUG")
+
+			flasher = Flasher(
+			    bootloader_baudrate=115200,
+			    app_baudrate=115200,
+			    device="/dev/ttyUSB0",
+			)
+
+			await flasher.probe_app_type()
+
+			print(flasher.app_type, flasher.app_version)
+		</py-script>
+	</body>
+</html>
