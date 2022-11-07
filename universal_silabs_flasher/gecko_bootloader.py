@@ -65,13 +65,10 @@ class GeckoBootloaderProtocol(SerialProtocol):
     async def probe(self) -> AwesomeVersion:
         """Attempt to communicate with the bootloader."""
         async with async_timeout.timeout(PROBE_TIMEOUT):
-            return await self.ebl_info(wait_for_menu=False)
+            return await self.ebl_info()
 
-    async def ebl_info(self, *, wait_for_menu: bool = True) -> AwesomeVersion:
+    async def ebl_info(self) -> AwesomeVersion:
         """Select `ebl info` in the menu and return the bootloader version."""
-        if wait_for_menu:
-            await self._state_machine.wait_for_state(State.IN_MENU)
-
         self._state_machine.state = State.WAITING_FOR_MENU
         self.send_data(GeckoBootloaderOption.EBL_INFO)
 
@@ -105,7 +102,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         progress_callback: typing.Callable[[int, int], typing.Any] | None = None,
     ) -> None:
         """Select `upload gbl` in the menu and upload GBL firmware."""
-        await self._state_machine.wait_for_state(State.IN_MENU)
+        await self.ebl_info()
 
         # Select the option
         self._state_machine.state = State.WAITING_XMODEM_READY

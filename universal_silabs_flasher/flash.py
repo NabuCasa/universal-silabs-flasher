@@ -129,7 +129,10 @@ async def flash(
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
 
-    await flasher.probe_application_type()
+    try:
+        await flasher.probe_app_type()
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
 
     _LOGGER.info(
         "Detected running firmware %s, version %s",
@@ -178,6 +181,8 @@ async def flash(
 
     if yellow_gpio_reset:
         await flasher.enter_yellow_bootloader()
+
+    await flasher.enter_bootloader()
 
     with click.progressbar(
         label=os.path.basename(firmware.name),

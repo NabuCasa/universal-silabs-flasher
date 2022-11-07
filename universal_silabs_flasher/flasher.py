@@ -151,10 +151,11 @@ class Flasher:
                 ApplicationType.EZSP: self.probe_ezsp,
             }[probe_method]
 
+            _LOGGER.info("Probing %s", probe_method)
+
             try:
                 version = await func()
             except asyncio.TimeoutError:
-                _LOGGER.info("Could not probe as %s", probe_method)
                 continue
 
             if probe_method is ApplicationType.GECKO_BOOTLOADER and version is None:
@@ -205,7 +206,8 @@ class Flasher:
             padded_size = XMODEM_BLOCK_SIZE * (num_complete_blocks + 1)
             data += b"\xFF" * (padded_size - len(data))
 
-        async with self.enter_bootloader() as gecko:
+        async with self._connect_gecko_bootloader() as gecko:
+            await gecko.probe()
             await gecko.upload_firmware(data, progress_callback=progress_callback)
 
             if run_firmware:
