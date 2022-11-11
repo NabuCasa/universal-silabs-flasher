@@ -116,6 +116,8 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
         # Swap protocols and transfer the data
         self._upload_status = None
+        self._state_machine.state = State.WAITING_UPLOAD_DONE
+
         await send_xmodem128_crc(
             firmware,
             transport=self._transport,
@@ -123,8 +125,6 @@ class GeckoBootloaderProtocol(SerialProtocol):
             progress_callback=progress_callback,
         )
 
-        # Wait for the upload status to be returned
-        self._state_machine.state = State.WAITING_UPLOAD_DONE
         await self._state_machine.wait_for_state(State.IN_MENU)
 
         if self._upload_status != "complete":

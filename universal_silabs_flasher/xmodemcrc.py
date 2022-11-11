@@ -146,3 +146,10 @@ async def send_xmodem128_crc(
     finally:
         # Reset the old protocol
         transport.set_protocol(old_protocol)
+
+        # Send our reader's buffer to the old protocol
+        data = bytes(reader._buffer)
+
+        if data:
+            _LOGGER.debug("Sending remaining reader data to old protocol: %r", data)
+            old_protocol.data_received(data)
