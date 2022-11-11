@@ -14,6 +14,8 @@ async def install() -> None:
             "./aiohttp-3.8.3-py3-none-any.whl",
             # This one also did not seem to have a wheel despite being pure-Python
             "./pure_pcapy3-1.0.1-py3-none-any.whl",
+            # Tweaked bellows
+            "./bellows-0.35.0.dev0-py3-none-any.whl",
             # Finally, install the main module
             "./universal_silabs_flasher-0.0.4-py3-none-any.whl",
         ]

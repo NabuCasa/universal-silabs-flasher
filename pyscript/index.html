@@ -25,7 +25,17 @@
 	<body>
 		<h1>Universal SiLabs Flasher</h1>
 
-		<button id="select-port">Select a serial port</button>
+		<p>
+			<label for="choose-firmware-file">Choose a firmware image:</label><input type="file" id="choose-firmware-file" />
+		</p>
+
+		<p>
+			<button id="select-serial-port">Select a serial port</button>
+		</p>
+
+		<p>
+			<button id="upload-firmware">Upload</button>
+		</p>
 
 		<pre id="output"></pre>
 
@@ -34,7 +44,7 @@
 			await install()
 
 
-			from webserial_transport import prompt_serial_port, patch_pyserial
+			from webserial_transport import wait_file_upload, prompt_serial_port, patch_pyserial
 			patch_pyserial()
 
 			# Patch yarl to be no-op
@@ -49,14 +59,22 @@
 			yarl.URL = URL
 
 
+			# Get the firmware image
+			firmware_data = await wait_file_upload("#choose-firmware-file")
+			print(f"Read {len(firmware_data)} bytes")
+
+
 			# Get the serial port
 			import webserial_transport
-			webserial_transport.SERIAL_PORT = await prompt_serial_port("#select-port")
+			webserial_transport.SERIAL_PORT = await prompt_serial_port("#select-serial-port")
+
 
 
 			import coloredlogs
-			from universal_silabs_flasher.flasher import Flasher
+			from universal_silabs_flasher.flasher import Flasher, GBLImage
 			coloredlogs.install(level="DEBUG")
+
+			gbl_image = GBLImage.from_bytes(firmware_data)
 
 			flasher = Flasher(
 			    bootloader_baudrate=115200,
@@ -65,8 +83,8 @@
 			)
 
 			await flasher.probe_app_type()
-
-			print(flasher.app_type, flasher.app_version)
+			await flasher.enter_bootloader()
+			await flasher.flash_firmware(gbl_image)
 		</py-script>
 	</body>
 </html>

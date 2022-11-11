@@ -17,22 +17,7 @@ async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
                 config.CONF_DEVICE_PATH: port,
                 config.CONF_DEVICE_BAUDRATE: baudrate,
             },
-            config.CONF_EZSP_CONFIG: {
-                # Do not set any configuration on startup
-                "CONFIG_END_DEVICE_POLL_TIMEOUT": None,
-                "CONFIG_INDIRECT_TRANSMISSION_TIMEOUT": None,
-                "CONFIG_TC_REJOINS_USING_WELL_KNOWN_KEY_TIMEOUT_S": None,
-                "CONFIG_SECURITY_LEVEL": None,
-                "CONFIG_APPLICATION_ZDO_FLAGS": None,
-                "CONFIG_SUPPORTED_NETWORKS": None,
-                "CONFIG_PAN_ID_CONFLICT_REPORT_THRESHOLD": None,
-                "CONFIG_TRUST_CENTER_ADDRESS_CACHE_SIZE": None,
-                "CONFIG_SOURCE_ROUTE_TABLE_SIZE": None,
-                "CONFIG_MULTICAST_TABLE_SIZE": None,
-                "CONFIG_ADDRESS_TABLE_SIZE": None,
-                "CONFIG_PACKET_BUFFER_COUNT": None,
-                "CONFIG_STACK_PROFILE": None,
-            },
+            config.CONF_USE_THREAD: False,
         }
     )
 
