@@ -32,8 +32,14 @@ MENU_REGEX = re.compile(
     rb"BL > "
 )
 
+MENU_REGEX_PARTIAL = re.compile(
+    rb"2\. run\r\n"
+    rb"3\. ebl info\r\n"
+    rb"BL > "
+)  # fmt: skip
+
 UPLOAD_STATUS_REGEX = re.compile(
-    rb"\r\nSerial upload (?P<status>complete|aborted)\r\n(?P<abort_status>.*?)\x00",
+    rb"\r\nSerial upload (?P<status>complete|aborted)\r\n(?P<message>.*?)\x00",
     flags=re.DOTALL,
 )
 
@@ -150,19 +156,26 @@ class GeckoBootloaderProtocol(SerialProtocol):
                 self._buffer.clear()
                 self._state_machine.state = State.XMODEM_READY
             elif self._state_machine.state == State.WAITING_UPLOAD_DONE:
-                match = UPLOAD_STATUS_REGEX.search(self._buffer)
+                match_status = UPLOAD_STATUS_REGEX.search(self._buffer)
+                match_menu = MENU_REGEX_PARTIAL.search(self._buffer)
 
-                if match is None:
+                if match_status is None and match_menu is not None:
+                    # Older bootloader just printed the menu on success
+                    del self._buffer[: match_status.span()[1]]
+                    self._state_machine.state = State.IN_MENU
+                    self._upload_status = "complete"
+                    return
+                elif match_status is None:
                     return
 
-                status = match.group("status").decode("ascii")
+                status = match_status.group("status").decode("ascii")
 
                 if status == "complete":
                     self._upload_status = status
                 else:
-                    self._upload_status = match.group("abort_status").decode("ascii")
+                    self._upload_status = match_status.group("message").decode("ascii")
 
-                del self._buffer[: match.span()[1]]
+                del self._buffer[: match_status.span()[1]]
                 self._state_machine.state = State.WAITING_FOR_MENU
             else:
                 # Ignore data otherwise
