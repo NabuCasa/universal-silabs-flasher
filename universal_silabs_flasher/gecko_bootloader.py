@@ -23,7 +23,9 @@ class NoFirmwareError(Exception):
     pass
 
 
+MENU_AFTER_UPLOAD_TIMEOUT = 0.5
 RUN_APPLICATION_DELAY = 0.1
+
 MENU_REGEX = re.compile(
     rb"\r\nGecko Bootloader v(?P<version>.*?)\r\n"
     rb"1\. upload gbl\r\n"
@@ -32,16 +34,11 @@ MENU_REGEX = re.compile(
     rb"BL > "
 )
 
-MENU_REGEX_PARTIAL = re.compile(
-    rb"2\. run\r\n"
-    rb"3\. ebl info\r\n"
-    rb"BL > "
-)  # fmt: skip
-
 UPLOAD_STATUS_REGEX = re.compile(
-    rb"\r\nSerial upload (?P<status>complete|aborted)\r\n(?P<message>.*?)\x00",
+    rb"\r\nSerial upload (?P<status>complete|aborted)\r\n"
+    rb"(?P<message>.*?)\x00",
     flags=re.DOTALL,
-)
+)  # fmt: skip
 
 
 class State(str, enum.Enum):
@@ -128,7 +125,14 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
         # Wait for the upload status to be returned
         self._state_machine.state = State.WAITING_UPLOAD_DONE
-        await self._state_machine.wait_for_state(State.IN_MENU)
+
+        try:
+            async with async_timeout.timeout(MENU_AFTER_UPLOAD_TIMEOUT):
+                await self._state_machine.wait_for_state(State.IN_MENU)
+        except asyncio.TimeoutError:
+            # Bootloader over TCP loses data during XMODEM, prompt for the menu
+            self.send_data(GeckoBootloaderOption.EBL_INFO)
+            await self._state_machine.wait_for_state(State.IN_MENU)
 
         if self._upload_status != "complete":
             raise UploadError(self._upload_status)
@@ -156,26 +160,19 @@ class GeckoBootloaderProtocol(SerialProtocol):
                 self._buffer.clear()
                 self._state_machine.state = State.XMODEM_READY
             elif self._state_machine.state == State.WAITING_UPLOAD_DONE:
-                match_status = UPLOAD_STATUS_REGEX.search(self._buffer)
-                match_menu = MENU_REGEX_PARTIAL.search(self._buffer)
+                match = UPLOAD_STATUS_REGEX.search(self._buffer)
 
-                if match_status is None and match_menu is not None:
-                    # Older bootloader just printed the menu on success
-                    del self._buffer[: match_status.span()[1]]
-                    self._state_machine.state = State.IN_MENU
-                    self._upload_status = "complete"
-                    return
-                elif match_status is None:
+                if match is None:
                     return
 
-                status = match_status.group("status").decode("ascii")
+                status = match.group("status").decode("ascii")
 
                 if status == "complete":
                     self._upload_status = status
                 else:
-                    self._upload_status = match_status.group("message").decode("ascii")
+                    self._upload_status = match.group("message").decode("ascii")
 
-                del self._buffer[: match_status.span()[1]]
+                del self._buffer[: match.span()[1]]
                 self._state_machine.state = State.WAITING_FOR_MENU
             else:
                 # Ignore data otherwise
