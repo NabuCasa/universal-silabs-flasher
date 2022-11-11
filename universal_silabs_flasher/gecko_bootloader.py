@@ -125,14 +125,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
         # Wait for the upload status to be returned
         self._state_machine.state = State.WAITING_UPLOAD_DONE
-
-        try:
-            async with async_timeout.timeout(MENU_AFTER_UPLOAD_TIMEOUT):
-                await self._state_machine.wait_for_state(State.IN_MENU)
-        except asyncio.TimeoutError:
-            # Bootloader over TCP loses data during XMODEM, prompt for the menu
-            self.send_data(GeckoBootloaderOption.EBL_INFO)
-            await self._state_machine.wait_for_state(State.IN_MENU)
+        await self._state_machine.wait_for_state(State.IN_MENU)
 
         if self._upload_status != "complete":
             raise UploadError(self._upload_status)
