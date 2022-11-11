@@ -5,7 +5,9 @@ import typing
 import asyncio
 import logging
 import os.path
+import pathlib
 import functools
+import urllib.parse
 
 import click
 import coloredlogs
@@ -55,9 +57,47 @@ def click_enum_validator_factory(
     return validator_callback
 
 
+class SerialPort(click.ParamType):
+    """Click validator that accepts serial ports."""
+
+    name = "path_or_url"
+
+    def convert(self, value, param, ctx):
+        if isinstance(value, tuple):
+            return value
+
+        # File
+        path = pathlib.Path(value)
+
+        if path.exists():
+            return value
+
+        # Windows COM port
+        if value.startswith("COM") and value[3:].isdigit():
+            return value
+
+        # Socket URI
+        try:
+            parsed = urllib.parse.urlparse(value)
+        except ValueError:
+            self.fail(f"Invalid URI: {path}", param, ctx)
+        else:
+            if parsed.scheme == "socket":
+                return value
+
+            self.fail(
+                f"invalid URL scheme {parsed.scheme!r}, only `socket://` is accepted",
+                param,
+                ctx,
+            )
+
+        # Fallback
+        self.fail(f"{path} does not exist", param, ctx)
+
+
 @click.group()
 @click.option("-v", "--verbose", count=True)
-@click.option("--device", type=click.Path(exists=True), required=True)
+@click.option("--device", type=SerialPort(), required=True)
 @click.option("--baudrate", default=115200, show_default=True)
 @click.option("--bootloader-baudrate", default=115200, show_default=True)
 @click.option(
