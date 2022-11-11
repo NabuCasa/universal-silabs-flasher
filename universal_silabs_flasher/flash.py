@@ -112,12 +112,13 @@ def main(ctx, verbose, device, baudrate, bootloader_baudrate, probe_method):
     coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
 
     ctx.obj = {
+        "verbosity": verbose,
         "flasher": Flasher(
             device=device,
             bootloader_baudrate=bootloader_baudrate,
             app_baudrate=baudrate,
             probe_methods=probe_method,
-        )
+        ),
     }
 
 
@@ -224,12 +225,18 @@ async def flash(
 
     await flasher.enter_bootloader()
 
-    with click.progressbar(
+    pbar = click.progressbar(
         label=os.path.basename(firmware.name),
         length=len(firmware_data),
         show_eta=True,
         show_percent=True,
-    ) as pbar:
+    )
+
+    # Only show the progress bar if verbose logging won't interfere
+    if ctx.obj["verbosity"] > 1:
+        pbar.is_hidden = True
+
+    with pbar:
         try:
             await flasher.flash_firmware(
                 gbl_image,
