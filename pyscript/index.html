@@ -15,76 +15,140 @@
 		</py-config>
 
 		<style type="text/css">
-			div[id^="py-"] {
+			body {
+				padding: 0;
+				margin: 0;
+
+				font-family: sans-serif;
+			}
+
+			main {
+				display: flex;
+				height: 100vh;
+			}
+
+			#controls, #debug-log {
+			}
+
+			#controls {
+				z-index: 2;
+				width: 60%;
+				padding: 1em;
+
+				box-shadow: 0 0 2em 0 hsl(0, 0%, 10%);
+
+				background-color: hsl(0, 0%, 99%);
+				color: hsl(0, 0%, 20%);
+			}
+
+			#debug-log {
+				z-index: 1;
+				width: 40%;
+
 				font-family: monospace;
+
+				background-color: hsl(0, 0%, 20%);
+				color: hsl(0, 0%, 99%);
+
+				overflow: auto;
+			}
+
+			#debug-log h1 {
+				margin: 0;
+				padding: 2em;
+				background-color: hsl(0, 0%, 25%);
+				box-shadow: 0px 0px 1em 0px hsl(0, 0%, 10%);
+			}
+
+			#pyscript-output {
 				white-space: pre;
+
+				padding: 1em;
+				padding-left: 2em;
 			}
 		</style>
 	</head>
 
 	<body>
-		<h1>Universal SiLabs Flasher</h1>
+		<main>
+			<section id="controls">
+				<h1>Universal SiLabs Flasher</h1>
 
-		<p>
-			<label for="choose-firmware-file">Choose a firmware image:</label><input type="file" id="choose-firmware-file" />
-		</p>
+				<p id="step-firmware">
+					<label>Choose a firmware image: <input type="file" id="choose-firmware-file" /></label>
+				</p>
 
-		<p>
-			<button id="select-serial-port">Select a serial port</button>
-		</p>
+				<p id="step-port">
+					<label>Select a serial port: <button id="select-serial-port">Select</button></label>
+				</p>
 
-		<p>
-			<button id="upload-firmware">Upload</button>
-		</p>
+				<p id="step-upload">
+					<label>Upload the firmware <button id="upload-firmware">Upload</button></label>
+				</p>
 
-		<pre id="output"></pre>
+				<p>
+					<label>Upload progress: <progress id="upload-progress" value="0" max="100"></progress></label>
+				</p>
 
-		<py-script>
-			from install_dependencies import install
-			await install()
+			</section>
 
+			<section id="debug-log">
+				<h1>Debug Log</h1>
 
-			from webserial_transport import wait_file_upload, prompt_serial_port, patch_pyserial
-			patch_pyserial()
+				<pre id="pyscript-output">
+					<py-script>
+						print("Installing dependencies")
 
-			# Patch yarl to be no-op
-			import yarl
-			
-			def URL(url=None):
-			    class output:
-			        scheme = None
-
-			    return output
-
-			yarl.URL = URL
+						from install_dependencies import install
+						await install()
 
 
-			# Get the firmware image
-			firmware_data = await wait_file_upload("#choose-firmware-file")
-			print(f"Read {len(firmware_data)} bytes")
+						from webserial_transport import wait_file_upload, prompt_serial_port, patch_pyserial
+						patch_pyserial()
+
+						print("Ready")
 
 
-			# Get the serial port
-			import webserial_transport
-			webserial_transport.SERIAL_PORT = await prompt_serial_port("#select-serial-port")
+						# Get the firmware image
+						firmware_data = await wait_file_upload("#choose-firmware-file")
+						print(f"Read {len(firmware_data)} bytes")
 
 
+						# Get the serial port
+						import webserial_transport
+						webserial_transport.SERIAL_PORT = await prompt_serial_port("#select-serial-port")
 
-			import coloredlogs
-			from universal_silabs_flasher.flasher import Flasher, GBLImage
-			coloredlogs.install(level="DEBUG")
 
-			gbl_image = GBLImage.from_bytes(firmware_data)
+						import js
 
-			flasher = Flasher(
-			    bootloader_baudrate=115200,
-			    app_baudrate=115200,
-			    device="/dev/ttyUSB0",
-			)
+						progress = js.document.querySelector("#upload-progress")
 
-			await flasher.probe_app_type()
-			await flasher.enter_bootloader()
-			await flasher.flash_firmware(gbl_image)
-		</py-script>
+						# Create the progress callback
+						def progress_callback(current, total):
+						    progress.value = 100.0 * current / total
+						    progress.textContent = f"{current / total:0.4f}%"
+
+						import coloredlogs
+						from universal_silabs_flasher.flasher import Flasher, GBLImage
+						coloredlogs.install(
+						    fmt="%(asctime)s.%(msecs)03d %(levelname)s %(message)s",
+						    level="DEBUG",
+						)
+
+						gbl_image = GBLImage.from_bytes(firmware_data)
+
+						flasher = Flasher(
+						    bootloader_baudrate=115200,
+						    app_baudrate=115200,
+						    device="/dev/ttyUSB0",
+						)
+
+						await flasher.probe_app_type()
+						await flasher.enter_bootloader()
+						await flasher.flash_firmware(gbl_image, progress_callback=progress_callback)
+					</py-script>
+				</pre>
+			</section>
+		</main>
 	</body>
 </html>

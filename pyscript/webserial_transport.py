@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import time
 import typing
 import asyncio
 import logging
@@ -112,7 +111,9 @@ class WebSerialTransport(asyncio.Transport):
             self._js_writer = None
 
         if self._port is not None:
-            SERIAL_PORT_CLOSING_TASK = asyncio.create_task(make_coroutine(self._port.close()))
+            SERIAL_PORT_CLOSING_TASK = asyncio.create_task(
+                make_coroutine(self._port.close())
+            )
             self._port = None
 
         if self._protocol is not None:
@@ -180,6 +181,9 @@ async def create_serial_connection(
 ) -> tuple[WebSerialTransport, asyncio.Protocol]:
     global SERIAL_PORT_CLOSING_TASK
 
+    # XXX: Since asyncio's `transport.close` is synchronous but JavaScript's is not, we
+    # must delegate closing to a task and then "block" at the next asynchronous entry
+    # point
     if SERIAL_PORT_CLOSING_TASK is not None:
         await SERIAL_PORT_CLOSING_TASK
         SERIAL_PORT_CLOSING_TASK = None
