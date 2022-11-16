@@ -170,6 +170,9 @@ async def flash(
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
 
+    if yellow_gpio_reset:
+        await flasher.enter_yellow_bootloader()
+
     try:
         await flasher.probe_app_type()
     except RuntimeError as e:
@@ -219,9 +222,6 @@ async def flash(
                 flasher.app_version,
             )
             return
-
-    if yellow_gpio_reset:
-        await flasher.enter_yellow_bootloader()
 
     await flasher.enter_bootloader()
 
