@@ -172,6 +172,7 @@ class Flasher:
 
             # Keep track of the bootloader version for later
             if probe_method == ApplicationType.GECKO_BOOTLOADER:
+                _LOGGER.debug("Launched application from bootloader, continuing")
                 bootloader_version = result.version
 
             if result.continue_probing:
