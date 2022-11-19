@@ -5,6 +5,7 @@ import time
 import typing
 import asyncio
 import logging
+import dataclasses
 
 import gpiod
 import bellows.ezsp
@@ -65,6 +66,12 @@ class ApplicationType(enum.Enum):
     EZSP = "ezsp"
 
 
+@dataclasses.dataclass(frozen=True)
+class ProbeResult:
+    version: AwesomeVersion | None
+    continue_probing: bool
+
+
 class Flasher:
     def __init__(
         self,
@@ -114,33 +121,40 @@ class Flasher:
     def _connect_ezsp(self):
         return connect_ezsp(self._device, self._app_baudrate)
 
-    async def probe_gecko_bootloader(self) -> AwesomeVersion | None:
+    async def probe_gecko_bootloader(self) -> ProbeResult:
         try:
             async with self._connect_gecko_bootloader() as gecko:
                 bootloader_version = await gecko.probe()
                 await gecko.run_firmware()
         except NoFirmwareError:
             _LOGGER.warning("No application can be launched")
-            return bootloader_version
+            return ProbeResult(version=bootloader_version, continue_probing=False)
         else:
-            return None
+            return ProbeResult(version=bootloader_version, continue_probing=True)
 
-    async def probe_cpc(self) -> AwesomeVersion:
+    async def probe_cpc(self) -> ProbeResult:
         async with self._connect_cpc() as cpc:
-            return await cpc.probe()
+            version = await cpc.probe()
 
-    async def probe_ezsp(self) -> AwesomeVersion:
+        return ProbeResult(version=version, continue_probing=False)
+
+    async def probe_ezsp(self) -> ProbeResult:
         async with self._connect_ezsp() as ezsp:
             _, _, version = await ezsp.get_board_info()
 
-        return AwesomeVersion(version.replace(" build ", "."))
+        return ProbeResult(
+            version=AwesomeVersion(version.replace(" build ", ".")),
+            continue_probing=False,
+        )
 
-    async def probe_app_type(self, *, force: bool = False) -> None:
-        if not force and self._app_type is not None:
-            return
+    async def probe_app_type(self, *, yellow_gpio_reset: bool = False) -> None:
+        if yellow_gpio_reset:
+            await self.enter_yellow_bootloader()
 
         self._app_type = None
         self._app_version = None
+
+        bootloader_version = None
 
         for probe_method in self._probe_methods:
             func = {
@@ -152,19 +166,33 @@ class Flasher:
             _LOGGER.info("Probing %s", probe_method)
 
             try:
-                version = await func()
+                result = await func()
             except asyncio.TimeoutError:
                 continue
 
-            if probe_method is ApplicationType.GECKO_BOOTLOADER and version is None:
-                _LOGGER.debug("Launched application from bootloader, continuing")
+            # Keep track of the bootloader version for later
+            if probe_method == ApplicationType.GECKO_BOOTLOADER:
+                bootloader_version = result.version
+
+            if result.continue_probing:
                 continue
 
             self._app_type = probe_method
-            self._app_version = version
+            self._app_version = result.version
             break
         else:
-            raise RuntimeError("Failed to probe running application type")
+            if bootloader_version is None:
+                raise RuntimeError("Failed to probe running application type")
+            elif not yellow_gpio_reset:
+                raise RuntimeError(
+                    "Cannot reboot back into bootloader from unknown application"
+                )
+
+            # We have no valid application image but can still enter the bootloader
+            await self.enter_yellow_bootloader()
+            self._app_type = ApplicationType.GECKO_BOOTLOADER
+            self._app_version = bootloader_version
+            _LOGGER.warning("Bootloader did not launch a valid application")
 
         _LOGGER.info("Detected %s, version %s", self._app_type, self._app_version)
 
