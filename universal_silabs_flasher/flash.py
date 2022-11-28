@@ -81,18 +81,18 @@ class SerialPort(click.ParamType):
             parsed = urllib.parse.urlparse(value)
         except ValueError:
             self.fail(f"Invalid URI: {path}", param, ctx)
-        else:
-            if parsed.scheme == "socket":
-                return value
 
+        if parsed.scheme == "socket":
+            return value
+        elif parsed.scheme != "":
             self.fail(
                 f"invalid URL scheme {parsed.scheme!r}, only `socket://` is accepted",
                 param,
                 ctx,
             )
-
-        # Fallback
-        self.fail(f"{path} does not exist", param, ctx)
+        else:
+            # Fallback
+            self.fail(f"{path} does not exist", param, ctx)
 
 
 @click.group()
