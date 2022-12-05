@@ -7,7 +7,6 @@ import asyncio
 import logging
 import dataclasses
 
-import gpiod
 import bellows.ezsp
 import async_timeout
 import bellows.types
@@ -25,6 +24,9 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _send_gpio_pattern(pin_states: dict[int, list[bool]], toggle_delay: float) -> None:
+    # `gpiod` isn't available on Windows
+    import gpiod
+
     chip = gpiod.chip(0, gpiod.chip.OPEN_BY_NUMBER)
     lines = {pin: chip.get_line(pin) for pin in pin_states.keys()}
 
