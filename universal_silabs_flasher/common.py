@@ -142,3 +142,6 @@ async def connect_protocol(port, baudrate, factory):
         yield protocol
     finally:
         protocol.disconnect()
+
+        # Required for Windows to be able to re-connect to the same serial port
+        await asyncio.sleep(0)
