@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import enum
 import typing
 import asyncio
@@ -72,8 +73,8 @@ class SerialPort(click.ParamType):
         if path.exists():
             return value
 
-        # Windows COM port
-        if value.startswith("COM") and value[3:].isdigit():
+        # Windows COM port (COM10+ uses a different syntax)
+        if re.match(r"^COM[0-9]$|\\\\\.\\COM[0-9]+$", str(path)):
             return value
 
         # Socket URI
