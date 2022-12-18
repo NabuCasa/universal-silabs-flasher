@@ -14,8 +14,8 @@ import bellows.config
 from awesomeversion import AwesomeVersion
 
 from .cpc import CPCProtocol
-from .gbl import GBLImage
-from .common import PROBE_TIMEOUT, connect_protocol
+from .common import PROBE_TIMEOUT, pad_to_multiple, connect_protocol
+from .firmware import FirmwareImage
 from .emberznet import connect_ezsp
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 from .gecko_bootloader import NoFirmwareError, GeckoBootloaderProtocol
@@ -223,17 +223,14 @@ class Flasher:
 
     async def flash_firmware(
         self,
-        firmware: GBLImage,
+        firmware: FirmwareImage,
         run_firmware: bool = True,
         progress_callback: typing.Callable[[int, int], typing.Any] | None = None,
     ) -> None:
         data = firmware.serialize()
 
         # Pad the image to the XMODEM block size
-        if len(data) % XMODEM_BLOCK_SIZE != 0:
-            num_complete_blocks = len(data) // XMODEM_BLOCK_SIZE
-            padded_size = XMODEM_BLOCK_SIZE * (num_complete_blocks + 1)
-            data += b"\xFF" * (padded_size - len(data))
+        data = pad_to_multiple(data, XMODEM_BLOCK_SIZE, b"\xFF")
 
         async with self._connect_gecko_bootloader() as gecko:
             await gecko.probe()

@@ -50,7 +50,7 @@ class State(str, enum.Enum):
 
 
 class GeckoBootloaderOption(bytes, enum.Enum):
-    UPLOAD_GBL = b"1"
+    UPLOAD_FIRMWARE = b"1"
     RUN_FIRMWARE = b"2"
     EBL_INFO = b"3"
 
@@ -109,7 +109,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
         # Select the option
         self._state_machine.state = State.WAITING_XMODEM_READY
-        self.send_data(GeckoBootloaderOption.UPLOAD_GBL)
+        self.send_data(GeckoBootloaderOption.UPLOAD_FIRMWARE)
 
         # Wait for the XMODEM `C` byte
         await self._state_machine.wait_for_state(State.XMODEM_READY)

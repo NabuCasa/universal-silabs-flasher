@@ -14,9 +14,9 @@ import coloredlogs
 import zigpy.types
 import bellows.types
 
-from .gbl import GBLImage, FirmwareImageType
 from .common import patch_pyserial_asyncio
 from .flasher import Flasher, ApplicationType
+from .firmware import FirmwareImageType, parse_firmware_image
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 patch_pyserial_asyncio()
@@ -161,10 +161,10 @@ async def flash(
     firmware_data = firmware.read()
     firmware.close()
 
-    gbl_image = GBLImage.from_bytes(firmware_data)
+    fw_image = parse_firmware_image(firmware_data)
 
     try:
-        metadata = gbl_image.get_nabucasa_metadata()
+        metadata = fw_image.get_nabucasa_metadata()
     except KeyError:
         metadata = None
     else:
@@ -236,7 +236,7 @@ async def flash(
     with pbar:
         try:
             await flasher.flash_firmware(
-                gbl_image,
+                fw_image,
                 run_firmware=True,
                 progress_callback=lambda current, _: pbar.update(XMODEM_BLOCK_SIZE),
             )

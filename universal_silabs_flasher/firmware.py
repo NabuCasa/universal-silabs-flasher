@@ -6,17 +6,18 @@ import typing
 import logging
 import dataclasses
 
+import zigpy.types as zigpy_t
 from awesomeversion import AwesomeVersion
-from zigpy.ota.validators import parse_silabs_gbl
+from zigpy.ota.validators import ValidationError, parse_silabs_ebl, parse_silabs_gbl
 
-from .cpc_types import enum32
+from .common import pad_to_multiple
 
 _LOGGER = logging.getLogger(__name__)
 
 NABUCASA_METADATA_VERSION = 1
 
 
-class TagId(enum32):
+class GBLTagId(zigpy_t.enum32):
     # First tag in the file. The header tag contains the version number of the GBL file
     # specification, and flags indicating the type of GBL file – whether it is signed
     # or encrypted.
@@ -47,6 +48,19 @@ class TagId(enum32):
     # End of the GBL file. It contains a 32-bit CRC for the entire file as an integrity
     # check. The CRC is a non-cryptographic check. This must be the last tag.
     END = 0xFC0404FC
+
+
+class EBLTagId(zigpy_t.enum16):
+    # TODO: flip the endianness
+    HEADER = 0x0000
+    PROG = 0x01FE
+    MFGPROG = 0xFE02
+    ERASEPROG = 0x03FD
+    END = 0x04FC
+    ENC_HEADER = 0x05FB
+    ENC_INIT = 0x06FA
+    ENC_EBL_DATA = 0x07F9
+    ENC_MAC = 0x09F7
 
 
 class FirmwareImageType(enum.Enum):
@@ -101,34 +115,86 @@ class NabuCasaMetadata:
 
 
 @dataclasses.dataclass(frozen=True)
-class GBLImage:
-    tags: list[tuple[TagId, bytes]]
+class FirmwareImage:
+    tags: list[tuple[GBLTagId, bytes]]
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> GBLImage:
-        tags = []
-
-        for tag_bytes, value in parse_silabs_gbl(data):
-            tag, _ = TagId.deserialize(tag_bytes)
-            tags.append((tag, value))
-
-        return cls(tags=tags)
+    def from_bytes(cls, data: bytes) -> FirmwareImage:
+        raise NotImplementedError()
 
     def serialize(self) -> bytes:
-        return b"".join(
-            [
-                tag_id.serialize() + len(value).to_bytes(4, "little") + value
-                for tag_id, value in self.tags
-            ]
-        )
+        raise NotImplementedError()
 
-    def get_first_tag(self, tag_id: TagId) -> bytes:
+    def get_first_tag(self, tag_id: GBLTagId) -> bytes:
         try:
             return next(v for t, v in self.tags if t == tag_id)
         except StopIteration:
             raise KeyError(f"No tag with id {tag_id!r} exists")
 
+
+@dataclasses.dataclass(frozen=True)
+class GBLImage(FirmwareImage):
+    @classmethod
+    def from_bytes(cls, data: bytes) -> GBLImage:
+        tags = []
+
+        for tag_bytes, value in parse_silabs_gbl(data):
+            tag, _ = GBLTagId.deserialize(tag_bytes)
+            tags.append((tag, value))
+
+        return cls(tags=tags)
+
+    def serialize(self) -> bytes:
+        return pad_to_multiple(
+            b"".join(
+                [
+                    tag_id.serialize() + len(value).to_bytes(4, "little") + value
+                    for tag_id, value in self.tags
+                ]
+            ),
+            4,
+            b"\xFF",
+        )
+
     def get_nabucasa_metadata(self) -> NabuCasaMetadata:
-        metadata = self.get_first_tag(TagId.METADATA)
+        metadata = self.get_first_tag(GBLTagId.METADATA)
 
         return NabuCasaMetadata.from_json(json.loads(metadata.decode("utf-8")))
+
+
+@dataclasses.dataclass(frozen=True)
+class EBLImage(FirmwareImage):
+    @classmethod
+    def from_bytes(cls, data: bytes) -> EBLImage:
+        tags = []
+
+        for tag_bytes, value in parse_silabs_ebl(data):
+            tag, _ = EBLTagId.deserialize(tag_bytes)
+            tags.append((tag, value))
+
+        return cls(tags=tags)
+
+    def serialize(self) -> bytes:
+        return pad_to_multiple(
+            b"".join(
+                [
+                    tag_id.serialize() + len(value).to_bytes(2, "big") + value
+                    for tag_id, value in self.tags
+                ]
+            ),
+            64,
+            b"\xFF",
+        )
+
+    def get_nabucasa_metadata(self) -> NabuCasaMetadata:
+        raise KeyError("Metadata not supported for EBL")
+
+
+def parse_firmware_image(data: bytes) -> FirmwareImage:
+    for fw_cls in [GBLImage, EBLImage]:
+        try:
+            return fw_cls.from_bytes(data)
+        except ValidationError:
+            pass
+
+    raise ValueError("Unknown firmware image type")
