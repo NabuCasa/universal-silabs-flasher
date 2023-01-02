@@ -28,10 +28,26 @@ CRC_CCITT = crc.Calculator(
     )
 )
 
+CRC_KERMIT = crc.Calculator(
+    crc.Configuration(
+        width=16,
+        polynomial=0x1021,
+        init_value=0xFFFF,
+        final_xor_value=0xFFFF,
+        reverse_input=True,
+        reverse_output=True,
+    )
+)
+
 
 # Used by both CPC and XModem
 def crc16_ccitt(data: bytes) -> int:
     return CRC_CCITT.checksum(data)
+
+
+# Used by HDLC-Lite
+def crc16_kermit(data: bytes) -> int:
+    return CRC_KERMIT.checksum(data)
 
 
 class BufferTooShort(Exception):

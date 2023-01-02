@@ -16,6 +16,7 @@ from awesomeversion import AwesomeVersion
 from .cpc import CPCProtocol
 from .gbl import GBLImage
 from .common import PROBE_TIMEOUT, connect_protocol
+from .spinel import SpinelProtocol
 from .emberznet import connect_ezsp
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 from .gecko_bootloader import NoFirmwareError, GeckoBootloaderProtocol
@@ -66,6 +67,7 @@ class ApplicationType(enum.Enum):
     GECKO_BOOTLOADER = "bootloader"
     CPC = "cpc"
     EZSP = "ezsp"
+    SPINEL = "spinel"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -123,6 +125,9 @@ class Flasher:
     def _connect_ezsp(self):
         return connect_ezsp(self._device, self._app_baudrate)
 
+    def _connect_spinel(self):
+        return connect_protocol(self._device, self._app_baudrate, SpinelProtocol)
+
     async def probe_gecko_bootloader(self, *, run_firmware: bool = True) -> ProbeResult:
         try:
             async with self._connect_gecko_bootloader() as gecko:
@@ -153,6 +158,12 @@ class Flasher:
             continue_probing=False,
         )
 
+    async def probe_spinel(self) -> ProbeResult:
+        async with self._connect_spinel() as spinel:
+            version = await spinel.probe()
+
+        return ProbeResult(version=version, continue_probing=False)
+
     async def probe_app_type(self, *, yellow_gpio_reset: bool = False) -> None:
         if yellow_gpio_reset:
             await self.enter_yellow_bootloader()
@@ -172,6 +183,7 @@ class Flasher:
                 ),
                 ApplicationType.CPC: self.probe_cpc,
                 ApplicationType.EZSP: self.probe_ezsp,
+                ApplicationType.SPINEL: self.probe_spinel,
             }[probe_method]
 
             _LOGGER.info("Probing %s", probe_method)
@@ -221,6 +233,10 @@ class Flasher:
             async with self._connect_cpc() as cpc:
                 async with async_timeout.timeout(PROBE_TIMEOUT):
                     await cpc.enter_bootloader()
+        elif self._app_type is ApplicationType.SPINEL:
+            async with self._connect_spinel() as spinel:
+                async with async_timeout.timeout(PROBE_TIMEOUT):
+                    await spinel.enter_bootloader()
         elif self._app_type is ApplicationType.EZSP:
             async with self._connect_ezsp() as ezsp:
                 res = await ezsp.launchStandaloneBootloader(0x01)

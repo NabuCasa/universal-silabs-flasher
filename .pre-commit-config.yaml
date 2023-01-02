@@ -29,8 +29,6 @@ repos:
     rev: v0.991
     hooks:
       - id: mypy
-        additional_dependencies:
-          - zigpy
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.3.1
