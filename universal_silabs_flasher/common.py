@@ -3,10 +3,10 @@ from __future__ import annotations
 import typing
 import asyncio
 import logging
-import binascii
 import contextlib
 import collections
 
+import crc
 import zigpy.serial
 import async_timeout
 import serial_asyncio
@@ -17,9 +17,21 @@ CONNECT_TIMEOUT = 1
 PROBE_TIMEOUT = 2
 
 
+CRC_CCITT = crc.Calculator(
+    crc.Configuration(
+        width=16,
+        polynomial=0x1021,
+        init_value=0x0000,
+        final_xor_value=0x0000,
+        reverse_input=False,
+        reverse_output=False,
+    )
+)
+
+
 # Used by both CPC and XModem
 def crc16_ccitt(data: bytes) -> int:
-    return binascii.crc_hqx(data, 0x0000)
+    return CRC_CCITT.checksum(data)
 
 
 class BufferTooShort(Exception):
