@@ -123,16 +123,20 @@ class Flasher:
     def _connect_ezsp(self):
         return connect_ezsp(self._device, self._app_baudrate)
 
-    async def probe_gecko_bootloader(self) -> ProbeResult:
+    async def probe_gecko_bootloader(self, *, run_firmware: bool = True) -> ProbeResult:
         try:
             async with self._connect_gecko_bootloader() as gecko:
                 bootloader_version = await gecko.probe()
-                await gecko.run_firmware()
+
+                if run_firmware:
+                    await gecko.run_firmware()
         except NoFirmwareError:
             _LOGGER.warning("No application can be launched")
             return ProbeResult(version=bootloader_version, continue_probing=False)
         else:
-            return ProbeResult(version=bootloader_version, continue_probing=True)
+            return ProbeResult(
+                version=bootloader_version, continue_probing=run_firmware
+            )
 
     async def probe_cpc(self) -> ProbeResult:
         async with self._connect_cpc() as cpc:
@@ -158,9 +162,14 @@ class Flasher:
 
         bootloader_version = None
 
+        # Only run firmware from the bootloader if we have other probe methods
+        run_firmware = self._probe_methods != [ApplicationType.GECKO_BOOTLOADER]
+
         for probe_method in self._probe_methods:
             func = {
-                ApplicationType.GECKO_BOOTLOADER: self.probe_gecko_bootloader,
+                ApplicationType.GECKO_BOOTLOADER: lambda: self.probe_gecko_bootloader(
+                    run_firmware=run_firmware
+                ),
                 ApplicationType.CPC: self.probe_cpc,
                 ApplicationType.EZSP: self.probe_ezsp,
             }[probe_method]
@@ -186,13 +195,15 @@ class Flasher:
         else:
             if bootloader_version is None:
                 raise RuntimeError("Failed to probe running application type")
-            elif not yellow_gpio_reset:
+            elif not yellow_gpio_reset and run_firmware:
                 raise RuntimeError(
                     "Cannot reboot back into bootloader from unknown application"
                 )
 
             # We have no valid application image but can still enter the bootloader
-            await self.enter_yellow_bootloader()
+            if yellow_gpio_reset:
+                await self.enter_yellow_bootloader()
+
             self._app_type = ApplicationType.GECKO_BOOTLOADER
             self._app_version = bootloader_version
             _LOGGER.warning("Bootloader did not launch a valid application")
