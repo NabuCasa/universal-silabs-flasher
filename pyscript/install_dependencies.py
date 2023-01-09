@@ -15,6 +15,6 @@ async def install() -> None:
             # This one also did not seem to have a wheel despite being pure-Python
             "./pure_pcapy3-1.0.1-py3-none-any.whl",
             # Finally, install the main module
-            "./universal_silabs_flasher-0.0.4-py3-none-any.whl",
+            "./universal_silabs_flasher-0.0.8-py3-none-any.whl",
         ]
     )
