@@ -1,5 +1,5 @@
 import { LitElement, html, css, PropertyValues } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { customElement, state, query } from 'lit/decorators.js';
 
 enum LoadState {
   LOADING_PYODIDE,
@@ -8,18 +8,13 @@ enum LoadState {
   READY,
 }
 
-async function loadPyodide() {
+async function loadPyodide(config?: object) {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
 
     script.onerror = e => reject(e);
     script.onload = async () => {
-      resolve(
-        await (window as any).loadPyodide({
-          stdout: (msg: string) => console.log(msg),
-          stderr: (msg: string) => console.warn(msg),
-        })
-      );
+      resolve(await (window as any).loadPyodide(config));
     };
 
     script.src = 'https://cdn.jsdelivr.net/pyodide/v0.22.0/full/pyodide.js';
@@ -40,7 +35,6 @@ async function readFile(file: Blob) {
 class UniversalSilabsFlasher extends LitElement {
   static styles = css`
     :host {
-      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -55,11 +49,13 @@ class UniversalSilabsFlasher extends LitElement {
       margin-right: auto;
     }
 
-    main {
+    main,
+    :host > section {
       flex-grow: 1;
+      width: 100%;
     }
 
-    section {
+    li {
       margin-top: 1em;
     }
 
@@ -70,7 +66,36 @@ class UniversalSilabsFlasher extends LitElement {
     progress {
       width: 100%;
     }
+
+    .debuglog {
+      width: 100%;
+      font-size: 0.8em;
+
+      min-height: 100px;
+      max-height: 500px;
+
+      cursor: text;
+      user-select: text;
+
+      border: 1px solid gray;
+      background-color: white;
+      border-radius: 1em;
+
+      padding: 1em;
+      overflow: auto;
+    }
+
+    .stderr {
+      color: firebrick;
+    }
+
+    img {
+      vertical-align: middle;
+    }
   `;
+
+  @query('.debuglog')
+  private debugLog!: HTMLTextAreaElement;
 
   @state()
   private loadState: LoadState = LoadState.LOADING_PYODIDE;
@@ -99,7 +124,24 @@ class UniversalSilabsFlasher extends LitElement {
 
   private async setupPyodide() {
     this.loadState = LoadState.LOADING_PYODIDE;
-    this.pyodide = await loadPyodide();
+    this.pyodide = await loadPyodide({
+      stdout: (msg: string) => {
+        console.log(msg);
+
+        let div = document.createElement('div');
+        div.classList.add('stdout');
+        div.textContent = msg;
+        this.debugLog.appendChild(div);
+      },
+      stderr: (msg: string) => {
+        console.warn(msg);
+
+        let div = document.createElement('div');
+        div.classList.add('stderr');
+        div.textContent = msg;
+        this.debugLog.appendChild(div);
+      },
+    });
 
     this.loadState = LoadState.INSTALLING_DEPENDENCIES;
     await this.pyodide.loadPackage('micropip');
@@ -217,9 +259,14 @@ class UniversalSilabsFlasher extends LitElement {
   }
 
   render() {
-    const header = html`<h1>SkyConnect Flasher</h1>`;
-
-    console.log('FW', this.selectedFirmware);
+    const header = html`
+      <h1>
+        <img
+          src="https://skyconnect.home-assistant.io/static/skyconnect_header.png"
+        />
+        SkyConnect Flasher
+      </h1>
+    `;
 
     if (this.loadState === LoadState.LOADING_PYODIDE) {
       return html`${header}Loading Pyodide (this may take a minute)...`;
@@ -234,69 +281,86 @@ class UniversalSilabsFlasher extends LitElement {
     if (this.loadState === LoadState.READY) {
       return html`
         ${header}
+        <p>
+          Flash new firmware to your SkyConnect! In case something doesn't work,
+          just unplug the SkyConnect and plug it back on.
+        </p>
+
+        <p>
+          Note: on macOS, make sure to select <code>cu.SLAB_USBtoUART</code> as
+          the serial port. <code>cu.usbserial*10</code> does not work.
+        </p>
+
         <main>
-          <section id="step-choose">
-            <label
-              >Choose <code>.gbl</code> firmware
-              <input
-                type="file"
-                accept=".gbl"
-                @change=${(evt: Event) => this.fileChosen(evt)}
-            /></label>
+          <ol>
+            <li>
+              <label
+                >Choose <code>.gbl</code> firmware
+                <input
+                  type="file"
+                  accept=".gbl"
+                  @change=${(evt: Event) => this.fileChosen(evt)}
+              /></label>
 
-            ${this.selectedFirmware
-              ? html`
-                  <div class="metadata">
-                    <code>${this.getFirmwareMetadataString()}</code>
-                  </div>
-                `
-              : ''}
-          </section>
+              ${this.selectedFirmware
+                ? html`
+                    <div class="metadata">
+                      <code>${this.getFirmwareMetadataString()}</code>
+                    </div>
+                  `
+                : ''}
+            </li>
 
-          <section id="step-connect">
-            <label
-              >Connect to your SkyConnect
-              <button
-                ?disabled=${!this.selectedFirmware}
-                @click=${() => this.selectSerialPort()}
+            <li>
+              <label
+                >Connect to your SkyConnect
+                <button
+                  ?disabled=${!this.selectedFirmware}
+                  @click=${() => this.selectSerialPort()}
+                >
+                  Connect
+                </button></label
               >
-                Connect
-              </button></label
-            >
 
-            ${this.serialPort
-              ? html`
-                  <div class="metadata">
-                    <code>${JSON.stringify(this.serialPort.getInfo())}</code>
-                  </div>
-                `
-              : ''}
-          </section>
+              ${this.serialPort
+                ? html`
+                    <div class="metadata">
+                      <code>${JSON.stringify(this.serialPort.getInfo())}</code>
+                    </div>
+                  `
+                : ''}
+            </li>
 
-          <section id="step-flash">
-            <label
-              >Flash the firmware
-              <button
-                ?disabled=${!this.serialPort}
-                @click=${() => this.flashFirmware()}
+            <li>
+              <label
+                >Flash the firmware
+                <button
+                  ?disabled=${!this.serialPort}
+                  @click=${() => this.flashFirmware()}
+                >
+                  Flash
+                </button></label
               >
-                Flash
-              </button></label
-            >
 
-            <div class="metadata">
-              <progress
-                .value=${this.serialPort
-                  ? this.uploadProgress === undefined
-                    ? null
-                    : this.uploadProgress
-                  : 0}
-                ?disabled=${!this.serialPort}
-                max="100"
-              ></progress>
-            </div>
-          </section>
+              <div class="metadata">
+                <progress
+                  .value=${this.serialPort
+                    ? this.uploadProgress === undefined
+                      ? null
+                      : this.uploadProgress
+                    : 0}
+                  ?disabled=${!this.serialPort}
+                  max="100"
+                ></progress>
+              </div>
+            </li>
+          </ol>
         </main>
+
+        <section>
+          <h3>Debug Log</h3>
+          <pre><div class="debuglog"></div></pre>
+        </section>
       `;
     }
   }
