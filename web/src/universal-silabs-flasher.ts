@@ -299,7 +299,7 @@ class UniversalSilabsFlasher extends LitElement {
                 <input
                   type="file"
                   accept=".gbl"
-                  @change=${(evt: Event) => this.fileChosen(evt)}
+                  @change=${this.fileChosen}
               /></label>
 
               ${this.selectedFirmware
@@ -316,7 +316,7 @@ class UniversalSilabsFlasher extends LitElement {
                 >Connect to your SkyConnect
                 <button
                   ?disabled=${!this.selectedFirmware}
-                  @click=${() => this.selectSerialPort()}
+                  @click=${this.selectSerialPort}
                 >
                   Connect
                 </button></label
@@ -336,7 +336,7 @@ class UniversalSilabsFlasher extends LitElement {
                 >Flash the firmware
                 <button
                   ?disabled=${!this.serialPort}
-                  @click=${() => this.flashFirmware()}
+                  @click=${this.flashFirmware}
                 >
                   Flash
                 </button></label
