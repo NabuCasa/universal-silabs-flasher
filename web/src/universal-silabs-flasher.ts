@@ -1,6 +1,5 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { choose } from 'lit/directives/choose.js';
 import { Pyodide, setupPyodide, PyodideLoadState } from './setup-pyodide.js';
 import './flashing-form.js';
 
@@ -70,6 +69,7 @@ class UniversalSilabsFlasher extends LitElement {
   @state()
   private pyodideLoadState: PyodideLoadState = PyodideLoadState.LOADING_PYODIDE;
 
+  @state()
   private pyodide?: Pyodide;
 
   private async setupPyodide() {
@@ -84,6 +84,36 @@ class UniversalSilabsFlasher extends LitElement {
   }
 
   render() {
+    let content;
+
+    if (this.pyodideLoadState === PyodideLoadState.LOADING_PYODIDE) {
+      content = html`Loading Pyodide (this may take a minute)...`;
+    } else if (
+      this.pyodideLoadState === PyodideLoadState.INSTALLING_DEPENDENCIES
+    ) {
+      content = html`Installing Python dependencies (this may take a minute)...`;
+    } else if (
+      this.pyodideLoadState === PyodideLoadState.INSTALLING_TRANSPORT ||
+      !this.pyodide // the load state changes to `READY` before the object is returned
+    ) {
+      content = html`Setting up serial transport...`;
+    } else if (this.pyodideLoadState === PyodideLoadState.READY) {
+      content = html`
+        <p>
+          Flash new firmware to your SkyConnect! In case something doesn't work,
+          just unplug the SkyConnect and plug it back in.
+        </p>
+
+        <p>
+          Note: on macOS, make sure to select
+          <code>cu.SLAB_USBtoUART</code> as the serial port.
+          <code>cu.usbserial*10</code> does not work.
+        </p>
+
+        <flashing-form .pyodide=${this.pyodide}></flashing-form>
+      `;
+    }
+
     return html`
       <h1>
         <img
@@ -93,40 +123,7 @@ class UniversalSilabsFlasher extends LitElement {
         SkyConnect Flasher
       </h1>
 
-      <section>
-        ${choose(this.pyodideLoadState, [
-          [
-            PyodideLoadState.LOADING_PYODIDE,
-            () => html`Loading Pyodide (this may take a minute)...`,
-          ],
-          [
-            PyodideLoadState.INSTALLING_DEPENDENCIES,
-            () =>
-              html`Installing Python dependencies (this may take a minute)...`,
-          ],
-          [
-            PyodideLoadState.INSTALLING_TRANSPORT,
-            () => html`Setting up serial transport...`,
-          ],
-          [
-            PyodideLoadState.READY,
-            () => html`
-              <p>
-                Flash new firmware to your SkyConnect! In case something doesn't
-                work, just unplug the SkyConnect and plug it back in.
-              </p>
-
-              <p>
-                Note: on macOS, make sure to select
-                <code>cu.SLAB_USBtoUART</code> as the serial port.
-                <code>cu.usbserial*10</code> does not work.
-              </p>
-
-              <flashing-form .pyodide=${this.pyodide}></flashing-form>
-            `,
-          ],
-        ])}
-      </section>
+      <section>${content}</section>
     `;
   }
 }

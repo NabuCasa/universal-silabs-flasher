@@ -57,7 +57,7 @@ export class FlashingForm extends LitElement {
   private debugLog!: HTMLTextAreaElement;
 
   @property()
-  private pyodide: Pyodide;
+  public pyodide: Pyodide;
 
   @state()
   private selectedFirmware?: any;

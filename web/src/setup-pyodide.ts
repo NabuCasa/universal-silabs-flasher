@@ -13,7 +13,8 @@ async function loadPyodide(): Promise<Pyodide> {
 
     script.onerror = e => reject(e);
     script.onload = async () => {
-      resolve(await (window as any).loadPyodide());
+      const pyodide = await (window as any).loadPyodide();
+      resolve(pyodide);
     };
 
     script.src = 'https://cdn.jsdelivr.net/pyodide/v0.22.0/full/pyodide.js';
@@ -83,4 +84,6 @@ export async function setupPyodide(
     webserial_transport.patch_pyserial()
   `);
   onStateChange(PyodideLoadState.READY);
+
+  return pyodide;
 }
