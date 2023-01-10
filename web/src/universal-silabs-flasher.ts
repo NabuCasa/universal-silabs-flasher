@@ -1,26 +1,6 @@
 import { LitElement, html, css, PropertyValues } from 'lit';
 import { customElement, state, query } from 'lit/decorators.js';
-
-enum LoadState {
-  LOADING_PYODIDE,
-  INSTALLING_DEPENDENCIES,
-  INSTALLING_TRANSPORT,
-  READY,
-}
-
-async function loadPyodide(config?: object) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-
-    script.onerror = e => reject(e);
-    script.onload = async () => {
-      resolve(await (window as any).loadPyodide(config));
-    };
-
-    script.src = 'https://cdn.jsdelivr.net/pyodide/v0.22.0/full/pyodide.js';
-    document.body.appendChild(script);
-  });
-}
+import { Pyodide, setupPyodide, PyodideLoadState } from './setup-pyodide';
 
 async function readFile(file: Blob) {
   return new Promise((resolve, reject) => {
@@ -98,9 +78,9 @@ class UniversalSilabsFlasher extends LitElement {
   private debugLog!: HTMLTextAreaElement;
 
   @state()
-  private loadState: LoadState = LoadState.LOADING_PYODIDE;
+  private pyodideLoadState: PyodideLoadState = PyodideLoadState.LOADING_PYODIDE;
 
-  private pyodide?: any;
+  private pyodide?: Pyodide;
 
   @state()
   private selectedFirmware?: any;
@@ -111,21 +91,12 @@ class UniversalSilabsFlasher extends LitElement {
   @state()
   private uploadProgress?: Number;
 
-  private async downloadModule(moduleName: string, path: string) {
-    console.debug('Downloading module', moduleName, 'from', path);
-
-    const contents = await (await fetch(path)).text();
-
-    this.pyodide.FS.mkdir('modules');
-    this.pyodide.FS.writeFile(`modules/${moduleName}.py`, contents, {
-      encoding: 'utf8',
-    });
-  }
-
   private async setupPyodide() {
-    this.loadState = LoadState.LOADING_PYODIDE;
-    this.pyodide = await loadPyodide({
-      stdout: (msg: string) => {
+    this.pyodide = await setupPyodide(newLoadState => {
+      this.pyodideLoadState = newLoadState;
+    });
+    this.pyodide.setStdout({
+      batched: (msg: string) => {
         console.log(msg);
 
         let div = document.createElement('div');
@@ -133,7 +104,10 @@ class UniversalSilabsFlasher extends LitElement {
         div.textContent = msg;
         this.debugLog.appendChild(div);
       },
-      stderr: (msg: string) => {
+    });
+
+    this.pyodide.setStderr({
+      batched: (msg: string) => {
         console.warn(msg);
 
         let div = document.createElement('div');
@@ -142,47 +116,6 @@ class UniversalSilabsFlasher extends LitElement {
         this.debugLog.appendChild(div);
       },
     });
-
-    this.loadState = LoadState.INSTALLING_DEPENDENCIES;
-    await this.pyodide.loadPackage('micropip');
-    const micropip = this.pyodide.pyimport('micropip');
-
-    // Install dependencies
-    await micropip.install([
-      // All `aio-libs` packages have been compiled as pure-Python modules
-      './assets/multidict-4.7.6-py3-none-any.whl',
-      './assets/yarl-1.8.1-py3-none-any.whl',
-      './assets/frozenlist-1.3.1-py3-none-any.whl',
-      './assets/aiosignal-1.2.0-py3-none-any.whl',
-      './assets/aiohttp-3.8.3-py3-none-any.whl',
-      // This one also did not seem to have a wheel despite being pure-Python
-      './assets/pure_pcapy3-1.0.1-py3-none-any.whl',
-      // Finally, install the main module
-      './assets/universal_silabs_flasher-0.0.8-py3-none-any.whl',
-    ]);
-
-    this.loadState = LoadState.INSTALLING_TRANSPORT;
-    // Prepare the Python path for external modules
-    this.pyodide.runPython(`
-      import coloredlogs
-      coloredlogs.install(level="DEBUG")
-
-      import sys
-      sys.path.insert(0, "./modules/")
-    `);
-
-    // Download our webserial transport
-    await this.downloadModule(
-      'webserial_transport',
-      './assets/webserial_transport.py'
-    );
-
-    // And run it
-    this.pyodide.runPython(`
-      import webserial_transport
-      webserial_transport.patch_pyserial()
-    `);
-    this.loadState = LoadState.READY;
   }
 
   protected firstUpdated(changedProperties: PropertyValues): void {
@@ -268,17 +201,17 @@ class UniversalSilabsFlasher extends LitElement {
       </h1>
     `;
 
-    if (this.loadState === LoadState.LOADING_PYODIDE) {
+    if (this.pyodideLoadState === PyodideLoadState.LOADING_PYODIDE) {
       return html`${header}Loading Pyodide (this may take a minute)...`;
     }
-    if (this.loadState === LoadState.INSTALLING_DEPENDENCIES) {
+    if (this.pyodideLoadState === PyodideLoadState.INSTALLING_DEPENDENCIES) {
       return html`${header}Installing Python dependencies (this may take a
       minute)...`;
     }
-    if (this.loadState === LoadState.INSTALLING_TRANSPORT) {
+    if (this.pyodideLoadState === PyodideLoadState.INSTALLING_TRANSPORT) {
       return html`${header}Setting up serial transport...`;
     }
-    if (this.loadState === LoadState.READY) {
+    if (this.pyodideLoadState === PyodideLoadState.READY) {
       return html`
         ${header}
         <p>
@@ -296,10 +229,7 @@ class UniversalSilabsFlasher extends LitElement {
             <li>
               <label
                 >Choose <code>.gbl</code> firmware
-                <input
-                  type="file"
-                  accept=".gbl"
-                  @change=${this.fileChosen}
+                <input type="file" accept=".gbl" @change=${this.fileChosen}
               /></label>
 
               ${this.selectedFirmware
