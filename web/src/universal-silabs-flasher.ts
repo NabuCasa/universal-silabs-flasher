@@ -118,8 +118,8 @@ class UniversalSilabsFlasher extends LitElement {
     });
   }
 
-  protected firstUpdated(changedProperties: PropertyValues): void {
-    super.firstUpdated(changedProperties);
+  connectedCallback(): void {
+    super.connectedCallback();
     this.setupPyodide();
   }
 
