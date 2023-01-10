@@ -50,15 +50,15 @@ export async function setupPyodide(
   // Install dependencies
   await micropip.install([
     // All `aio-libs` packages have been compiled as pure-Python modules
-    './assets/multidict-4.7.6-py3-none-any.whl',
-    './assets/yarl-1.8.1-py3-none-any.whl',
-    './assets/frozenlist-1.3.1-py3-none-any.whl',
-    './assets/aiosignal-1.2.0-py3-none-any.whl',
-    './assets/aiohttp-3.8.3-py3-none-any.whl',
+    './assets/wheels/multidict-4.7.6-py3-none-any.whl',
+    './assets/wheels/yarl-1.8.1-py3-none-any.whl',
+    './assets/wheels/frozenlist-1.3.1-py3-none-any.whl',
+    './assets/wheels/aiosignal-1.2.0-py3-none-any.whl',
+    './assets/wheels/aiohttp-3.8.3-py3-none-any.whl',
     // This one also did not seem to have a wheel despite being pure-Python
-    './assets/pure_pcapy3-1.0.1-py3-none-any.whl',
+    './assets/wheels/pure_pcapy3-1.0.1-py3-none-any.whl',
     // Finally, install the main module
-    './assets/universal_silabs_flasher-0.0.8-py3-none-any.whl',
+    './assets/wheels/universal_silabs_flasher-0.0.8-py3-none-any.whl',
   ]);
 
   onStateChange(PyodideLoadState.INSTALLING_TRANSPORT);
