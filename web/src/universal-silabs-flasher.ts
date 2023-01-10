@@ -283,7 +283,7 @@ class UniversalSilabsFlasher extends LitElement {
         ${header}
         <p>
           Flash new firmware to your SkyConnect! In case something doesn't work,
-          just unplug the SkyConnect and plug it back on.
+          just unplug the SkyConnect and plug it back in.
         </p>
 
         <p>
