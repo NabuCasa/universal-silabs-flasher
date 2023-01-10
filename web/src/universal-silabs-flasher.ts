@@ -1,15 +1,8 @@
-import { LitElement, html, css, PropertyValues } from 'lit';
-import { customElement, state, query } from 'lit/decorators.js';
-import { Pyodide, setupPyodide, PyodideLoadState } from './setup-pyodide';
-
-async function readFile(file: Blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = e => reject(e);
-    reader.readAsArrayBuffer(file);
-  });
-}
+import { LitElement, html, css } from 'lit';
+import { customElement, state } from 'lit/decorators.js';
+import { choose } from 'lit/directives/choose.js';
+import { Pyodide, setupPyodide, PyodideLoadState } from './setup-pyodide.js';
+import './flashing-form.js';
 
 @customElement('universal-silabs-flasher')
 class UniversalSilabsFlasher extends LitElement {
@@ -74,47 +67,14 @@ class UniversalSilabsFlasher extends LitElement {
     }
   `;
 
-  @query('.debuglog')
-  private debugLog!: HTMLTextAreaElement;
-
   @state()
   private pyodideLoadState: PyodideLoadState = PyodideLoadState.LOADING_PYODIDE;
 
   private pyodide?: Pyodide;
 
-  @state()
-  private selectedFirmware?: any;
-
-  @state()
-  private serialPort?: SerialPort;
-
-  @state()
-  private uploadProgress?: Number;
-
   private async setupPyodide() {
     this.pyodide = await setupPyodide(newLoadState => {
       this.pyodideLoadState = newLoadState;
-    });
-    this.pyodide.setStdout({
-      batched: (msg: string) => {
-        console.log(msg);
-
-        let div = document.createElement('div');
-        div.classList.add('stdout');
-        div.textContent = msg;
-        this.debugLog.appendChild(div);
-      },
-    });
-
-    this.pyodide.setStderr({
-      batched: (msg: string) => {
-        console.warn(msg);
-
-        let div = document.createElement('div');
-        div.classList.add('stderr');
-        div.textContent = msg;
-        this.debugLog.appendChild(div);
-      },
     });
   }
 
@@ -123,175 +83,56 @@ class UniversalSilabsFlasher extends LitElement {
     this.setupPyodide();
   }
 
-  private async fileChosen(event: Event) {
-    const file = (event.target! as HTMLInputElement).files![0];
-    const contents = await readFile(file);
-
-    const { GBLImage } = this.pyodide.pyimport(
-      'universal_silabs_flasher.flasher'
-    );
-
-    try {
-      this.selectedFirmware = GBLImage.from_bytes(this.pyodide.toPy(contents));
-    } catch (e) {
-      this.selectedFirmware = undefined;
-      alert(`Failed to parse image: ${e}`);
-    }
-  }
-
-  private getFirmwareMetadataString() {
-    if (!this.selectedFirmware) {
-      return '';
-    }
-
-    try {
-      return this.selectedFirmware.get_nabucasa_metadata().toString();
-    } catch (e) {
-      return 'unknown';
-    }
-  }
-
-  private async selectSerialPort() {
-    if (!('serial' in navigator)) {
-      alert(
-        'Your browser unfortunately does not support Web Serial. Use Chrome or Edge.'
-      );
-      return;
-    }
-
-    try {
-      this.serialPort = await navigator.serial.requestPort();
-    } catch {
-      this.serialPort = undefined;
-    }
-  }
-
-  private async flashFirmware() {
-    this.pyodide
-      .pyimport('webserial_transport')
-      .set_global_serial_port(this.serialPort);
-
-    const { Flasher } = this.pyodide.pyimport(
-      'universal_silabs_flasher.flasher'
-    );
-    const flasher = Flasher.callKwargs({
-      bootloader_baudrate: 115200,
-      app_baudrate: 115200,
-      device: '/dev/webserial', // the device name is ignored
-    });
-
-    await flasher.probe_app_type();
-    await flasher.enter_bootloader();
-
-    await flasher.flash_firmware.callKwargs(this.selectedFirmware, {
-      progress_callback: (current: number, total: number) => {
-        console.log('Firmware upload progress', current, total);
-        this.uploadProgress = (100.0 * current) / total;
-      },
-    });
-  }
-
   render() {
-    const header = html`
+    return html`
       <h1>
         <img
           src="https://skyconnect.home-assistant.io/static/skyconnect_header.png"
+          alt="SkyConnect logo"
         />
         SkyConnect Flasher
       </h1>
+
+      <section>
+        ${choose(this.pyodideLoadState, [
+          [
+            PyodideLoadState.LOADING_PYODIDE,
+            () => html`Loading Pyodide (this may take a minute)...`,
+          ],
+          [
+            PyodideLoadState.INSTALLING_DEPENDENCIES,
+            () =>
+              html`Installing Python dependencies (this may take a minute)...`,
+          ],
+          [
+            PyodideLoadState.INSTALLING_TRANSPORT,
+            () => html`Setting up serial transport...`,
+          ],
+          [
+            PyodideLoadState.READY,
+            () => html`
+              <p>
+                Flash new firmware to your SkyConnect! In case something doesn't
+                work, just unplug the SkyConnect and plug it back in.
+              </p>
+
+              <p>
+                Note: on macOS, make sure to select
+                <code>cu.SLAB_USBtoUART</code> as the serial port.
+                <code>cu.usbserial*10</code> does not work.
+              </p>
+
+              <flashing-form .pyodide=${this.pyodide}></flashing-form>
+            `,
+          ],
+        ])}
+      </section>
     `;
+  }
+}
 
-    if (this.pyodideLoadState === PyodideLoadState.LOADING_PYODIDE) {
-      return html`${header}Loading Pyodide (this may take a minute)...`;
-    }
-    if (this.pyodideLoadState === PyodideLoadState.INSTALLING_DEPENDENCIES) {
-      return html`${header}Installing Python dependencies (this may take a
-      minute)...`;
-    }
-    if (this.pyodideLoadState === PyodideLoadState.INSTALLING_TRANSPORT) {
-      return html`${header}Setting up serial transport...`;
-    }
-    if (this.pyodideLoadState === PyodideLoadState.READY) {
-      return html`
-        ${header}
-        <p>
-          Flash new firmware to your SkyConnect! In case something doesn't work,
-          just unplug the SkyConnect and plug it back in.
-        </p>
-
-        <p>
-          Note: on macOS, make sure to select <code>cu.SLAB_USBtoUART</code> as
-          the serial port. <code>cu.usbserial*10</code> does not work.
-        </p>
-
-        <main>
-          <ol>
-            <li>
-              <label
-                >Choose <code>.gbl</code> firmware
-                <input type="file" accept=".gbl" @change=${this.fileChosen}
-              /></label>
-
-              ${this.selectedFirmware
-                ? html`
-                    <div class="metadata">
-                      <code>${this.getFirmwareMetadataString()}</code>
-                    </div>
-                  `
-                : ''}
-            </li>
-
-            <li>
-              <label
-                >Connect to your SkyConnect
-                <button
-                  ?disabled=${!this.selectedFirmware}
-                  @click=${this.selectSerialPort}
-                >
-                  Connect
-                </button></label
-              >
-
-              ${this.serialPort
-                ? html`
-                    <div class="metadata">
-                      <code>${JSON.stringify(this.serialPort.getInfo())}</code>
-                    </div>
-                  `
-                : ''}
-            </li>
-
-            <li>
-              <label
-                >Flash the firmware
-                <button
-                  ?disabled=${!this.serialPort}
-                  @click=${this.flashFirmware}
-                >
-                  Flash
-                </button></label
-              >
-
-              <div class="metadata">
-                <progress
-                  .value=${this.serialPort
-                    ? this.uploadProgress === undefined
-                      ? null
-                      : this.uploadProgress
-                    : 0}
-                  ?disabled=${!this.serialPort}
-                  max="100"
-                ></progress>
-              </div>
-            </li>
-          </ol>
-        </main>
-
-        <section>
-          <h3>Debug Log</h3>
-          <pre><div class="debuglog"></div></pre>
-        </section>
-      `;
-    }
+declare global {
+  interface HTMLElementTagNameMap {
+    'unversal-silabs-flasher': UniversalSilabsFlasher;
   }
 }

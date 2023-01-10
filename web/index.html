@@ -1,28 +1,26 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="Description" content="SkyConnect firmware flasher">
+    <base href="/">
 
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="Description" content="SkyConnect firmware flasher">
-  <base href="/">
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: sans-serif;
+        background-color: #ededed;
+      }
+    </style>
+    <title>SkyConnect Firmware Flasher</title>
+  </head>
 
-  <style>
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: sans-serif;
-      background-color: #ededed;
-    }
-  </style>
-  <title>SkyConnect Firmware Flasher</title>
-</head>
+  <body>
+    <universal-silabs-flasher></universal-silabs-flasher>
 
-<body>
-  <universal-silabs-flasher></universal-silabs-flasher>
-
-  <script type="module" src="./out-tsc/src/universal-silabs-flasher.js"></script>
-</body>
-
+    <script type="module" src="./out-tsc/src/universal-silabs-flasher.js"></script>
+  </body>
 </html>

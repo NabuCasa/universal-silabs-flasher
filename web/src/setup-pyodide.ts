@@ -40,7 +40,7 @@ export async function setupPyodide(
   onStateChange: (newState: PyodideLoadState) => any
 ): Promise<Pyodide> {
   onStateChange(PyodideLoadState.LOADING_PYODIDE);
-  let pyodide = await loadPyodide();
+  const pyodide = await loadPyodide();
 
   onStateChange(PyodideLoadState.INSTALLING_DEPENDENCIES);
   await pyodide.loadPackage('micropip');

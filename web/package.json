@@ -64,7 +64,11 @@
         {
           "ignorePackages": true
         }
-      ]
+      ],
+      "no-shadow": "off",
+      "@typescript-eslint/no-shadow": ["error"],
+      "wc/guard-super-call": "off",
+      "no-undef": "off"
     }
   },
   "prettier": {
