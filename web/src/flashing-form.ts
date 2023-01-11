@@ -202,6 +202,9 @@ export class FlashingForm extends LitElement {
         this.uploadProgress = (100.0 * current) / total;
       },
     });
+
+    alert('Flashing is complete!');
+    this.uploadProgress = undefined;
   }
 
   render() {
