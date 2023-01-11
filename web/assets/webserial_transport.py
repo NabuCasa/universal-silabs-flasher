@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections.abc
 import logging
 import sys
 import typing
@@ -21,7 +22,8 @@ except ImportError:
 import serial_asyncio
 
 
-async def make_coroutine(call):
+async def make_coroutine(call: collections.abc.Awaitable) -> collections.abc.Coroutine:
+    """Turns an awaitable into an actual coroutine."""
     return await call
 
 
@@ -59,7 +61,7 @@ class WebSerialTransport(asyncio.Transport):
 
         self._loop.call_soon(self._protocol.connection_made, self)
 
-    async def _writer_loop(self):
+    async def _writer_loop(self) -> None:
         while True:
             chunk = await self._write_queue.get()
 
@@ -69,7 +71,7 @@ class WebSerialTransport(asyncio.Transport):
                 self._cleanup(e)
                 break
 
-    async def _reader_loop(self):
+    async def _reader_loop(self) -> None:
         while True:
             result = await self._js_reader.read()
             if result.done:
@@ -78,7 +80,7 @@ class WebSerialTransport(asyncio.Transport):
 
             self._protocol.data_received(bytes(result.value))
 
-    def write(self, data) -> None:
+    def write(self, data: bytes) -> None:
         self._write_queue.put_nowait(data)
 
     def set_protocol(self, protocol: asyncio.BaseProtocol) -> None:
