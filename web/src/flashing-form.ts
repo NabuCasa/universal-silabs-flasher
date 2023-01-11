@@ -222,7 +222,7 @@ export class FlashingForm extends LitElement {
                       FirmwareUploadType.SKYCONNECT_NCP
                     }
                     @change=${this.firmwareUploadTypeChanged}
-                  />Standard</label
+                  />Zigbee</label
                 >
               </div>
 
