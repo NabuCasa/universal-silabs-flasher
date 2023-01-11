@@ -2,13 +2,19 @@ import { LitElement, html, css } from 'lit';
 import { customElement, state, query, property } from 'lit/decorators.js';
 import type { Pyodide } from './setup-pyodide';
 
-async function readFile(file: Blob) {
+async function readFile(file: Blob): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
+    reader.onload = () => resolve(reader.result! as ArrayBuffer);
     reader.onerror = e => reject(e);
     reader.readAsArrayBuffer(file);
   });
+}
+
+enum FirmwareUploadType {
+  SKYCONNECT_NCP = './assets/firmwares/NabuCasa_SkyConnect_EZSP_v7.1.3.0_ncp-uart-hw_115200.gbl',
+  SKYCONNECT_RCP = './assets/firmwares/NabuCasa_SkyConnect_RCP_v4.2.0_rcp-uart-hw-802154_115200.gbl',
+  CUSTOM_GBL = 'custom_gbl',
 }
 
 @customElement('flashing-form')
@@ -60,6 +66,9 @@ export class FlashingForm extends LitElement {
   public pyodide: Pyodide;
 
   @state()
+  private firmwareUploadType?: FirmwareUploadType;
+
+  @state()
   private selectedFirmware?: any;
 
   @state()
@@ -94,16 +103,50 @@ export class FlashingForm extends LitElement {
     });
   }
 
-  private async fileChosen(event: Event) {
-    const file = (event.target! as HTMLInputElement).files![0];
-    const contents = await readFile(file);
+  firstUpdated(): void {
+    // Pre-select the first option
+    (
+      this.shadowRoot!.querySelector('.firmware input')! as HTMLInputElement
+    ).click();
+  }
 
+  private async firmwareUploadTypeChanged(event: Event) {
+    this.selectedFirmware = null;
+    this.firmwareUploadType = (event!.target! as HTMLInputElement)
+      .value! as FirmwareUploadType;
+
+    // The GBL file upload element will be rendered empty
+    if (this.firmwareUploadType === FirmwareUploadType.CUSTOM_GBL) {
+      return;
+    }
+
+    // Download the firmware
+    const response = await fetch(this.firmwareUploadType as string);
+
+    if (!response.ok) {
+      alert(`Failed to download firmware: ${response}`);
+      return;
+    }
+
+    const firmwareData = await response.arrayBuffer();
+
+    this.loadFirmware(firmwareData);
+  }
+
+  private async customFirmwareChosen(event: Event) {
+    const file = (event.target! as HTMLInputElement).files![0];
+    const firmwareData = await readFile(file);
+
+    this.loadFirmware(firmwareData);
+  }
+
+  private loadFirmware(buffer: ArrayBuffer) {
     const { GBLImage } = this.pyodide.pyimport(
       'universal_silabs_flasher.flasher'
     );
 
     try {
-      this.selectedFirmware = GBLImage.from_bytes(this.pyodide.toPy(contents));
+      this.selectedFirmware = GBLImage.from_bytes(this.pyodide.toPy(buffer));
     } catch (e) {
       this.selectedFirmware = undefined;
       alert(`Failed to parse image: ${e}`);
@@ -156,7 +199,6 @@ export class FlashingForm extends LitElement {
 
     await flasher.flash_firmware.callKwargs(this.selectedFirmware, {
       progress_callback: (current: number, total: number) => {
-        console.log('Firmware upload progress', current, total);
         this.uploadProgress = (100.0 * current) / total;
       },
     });
@@ -166,19 +208,70 @@ export class FlashingForm extends LitElement {
     return html`
       <main>
         <ol>
-          <li>
-            <label
-              >Choose <code>.gbl</code> firmware
-              <input type="file" accept=".gbl" @change=${this.fileChosen}
-            /></label>
+          <li class="firmware">
+              <div>Select firmware to flash:</div>
 
-            ${this.selectedFirmware
-              ? html`
-                  <div class="metadata">
-                    <code>${this.getFirmwareMetadataString()}</code>
-                  </div>
-                `
-              : ''}
+              <div>
+                <label
+                  ><input
+                    type="radio"
+                    name="firmware"
+                    .value="${FirmwareUploadType.SKYCONNECT_NCP}"
+                    .checked=${
+                      this.firmwareUploadType ===
+                      FirmwareUploadType.SKYCONNECT_NCP
+                    }
+                    @change=${this.firmwareUploadTypeChanged}
+                  />Standard</label
+                >
+              </div>
+
+              <div>
+                <label
+                  ><input
+                    type="radio"
+                    name="firmware"
+                    .value="${FirmwareUploadType.SKYCONNECT_RCP}"
+                    .checked=${
+                      this.firmwareUploadType ===
+                      FirmwareUploadType.SKYCONNECT_RCP
+                    }
+                    @change=${this.firmwareUploadTypeChanged}
+                  />Multi-PAN (beta)</label
+                >
+              </div>
+
+              <div>
+                <label
+                  ><input
+                    type="radio"
+                    name="firmware"
+                    .value="${FirmwareUploadType.CUSTOM_GBL}"
+                    .checked=${
+                      this.firmwareUploadType === FirmwareUploadType.CUSTOM_GBL
+                    }
+                    @change=${this.firmwareUploadTypeChanged}
+                  />Custom <code>.gbl</code> firmware ${
+                    this.firmwareUploadType === FirmwareUploadType.CUSTOM_GBL
+                      ? html`<input
+                          type="file"
+                          accept=".gbl"
+                          @change=${this.customFirmwareChosen}
+                        />`
+                      : ''
+                  }</label>
+              </div>
+            </fieldset>
+
+            ${
+              this.selectedFirmware
+                ? html`
+                    <div class="metadata">
+                      <code>${this.getFirmwareMetadataString()}</code>
+                    </div>
+                  `
+                : ''
+            }
           </li>
 
           <li>
@@ -192,13 +285,13 @@ export class FlashingForm extends LitElement {
               </button></label
             >
 
-            ${this.serialPort
-              ? html`
-                  <div class="metadata">
+            ${
+              this.serialPort
+                ? html`<div class="metadata">
                     <code>${JSON.stringify(this.serialPort.getInfo())}</code>
-                  </div>
-                `
-              : ''}
+                  </div>`
+                : ''
+            }
           </li>
 
           <li>
