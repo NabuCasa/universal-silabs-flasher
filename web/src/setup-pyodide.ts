@@ -37,6 +37,13 @@ async function downloadModule(
   });
 }
 
+interface PythonPackageSpec {
+  // The PyPI package name can differ from the module name
+  package: string;
+  module: string;
+  version: string;
+}
+
 export async function setupPyodide(
   onStateChange: (newState: PyodideLoadState) => any
 ): Promise<Pyodide> {
@@ -47,17 +54,29 @@ export async function setupPyodide(
   await pyodide.loadPackage('micropip');
   const micropip = pyodide.pyimport('micropip');
 
+  // Mock a few packages to significantly reduce dependencies
+  for (const spec of [
+    { package: 'aiohttp', module: 'aiohttp', version: '999.0.0' },
+    { package: 'pure_pcapy3', module: 'pure_pcapy', version: '1.0.1' },
+    { package: 'cryptography', module: 'cryptography', version: '999.0.0' },
+  ] as PythonPackageSpec[]) {
+    micropip.add_mock_package.callKwargs({
+      name: spec.package,
+      version: spec.version,
+      persistent: true,
+      modules: new Map([
+        // Allows recursive submodule imports
+        [
+          spec.module,
+          '__getattr__ = __import__("unittest.mock").mock.MagicMock()',
+        ],
+      ]),
+    });
+  }
+
   // Install dependencies
   await micropip.install([
-    // All `aio-libs` packages have been compiled as pure-Python modules
-    './assets/wheels/multidict-4.7.6-py3-none-any.whl',
-    './assets/wheels/yarl-1.8.1-py3-none-any.whl',
-    './assets/wheels/frozenlist-1.3.1-py3-none-any.whl',
-    './assets/wheels/aiosignal-1.2.0-py3-none-any.whl',
-    './assets/wheels/aiohttp-3.8.3-py3-none-any.whl',
-    // This one also did not seem to have a wheel despite being pure-Python
-    './assets/wheels/pure_pcapy3-1.0.1-py3-none-any.whl',
-    // Finally, install the main module
+    'zigpy>=0.53.1',
     './assets/wheels/universal_silabs_flasher-0.0.8-py3-none-any.whl',
   ]);
 
