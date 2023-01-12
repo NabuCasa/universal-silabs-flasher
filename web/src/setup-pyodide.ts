@@ -37,10 +37,32 @@ async function downloadModule(
   });
 }
 
+const dummyModuleLoaderPy = `
+import sys
+import unittest.mock
+
+class DummyFinder:
+    """
+    Combined module loader and finder that recursively returns Mock objects.
+    """
+
+    def __init__(self, name):
+        self.name = name
+
+    def find_module(self, fullname, path=None):
+        if fullname.startswith(self.name):
+            return self
+
+    def load_module(self, fullname):
+        return sys.modules.setdefault(fullname, unittest.mock.MagicMock(__path__=[]))
+
+sys.meta_path.append(DummyFinder(__name__))
+`.trim();
+
 interface PythonPackageSpec {
   // The PyPI package name can differ from the module name
   package: string;
-  modules: string[];
+  module: string;
   version: string;
 }
 
@@ -56,29 +78,15 @@ export async function setupPyodide(
 
   // Mock a few packages to significantly reduce dependencies
   for (const spec of [
-    { package: 'aiohttp', modules: ['aiohttp'], version: '999.0.0' },
-    { package: 'pure_pcapy3', modules: ['pure_pcapy'], version: '1.0.1' },
-    {
-      package: 'cryptography',
-      modules: [
-        'cryptography.hazmat.primitives.ciphers',
-        'cryptography.hazmat.primitives.ciphers.modes',
-        'cryptography.hazmat.primitives.ciphers.algorithms',
-      ],
-      version: '999.0.0',
-    },
+    { package: 'aiohttp', module: 'aiohttp', version: '999.0.0' },
+    { package: 'pure_pcapy3', module: 'pure_pcapy', version: '1.0.1' },
+    { package: 'cryptography', module: 'cryptography', version: '999.0.0' },
   ] as PythonPackageSpec[]) {
     micropip.add_mock_package.callKwargs({
       name: spec.package,
       version: spec.version,
       persistent: true,
-      modules: new Map(
-        // Allows recursive submodule imports
-        spec.modules.map(module => [
-          module,
-          '__getattr__ = __import__("unittest.mock").mock.MagicMock()',
-        ])
-      ),
+      modules: new Map([[spec.module, dummyModuleLoaderPy]]),
     });
   }
 
