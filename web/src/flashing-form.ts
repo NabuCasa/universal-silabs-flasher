@@ -224,7 +224,7 @@ export class FlashingForm extends LitElement {
           </li>
 
           <li class="firmware">
-              <div>Select firmware to flash:</div>
+              <div>Select firmware to install:</div>
 
               <div>
                 <label
@@ -294,12 +294,12 @@ export class FlashingForm extends LitElement {
 
           <li>
             <label
-              >Flash the firmware
+              >Install the firmware
               <button
                 ?disabled=${!this.serialPort}
                 @click=${this.flashFirmware}
               >
-                Flash
+                Install
               </button></label
             >
 
