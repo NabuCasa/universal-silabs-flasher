@@ -2,6 +2,7 @@ import nodeResolve from '@rollup/plugin-node-resolve';
 import babel from '@rollup/plugin-babel';
 import html from '@web/rollup-plugin-html';
 import { importMetaAssets } from '@web/rollup-plugin-import-meta-assets';
+import copy from 'rollup-plugin-copy';
 import esbuild from 'rollup-plugin-esbuild';
 import { generateSW } from 'rollup-plugin-workbox';
 import path from 'path';
@@ -18,6 +19,21 @@ export default {
   preserveEntrySignatures: false,
 
   plugins: [
+    /** Copy assets */
+    copy({
+      targets: [{
+        src: 'assets/firmwares/*.gbl',
+        dest: 'dist/assets/firmwares/'
+      },
+      {
+        src: 'assets/wheels/*.whl',
+        dest: 'dist/assets/wheels/'
+      },
+      {
+        src: 'assets/webserial_transport.py',
+        dest: 'dist/assets/'
+      }
+    ]}),
     /** Enable using HTML as rollup entrypoint */
     html({
       minify: true,
