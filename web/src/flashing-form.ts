@@ -103,13 +103,6 @@ export class FlashingForm extends LitElement {
     });
   }
 
-  firstUpdated(): void {
-    // Pre-select the first option
-    (
-      this.shadowRoot!.querySelector('.firmware input')! as HTMLInputElement
-    ).click();
-  }
-
   private async firmwareUploadTypeChanged(event: Event) {
     this.selectedFirmware = null;
     this.firmwareUploadType = (event!.target! as HTMLInputElement)
@@ -211,6 +204,25 @@ export class FlashingForm extends LitElement {
     return html`
       <main>
         <ol>
+          <li>
+            <label
+              >Connect to your SkyConnect
+              <button
+                @click=${this.selectSerialPort}
+              >
+                Connect
+              </button></label
+            >
+
+            ${
+              this.serialPort
+                ? html`<div class="metadata">
+                    <code>${JSON.stringify(this.serialPort.getInfo())}</code>
+                  </div>`
+                : ''
+            }
+          </li>
+
           <li class="firmware">
               <div>Select firmware to flash:</div>
 
@@ -219,6 +231,7 @@ export class FlashingForm extends LitElement {
                   ><input
                     type="radio"
                     name="firmware"
+                    ?disabled=${!this.serialPort}
                     .value="${FirmwareUploadType.SKYCONNECT_NCP}"
                     .checked=${
                       this.firmwareUploadType ===
@@ -234,6 +247,7 @@ export class FlashingForm extends LitElement {
                   ><input
                     type="radio"
                     name="firmware"
+                    ?disabled=${!this.serialPort}
                     .value="${FirmwareUploadType.SKYCONNECT_RCP}"
                     .checked=${
                       this.firmwareUploadType ===
@@ -249,6 +263,7 @@ export class FlashingForm extends LitElement {
                   ><input
                     type="radio"
                     name="firmware"
+                    ?disabled=${!this.serialPort}
                     .value="${FirmwareUploadType.CUSTOM_GBL}"
                     .checked=${
                       this.firmwareUploadType === FirmwareUploadType.CUSTOM_GBL
@@ -273,26 +288,6 @@ export class FlashingForm extends LitElement {
                       <code>${this.getFirmwareMetadataString()}</code>
                     </div>
                   `
-                : ''
-            }
-          </li>
-
-          <li>
-            <label
-              >Connect to your SkyConnect
-              <button
-                ?disabled=${!this.selectedFirmware}
-                @click=${this.selectSerialPort}
-              >
-                Connect
-              </button></label
-            >
-
-            ${
-              this.serialPort
-                ? html`<div class="metadata">
-                    <code>${JSON.stringify(this.serialPort.getInfo())}</code>
-                  </div>`
                 : ''
             }
           </li>
