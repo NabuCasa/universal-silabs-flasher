@@ -2,6 +2,14 @@ import { LitElement, html, css } from 'lit';
 import { customElement, state, query, property } from 'lit/decorators.js';
 import type { Pyodide } from './setup-pyodide';
 
+import '@material/mwc-button';
+import '@material/mwc-linear-progress';
+import '@material/mwc-formfield';
+import '@material/mwc-radio';
+import './mwc-file-upload.js';
+
+import { loadPyodideWithDialog } from './pyodide-loading-dialog.js';
+
 async function readFile(file: Blob): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -17,6 +25,12 @@ enum FirmwareUploadType {
   CUSTOM_GBL = 'custom_gbl',
 }
 
+enum UploadProgressState {
+  IDLE,
+  CONNECTING,
+  FLASHING,
+}
+
 @customElement('flashing-form')
 export class FlashingForm extends LitElement {
   static styles = css`
@@ -26,10 +40,6 @@ export class FlashingForm extends LitElement {
 
     .metadata {
       font-size: 0.8em;
-    }
-
-    progress {
-      width: 100%;
     }
 
     .debuglog {
@@ -75,33 +85,10 @@ export class FlashingForm extends LitElement {
   private serialPort?: SerialPort;
 
   @state()
-  private uploadProgress?: Number;
+  private uploadProgress: Number = 0;
 
-  connectedCallback(): void {
-    super.connectedCallback();
-
-    this.pyodide.setStdout({
-      batched: (msg: string) => {
-        console.log(msg);
-
-        const div = document.createElement('div');
-        div.classList.add('stdout');
-        div.textContent = msg;
-        this.debugLog.appendChild(div);
-      },
-    });
-
-    this.pyodide.setStderr({
-      batched: (msg: string) => {
-        console.warn(msg);
-
-        const div = document.createElement('div');
-        div.classList.add('stderr');
-        div.textContent = msg;
-        this.debugLog.appendChild(div);
-      },
-    });
-  }
+  @state()
+  private progressState: UploadProgressState = UploadProgressState.IDLE;
 
   private async firmwareUploadTypeChanged(event: Event) {
     this.selectedFirmware = null;
@@ -171,6 +158,30 @@ export class FlashingForm extends LitElement {
     } catch {
       this.serialPort = undefined;
     }
+
+    this.pyodide = await loadPyodideWithDialog();
+
+    this.pyodide.setStdout({
+      batched: (msg: string) => {
+        console.log(msg);
+
+        const div = document.createElement('div');
+        div.classList.add('stdout');
+        div.textContent = msg;
+        this.debugLog.appendChild(div);
+      },
+    });
+
+    this.pyodide.setStderr({
+      batched: (msg: string) => {
+        console.warn(msg);
+
+        const div = document.createElement('div');
+        div.classList.add('stderr');
+        div.textContent = msg;
+        this.debugLog.appendChild(div);
+      },
+    });
   }
 
   private async flashFirmware() {
@@ -187,17 +198,20 @@ export class FlashingForm extends LitElement {
       device: '/dev/webserial', // the device name is ignored
     });
 
+    this.progressState = UploadProgressState.CONNECTING;
     await flasher.probe_app_type();
     await flasher.enter_bootloader();
 
+    this.progressState = UploadProgressState.FLASHING;
+
     await flasher.flash_firmware.callKwargs(this.selectedFirmware, {
       progress_callback: (current: number, total: number) => {
-        this.uploadProgress = (100.0 * current) / total;
+        this.uploadProgress = current / total;
       },
     });
 
+    this.progressState = UploadProgressState.IDLE;
     alert('Flashing is complete!');
-    this.uploadProgress = undefined;
   }
 
   render() {
@@ -205,110 +219,95 @@ export class FlashingForm extends LitElement {
       <main>
         <ol>
           <li>
-            <label
-              >Connect to your SkyConnect
-              <button
-                @click=${this.selectSerialPort}
-              >
-                Connect
-              </button></label
-            >
+            Connect to your SkyConnect
+            <mwc-button raised @click=${this.selectSerialPort}>
+              Connect
+            </mwc-button>
 
-            ${
-              this.serialPort
-                ? html`<div class="metadata">
-                    <code>${JSON.stringify(this.serialPort.getInfo())}</code>
-                  </div>`
-                : ''
-            }
+            ${this.serialPort
+              ? html`<div class="metadata">
+                  <code>${JSON.stringify(this.serialPort.getInfo())}</code>
+                </div>`
+              : ''}
           </li>
 
           <li class="firmware">
-              <div>Select firmware to install:</div>
+            <div>Select firmware to install:</div>
 
-              <div>
-                <label
-                  ><input
-                    type="radio"
-                    name="firmware"
-                    ?disabled=${!this.serialPort}
-                    .value="${FirmwareUploadType.SKYCONNECT_NCP}"
-                    .checked=${
-                      this.firmwareUploadType ===
-                      FirmwareUploadType.SKYCONNECT_NCP
-                    }
-                    @change=${this.firmwareUploadTypeChanged}
-                  />Zigbee</label
-                >
-              </div>
+            <div>
+              <mwc-formfield label="Zigbee">
+                <mwc-radio
+                  name="firmware"
+                  ?disabled=${!this.serialPort}
+                  .value="${FirmwareUploadType.SKYCONNECT_NCP}"
+                  @change=${this.firmwareUploadTypeChanged}
+                ></mwc-radio>
+              </mwc-formfield>
+            </div>
 
-              <div>
-                <label
-                  ><input
-                    type="radio"
-                    name="firmware"
-                    ?disabled=${!this.serialPort}
-                    .value="${FirmwareUploadType.SKYCONNECT_RCP}"
-                    .checked=${
-                      this.firmwareUploadType ===
-                      FirmwareUploadType.SKYCONNECT_RCP
-                    }
-                    @change=${this.firmwareUploadTypeChanged}
-                  />Multi-PAN (beta)</label
-                >
-              </div>
+            <div>
+              <mwc-formfield label="Multi-PAN (beta)">
+                <mwc-radio
+                  name="firmware"
+                  ?disabled=${!this.serialPort}
+                  .value="${FirmwareUploadType.SKYCONNECT_RCP}"
+                  @change=${this.firmwareUploadTypeChanged}
+                ></mwc-radio>
+              </mwc-formfield>
+            </div>
 
-              <div>
-                <label
-                  ><input
-                    type="radio"
-                    name="firmware"
-                    ?disabled=${!this.serialPort}
-                    .value="${FirmwareUploadType.CUSTOM_GBL}"
-                    .checked=${
-                      this.firmwareUploadType === FirmwareUploadType.CUSTOM_GBL
-                    }
-                    @change=${this.firmwareUploadTypeChanged}
-                  />Custom <code>.gbl</code> firmware ${
-                    this.firmwareUploadType === FirmwareUploadType.CUSTOM_GBL
-                      ? html`<input
-                          type="file"
-                          accept=".gbl"
-                          @change=${this.customFirmwareChosen}
-                        />`
-                      : ''
-                  }</label>
-              </div>
-            </fieldset>
+            <div>
+              <mwc-formfield label="Upload your own firmware">
+                <mwc-radio
+                  name="firmware"
+                  ?disabled=${!this.serialPort}
+                  .value="${FirmwareUploadType.CUSTOM_GBL}"
+                  @change=${this.firmwareUploadTypeChanged}
+                ></mwc-radio>
+              </mwc-formfield>
 
-            ${
-              this.selectedFirmware
-                ? html`
-                    <div class="metadata">
-                      <code>${this.getFirmwareMetadataString()}</code>
-                    </div>
-                  `
-                : ''
-            }
+              <mwc-file-upload
+                accept=".gbl"
+                ?disabled=${this.firmwareUploadType !==
+                FirmwareUploadType.CUSTOM_GBL}
+                @change=${this.customFirmwareChosen}
+                >Upload</mwc-file-upload
+              >
+            </div>
+
+            ${this.selectedFirmware
+              ? html`
+                  <div class="metadata">
+                    <code>${this.getFirmwareMetadataString()}</code>
+                  </div>
+                `
+              : ''}
           </li>
 
           <li>
             <label
               >Install the firmware
-              <button
-                ?disabled=${!this.serialPort}
+              <mwc-button
+                raised
+                ?disabled=${!this.serialPort ||
+                this.progressState !== UploadProgressState.IDLE}
                 @click=${this.flashFirmware}
               >
                 Install
-              </button></label
+              </mwc-button></label
             >
 
             <div class="metadata">
-              <progress
-                .value=${this.serialPort ? this.uploadProgress : 0}
+              <mwc-linear-progress
+                .progress=${this.progressState === UploadProgressState.FLASHING
+                  ? this.uploadProgress
+                  : 0}
+                ?indeterminate=${[
+                  UploadProgressState.CONNECTING,
+                  UploadProgressState.FLASHING,
+                ].includes(this.progressState) && this.uploadProgress < 0.05}
                 ?disabled=${!this.serialPort}
-                max="100"
-              ></progress>
+              ></mwc-linear-progress>
             </div>
           </li>
         </ol>
