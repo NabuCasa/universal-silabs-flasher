@@ -1,6 +1,8 @@
 import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
-import './flashing-form.js';
+import './flashing-dialog.js';
+
+import '@material/mwc-button';
 
 @customElement('universal-silabs-flasher')
 class UniversalSilabsFlasher extends LitElement {
@@ -18,24 +20,6 @@ class UniversalSilabsFlasher extends LitElement {
       max-width: 600px;
       margin-left: auto;
       margin-right: auto;
-    }
-
-    main,
-    :host > section {
-      flex-grow: 1;
-      width: 100%;
-    }
-
-    li {
-      margin-top: 1em;
-    }
-
-    .metadata {
-      font-size: 0.8em;
-    }
-
-    progress {
-      width: 100%;
     }
 
     .debuglog {
@@ -63,9 +47,19 @@ class UniversalSilabsFlasher extends LitElement {
     img {
       vertical-align: middle;
     }
+
+    #webserial-unsupported {
+    }
   `;
 
+  static openFlasherDialog() {
+    const dialog = document.createElement('flashing-dialog');
+    document.body.appendChild(dialog);
+  }
+
   render() {
+    const supportsWebSerial = 'serial' in navigator;
+
     return html`
       <h1>
         <img
@@ -76,18 +70,18 @@ class UniversalSilabsFlasher extends LitElement {
       </h1>
 
       <section>
-        <p>
-          Flash new firmware to your SkyConnect! In case something doesn't work,
-          just unplug the SkyConnect and plug it back in.
-        </p>
+        <p>To get started, plug your SkyConnect into this computer.</p>
 
-        <p>
-          Note: on macOS, make sure to select
-          <code>cu.SLAB_USBtoUART</code> as the serial port.
-          <code>cu.usbserial*10</code> does not work.
-        </p>
-
-        <flashing-form></flashing-form>
+        ${supportsWebSerial
+          ? html`<mwc-button
+              raised
+              @click=${UniversalSilabsFlasher.openFlasherDialog}
+              >Connect</mwc-button
+            >`
+          : html`<p id="webserial-unsupported">
+              Unfortunately, your browser does not support Web Serial. Open this
+              page in Google Chrome or Microsoft Edge.
+            </p>`}
       </section>
     `;
   }

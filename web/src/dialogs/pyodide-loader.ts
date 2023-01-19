@@ -1,17 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { Pyodide, setupPyodide, PyodideLoadState } from './setup-pyodide.js';
+import { setupPyodide, PyodideLoadState } from '../setup-pyodide.js';
 
 import '@material/mwc-dialog';
 import '@material/mwc-button';
 import '@material/mwc-circular-progress';
 
-@customElement('pyodide-loading-dialog')
-class PyodideLoadingDialog extends LitElement {
-  public close() {
-    this.parentNode!.removeChild(this);
-  }
-
+@customElement('pyodide-loader')
+export class PyodideLoader extends LitElement {
   @state()
   private pyodideLoadState: PyodideLoadState = PyodideLoadState.LOADING_PYODIDE;
 
@@ -20,7 +16,20 @@ class PyodideLoadingDialog extends LitElement {
       this.pyodideLoadState = newLoadState;
     });
 
-    return pyodide;
+    this.dispatchEvent(
+      new CustomEvent('load', {
+        detail: {
+          pyodide,
+        },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.setupPyodide();
   }
 
   public render() {
@@ -41,21 +50,14 @@ class PyodideLoadingDialog extends LitElement {
     }
 
     return html`
-      <mwc-dialog
-        open
-        heading="Initializing installer"
-        scrimClickAction=""
-        escapeKeyAction=""
-      >
-        <h3>
-          <mwc-circular-progress
-            class="progress"
-            indeterminate
-          ></mwc-circular-progress>
-          <span class="title">${heading}</span>
-        </h3>
-        <p>This may take a minute...</p>
-      </mwc-dialog>
+      <h3>
+        <mwc-circular-progress
+          class="progress"
+          indeterminate
+        ></mwc-circular-progress>
+        <span class="title">${heading}</span>
+      </h3>
+      <p>This may take a minute...</p>
     `;
   }
 
@@ -65,17 +67,17 @@ class PyodideLoadingDialog extends LitElement {
       --mdc-dialog-max-width: 560px;
     }
 
-    mwc-dialog h3 {
+    h3 {
       display: flex;
     }
 
-    mwc-dialog h3 .progress,
-    mwc-dialog h3 .title {
+    h3 .progress,
+    h3 .title {
       align-self: center;
       display: inline-flex;
     }
 
-    mwc-dialog h3 .title {
+    h3 .title {
       margin-left: 1em;
     }
   `;
@@ -83,16 +85,6 @@ class PyodideLoadingDialog extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'pyodide-loading-dialog': PyodideLoadingDialog;
+    'pyodide-loader': PyodideLoader;
   }
-}
-
-export async function loadPyodideWithDialog(): Promise<Pyodide> {
-  const dialog = document.createElement('pyodide-loading-dialog');
-  document.body.appendChild(dialog);
-
-  const pyodide = await dialog.setupPyodide();
-  dialog.close();
-
-  return pyodide;
 }
