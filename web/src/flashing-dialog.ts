@@ -38,8 +38,8 @@ enum FlashingStep {
 @customElement('flashing-dialog')
 export class FlashingDialog extends LitElement {
   static styles = css`
-    li {
-      margin-top: 1em;
+    mwc-dialog {
+      --mdc-dialog-min-width: 330px;
     }
 
     .metadata {
@@ -65,6 +65,10 @@ export class FlashingDialog extends LitElement {
       font-size: 0.8em;
       line-height: 1.2;
       overflow: auto;
+    }
+
+    span.progress-text {
+      font-size: 0.8em;
     }
   `;
 
@@ -265,7 +269,11 @@ export class FlashingDialog extends LitElement {
       headingText = 'Detecting firmware';
       content = html`<p>
         <p class="spinner"><mwc-circular-progress indeterminate density=8></mwc-circular-progress></p>
-        Detecting the current firmware...
+        <p>
+          Detecting the current firmware.
+          <br />
+          This can take a few seconds...
+        </p>
       </p>`;
     } else if (this.flashingStep === FlashingStep.PROBING_FAILED) {
       headingText = 'Connection failed';
@@ -284,8 +292,7 @@ export class FlashingDialog extends LitElement {
       headingText = 'Connection successful';
       content = html`<p>
           Current firmware type: <code>${this.pyFlasher.app_type.name}</code>
-        </p>
-        <p>
+          <br />
           Current firmware version: <code>${this.pyFlasher.app_version}</code>
         </p>
 
@@ -295,10 +302,7 @@ export class FlashingDialog extends LitElement {
     } else if (this.flashingStep === FlashingStep.SELECT_FIRMWARE) {
       headingText = 'Select firmware';
       content = html`
-        <p>
-          Select new firmware to install onto your SkyConnect. The default
-          firmware is the Zigbee firmware.
-        </p>
+        <p>Select new firmware to install to your SkyConnect.</p>
 
         <firmware-selector
           .pyodide=${this.pyodide}
@@ -330,7 +334,9 @@ export class FlashingDialog extends LitElement {
           or close this browser window.
         </p>
         <p>
-          <span>Progress: ${(+this.uploadProgress * 100).toFixed(1)}%</span>
+          <span class="progress-text"
+            >Progress: ${(+this.uploadProgress * 100).toFixed(1)}%</span
+          >
           <mwc-linear-progress
             .progress=${this.uploadProgress}
             ?indeterminate=${this.uploadProgress < 0.01}
@@ -352,7 +358,7 @@ export class FlashingDialog extends LitElement {
     } else if (this.flashingStep === FlashingStep.DONE) {
       headingText = 'Installation success';
       content = html`
-        <p>Firmware installation is successful.</p>
+        <p>Firmware has been successfully installed.</p>
 
         <mwc-button slot="primaryAction" dialogAction="close">
           Done

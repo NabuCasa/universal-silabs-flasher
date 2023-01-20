@@ -13,7 +13,6 @@ class UniversalSilabsFlasher extends LitElement {
       align-items: center;
       justify-content: flex-start;
       font-size: 1em;
-      background-color: var(--universal-silabs-flasher-background-color);
 
       padding: 5em;
 
@@ -22,33 +21,8 @@ class UniversalSilabsFlasher extends LitElement {
       margin-right: auto;
     }
 
-    .debuglog {
-      width: 100%;
-      font-size: 0.8em;
-
-      min-height: 100px;
-      max-height: 500px;
-
-      cursor: text;
-      user-select: text;
-
-      border: 1px solid gray;
-      background-color: white;
-      border-radius: 1em;
-
-      padding: 1em;
-      overflow: auto;
-    }
-
-    .stderr {
-      color: firebrick;
-    }
-
     img {
       vertical-align: middle;
-    }
-
-    #webserial-unsupported {
     }
   `;
 

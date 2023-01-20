@@ -7,6 +7,8 @@ import './usf-file-upload.js';
 
 import '@material/mwc-dialog';
 import '@material/mwc-button';
+import '@material/mwc-formfield';
+import '@material/mwc-radio';
 import '@material/mwc-circular-progress';
 
 type GBLImage = any;
@@ -42,6 +44,12 @@ export class FirmwareSelector extends LitElement {
         composed: true,
       })
     );
+  }
+
+  firstUpdated() {
+    this.renderRoot
+      .querySelector('mwc-radio')!
+      .dispatchEvent(new Event('change'));
   }
 
   private async firmwareUploadTypeChanged(event: Event) {
@@ -100,6 +108,7 @@ export class FirmwareSelector extends LitElement {
             name="firmware"
             .value="${FirmwareUploadType.SKYCONNECT_NCP}"
             @change=${this.firmwareUploadTypeChanged}
+            checked
           ></mwc-radio>
         </mwc-formfield>
       </div>

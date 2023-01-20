@@ -36,7 +36,7 @@ export class PyodideLoader extends LitElement {
     const steps = [];
 
     if (this.pyodideLoadState >= PyodideLoadState.LOADING_PYODIDE) {
-      steps.push(html`<li>Loading Pyodide</li>`);
+      steps.push(html`<li>Loading Python</li>`);
     }
 
     if (this.pyodideLoadState >= PyodideLoadState.INSTALLING_DEPENDENCIES) {
