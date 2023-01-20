@@ -3,7 +3,7 @@ import { customElement, query, property } from 'lit/decorators.js';
 
 import '@material/mwc-button';
 
-@customElement('mwc-file-upload')
+@customElement('usf-file-upload')
 export class FileUpload extends LitElement {
   fileChanged(e: Event) {
     this.requestUpdate();
@@ -62,6 +62,6 @@ export class FileUpload extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'mwc-file-upload': FileUpload;
+    'usf-file-upload': FileUpload;
   }
 }

@@ -1,10 +1,10 @@
 export type Pyodide = any;
 
 export enum PyodideLoadState {
-  LOADING_PYODIDE,
-  INSTALLING_DEPENDENCIES,
-  INSTALLING_TRANSPORT,
-  READY,
+  LOADING_PYODIDE = 0,
+  INSTALLING_DEPENDENCIES = 1,
+  INSTALLING_TRANSPORT = 2,
+  READY = 3,
 }
 
 async function loadPyodide(): Promise<Pyodide> {

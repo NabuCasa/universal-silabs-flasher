@@ -1,16 +1,19 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, state, query, property } from 'lit/decorators.js';
+import { customElement, state, property } from 'lit/decorators.js';
 import type { Pyodide } from './setup-pyodide';
 
 import '@material/mwc-button';
+import '@material/mwc-icon-button';
 import '@material/mwc-linear-progress';
 import '@material/mwc-formfield';
 import '@material/mwc-radio';
 import '@material/mwc-dialog';
 import './mwc-file-upload.js';
 
-import './dialogs/pyodide-loader.js';
-import './dialogs/firmware-selector.js';
+import './pyodide-loader.js';
+import './firmware-selector.js';
+
+import { downloadFile } from './utils.js';
 
 enum UploadProgressState {
   IDLE,
@@ -28,6 +31,7 @@ enum FlashingStep {
   PROBING_FAILED,
   SELECT_FIRMWARE,
   INSTALLING,
+  INSTALL_FAILED,
   DONE,
 }
 
@@ -42,41 +46,35 @@ export class FlashingDialog extends LitElement {
       font-size: 0.8em;
     }
 
-    .debuglog {
-      width: 100%;
-      font-size: 0.8em;
-
-      min-height: 100px;
-      max-height: 500px;
-
-      cursor: text;
-      user-select: text;
-
-      border: 1px solid gray;
-      background-color: white;
-      border-radius: 1em;
-
-      padding: 1em;
-      overflow: auto;
-    }
-
-    .stderr {
-      color: firebrick;
-    }
-
     img {
       vertical-align: middle;
     }
-  `;
 
-  @query('.debuglog')
-  private debugLog!: HTMLTextAreaElement;
+    mwc-icon-button[icon='close'] {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+    }
+
+    p.spinner {
+      text-align: center;
+      font-size: 2em;
+    }
+
+    p.firmware-metadata {
+      font-size: 0.8em;
+      line-height: 1.2;
+      overflow: auto;
+    }
+  `;
 
   @state()
   private flashingStep: FlashingStep = FlashingStep.IDLE;
 
   @property()
   public pyodide?: Pyodide;
+
+  private debugLog: string = '';
 
   @state()
   private selectedFirmware?: any;
@@ -97,6 +95,15 @@ export class FlashingDialog extends LitElement {
 
     // Immediately open the serial port selection interface on connect
     this.selectSerialPort();
+  }
+
+  public firstUpdated(changedProperties: Map<string, any>) {
+    super.firstUpdated(changedProperties);
+
+    this.shadowRoot!.querySelector('mwc-dialog')!.addEventListener(
+      'close',
+      this.close
+    );
   }
 
   private getFirmwareMetadataString(): string {
@@ -131,22 +138,14 @@ export class FlashingDialog extends LitElement {
     this.pyodide.setStdout({
       batched: (msg: string) => {
         console.log(msg);
-
-        const div = document.createElement('div');
-        div.classList.add('stdout');
-        div.textContent = msg;
-        this.debugLog.appendChild(div);
+        this.debugLog += `${msg}\n`;
       },
     });
 
     this.pyodide.setStderr({
       batched: (msg: string) => {
         console.warn(msg);
-
-        const div = document.createElement('div');
-        div.classList.add('stderr');
-        div.textContent = msg;
-        this.debugLog.appendChild(div);
+        this.debugLog += `${msg}\n`;
       },
     });
 
@@ -173,7 +172,7 @@ export class FlashingDialog extends LitElement {
 
     try {
       await this.pyFlasher.probe_app_type();
-    } catch {
+    } catch (e) {
       this.pyFlasher = undefined;
       this.serialPort = undefined;
 
@@ -196,65 +195,93 @@ export class FlashingDialog extends LitElement {
     this.flashingStep = FlashingStep.INSTALLING;
     await this.pyFlasher.enter_bootloader();
 
-    await this.pyFlasher.flash_firmware.callKwargs(this.selectedFirmware, {
-      progress_callback: (current: number, total: number) => {
-        this.uploadProgress = current / total;
-      },
-    });
-
-    this.flashingStep = FlashingStep.DONE;
+    try {
+      await this.pyFlasher.flash_firmware.callKwargs(this.selectedFirmware, {
+        progress_callback: (current: number, total: number) => {
+          this.uploadProgress = current / total;
+        },
+      });
+      this.flashingStep = FlashingStep.DONE;
+    } catch (e) {
+      this.flashingStep = FlashingStep.INSTALL_FAILED;
+    }
   }
 
-  private close() {
+  private async close() {
+    if (this.serialPort) {
+      await this.serialPort.close();
+    }
+
     this.parentNode!.removeChild(this);
+  }
+
+  private showDebugLog() {
+    const debugText = `data:text/plain;charset=utf-8,${encodeURIComponent(
+      this.debugLog
+    )}`;
+
+    downloadFile(debugText, 'silabs_flasher.log');
   }
 
   render() {
     let content = html``;
-    let heading = 'Connecting';
+    let headingText = 'Connecting';
+    let showDebugLogButton = true;
+    let showCloseButton = true;
 
     if (this.flashingStep === FlashingStep.SELECTING_PORT) {
-      heading = 'Select a serial port';
+      showDebugLogButton = false;
+      headingText = 'Select a serial port';
       content = html`<p>
-        <mwc-circular-progress indeterminate></mwc-circular-progress> Waiting
-        for serial port...
+        <p class="spinner"><mwc-circular-progress indeterminate density=8></mwc-circular-progress></p>
+        <p>Plug in and select your SkyConnect</p>
       </p>`;
     } else if (this.flashingStep === FlashingStep.PORT_SELECTION_CANCELLED) {
-      heading = 'Serial port was not selected';
+      showDebugLogButton = false;
+      headingText = 'Serial port was not selected';
       content = html`<p>
           If you didn't select a serial port because the SkyConnect was missing,
-          make sure the USB port it's plugged into works. If you are using
-          Windows or macOS, sure you have installed the
+          make sure the USB port it's plugged into works and the SkyConnect is
+          detected by your operating system.
+        </p>
+        <p>
+          If you are using Windows or macOS, install the
           <a
             href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers?tab=downloads"
             >Silicon Labs CP2102 driver</a
           >.
         </p>
 
-        <mwc-button slot="primaryAction" @click=${this.close}>
-          Done
+        <mwc-button slot="primaryAction" @click=${this.selectSerialPort}>
+          Retry
         </mwc-button> `;
     } else if (this.flashingStep === FlashingStep.LOADING_PYODIDE) {
-      heading = 'Loading environment';
+      showDebugLogButton = false;
+      headingText = 'Loading environment';
       content = html`<pyodide-loader
         @load=${this.onPyodideLoaded}
       ></pyodide-loader>`;
     } else if (this.flashingStep === FlashingStep.PROBING) {
-      heading = 'Detecting current firmware';
+      headingText = 'Detecting firmware';
       content = html`<p>
-        <mwc-circular-progress indeterminate></mwc-circular-progress> Detecting
-        the current firmware...
+        <p class="spinner"><mwc-circular-progress indeterminate density=8></mwc-circular-progress></p>
+        Detecting the current firmware...
       </p>`;
     } else if (this.flashingStep === FlashingStep.PROBING_FAILED) {
-      heading = 'Connection failed';
-      content = html`<p>
-        The running firmware could not be detected. Make sure the USB port works
-        and if you are using a USB extension cable, make sure the cable can
-        transfer data. Unplug the SkyConnect and plug it back in to reset it and
-        to try again.
-      </p>`;
+      headingText = 'Connection failed';
+      content = html`<p>The running firmware could not be detected.</p>
+
+        <p>
+          Make sure the USB port works and if you are using a USB extension
+          cable, make sure the cable can transfer data. Unplug the SkyConnect
+          and plug it back in to reset and try again.
+        </p>
+
+        <mwc-button slot="primaryAction" @click=${this.selectSerialPort}>
+          Retry
+        </mwc-button>`;
     } else if (this.flashingStep === FlashingStep.PROBING_COMPLETE) {
-      heading = 'Connection successful';
+      headingText = 'Connection successful';
       content = html`<p>
           Current firmware type: <code>${this.pyFlasher.app_type.name}</code>
         </p>
@@ -266,15 +293,20 @@ export class FlashingDialog extends LitElement {
           Next
         </mwc-button> `;
     } else if (this.flashingStep === FlashingStep.SELECT_FIRMWARE) {
-      heading = 'Select new firmware to install';
+      headingText = 'Select firmware';
       content = html`
+        <p>
+          Select new firmware to install onto your SkyConnect. The default
+          firmware is the Zigbee firmware.
+        </p>
+
         <firmware-selector
           .pyodide=${this.pyodide}
           @firmwareLoaded=${this.onFirmwareLoaded}
         ></firmware-selector>
 
         ${this.selectedFirmware
-          ? html`<p>
+          ? html`<p class="firmware-metadata">
               <code>${this.getFirmwareMetadataString()}</code>
             </p>`
           : ''}
@@ -288,11 +320,14 @@ export class FlashingDialog extends LitElement {
         </mwc-button>
       `;
     } else if (this.flashingStep === FlashingStep.INSTALLING) {
-      heading = 'Installing firmware';
+      // Hide the close button to prevent it from being accidentally clicked during flashing.
+      // The bootloader is resilient so nothing will actually break that can't be fixed by retrying.
+      showCloseButton = false;
+      headingText = 'Installing firmware';
       content = html`
         <p>
-          The new firmware is now installing. Do not disconnect the device or
-          close this browser window!
+          The new firmware is now installing. Do not disconnect the SkyConnect
+          or close this browser window.
         </p>
         <p>
           <span>Progress: ${(+this.uploadProgress * 100).toFixed(1)}%</span>
@@ -302,12 +337,24 @@ export class FlashingDialog extends LitElement {
           ></mwc-linear-progress>
         </p>
       `;
+    } else if (this.flashingStep === FlashingStep.INSTALL_FAILED) {
+      headingText = 'Installation failed';
+      content = html`
+        <p>
+          Firmware installation failed. Unplug your SkyConnect and plug it back
+          in to retry.
+        </p>
+
+        <mwc-button slot="primaryAction" @click=${this.selectSerialPort}>
+          Retry
+        </mwc-button>
+      `;
     } else if (this.flashingStep === FlashingStep.DONE) {
-      heading = 'Installation success';
+      headingText = 'Installation success';
       content = html`
         <p>Firmware installation is successful.</p>
 
-        <mwc-button slot="primaryAction" @click=${this.close}>
+        <mwc-button slot="primaryAction" dialogAction="close">
           Done
         </mwc-button>
       `;
@@ -316,17 +363,27 @@ export class FlashingDialog extends LitElement {
     return html`
       <mwc-dialog
         open
-        heading="${heading}"
+        heading="${headingText}"
         scrimClickAction=""
         escapeKeyAction=""
       >
+        ${showCloseButton
+          ? html`
+              <mwc-icon-button
+                icon="close"
+                dialogAction="close"
+              ></mwc-icon-button>
+            `
+          : ''}
         ${content}
+        ${showDebugLogButton
+          ? html`
+              <mwc-button slot="secondaryAction" @click=${this.showDebugLog}>
+                Debug Log
+              </mwc-button>
+            `
+          : ''}
       </mwc-dialog>
-
-      <section>
-        <h3>Debug Log</h3>
-        <pre><div class="debuglog"></div></pre>
-      </section>
     `;
   }
 }

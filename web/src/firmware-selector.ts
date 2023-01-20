@@ -2,7 +2,8 @@ import { LitElement, html, css } from 'lit';
 import { customElement, state, property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 
-import type { Pyodide } from '../setup-pyodide.js';
+import type { Pyodide } from './setup-pyodide.js';
+import './usf-file-upload.js';
 
 import '@material/mwc-dialog';
 import '@material/mwc-button';
@@ -94,7 +95,7 @@ export class FirmwareSelector extends LitElement {
   public render() {
     return html`
       <div>
-        <mwc-formfield label="Zigbee">
+        <mwc-formfield label="Zigbee (EZSP)">
           <mwc-radio
             name="firmware"
             .value="${FirmwareUploadType.SKYCONNECT_NCP}"
@@ -104,7 +105,7 @@ export class FirmwareSelector extends LitElement {
       </div>
 
       <div>
-        <mwc-formfield label="Multi-PAN (beta)">
+        <mwc-formfield label="Multi-PAN (RCP)">
           <mwc-radio
             name="firmware"
             .value="${FirmwareUploadType.SKYCONNECT_RCP}"
@@ -122,14 +123,14 @@ export class FirmwareSelector extends LitElement {
           ></mwc-radio>
         </mwc-formfield>
 
-        <mwc-file-upload
+        <usf-file-upload
           class=${classMap({
             hidden: this.firmwareUploadType !== FirmwareUploadType.CUSTOM_GBL,
           })}
           accept=".gbl"
           ?disabled=${this.firmwareUploadType !== FirmwareUploadType.CUSTOM_GBL}
           @change=${this.customFirmwareChosen}
-          >Upload</mwc-file-upload
+          >Upload</usf-file-upload
         >
       </div>
     `;

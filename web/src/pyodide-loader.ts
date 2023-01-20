@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { setupPyodide, PyodideLoadState } from '../setup-pyodide.js';
+import { setupPyodide, PyodideLoadState } from './setup-pyodide.js';
 
 import '@material/mwc-dialog';
 import '@material/mwc-button';
@@ -33,52 +33,48 @@ export class PyodideLoader extends LitElement {
   }
 
   public render() {
-    let heading;
+    const steps = [];
 
-    if (this.pyodideLoadState === PyodideLoadState.LOADING_PYODIDE) {
-      heading = html`Loading Pyodide`;
-    } else if (
-      this.pyodideLoadState === PyodideLoadState.INSTALLING_DEPENDENCIES
-    ) {
-      heading = html`Installing Python dependencies`;
-    } else if (
-      this.pyodideLoadState === PyodideLoadState.INSTALLING_TRANSPORT
-    ) {
-      heading = html`Setting up serial transport`;
-    } else {
-      heading = html`Loading`;
+    if (this.pyodideLoadState >= PyodideLoadState.LOADING_PYODIDE) {
+      steps.push(html`<li>Loading Pyodide</li>`);
+    }
+
+    if (this.pyodideLoadState >= PyodideLoadState.INSTALLING_DEPENDENCIES) {
+      steps.push(html`<li>Installing dependencies</li>`);
+    }
+
+    if (this.pyodideLoadState >= PyodideLoadState.INSTALLING_TRANSPORT) {
+      steps.push(html`<li>Setting up transport</li>`);
+    }
+
+    if (this.pyodideLoadState >= PyodideLoadState.READY) {
+      steps.push(html`<li>Initializing</li>`);
     }
 
     return html`
-      <h3>
+      <p>This may take a minute...</p>
+
+      <div id="container">
         <mwc-circular-progress
           class="progress"
           indeterminate
+          density="8"
         ></mwc-circular-progress>
-        <span class="title">${heading}</span>
-      </h3>
-      <p>This may take a minute...</p>
+        <ol>
+          ${steps}
+        </ol>
+      </div>
     `;
   }
 
   static styles = css`
-    :host {
-      --mdc-dialog-min-width: 450px;
-      --mdc-dialog-max-width: 560px;
-    }
-
-    h3 {
+    #container {
       display: flex;
+      font-size: 0.9em;
     }
 
-    h3 .progress,
-    h3 .title {
+    #container > * {
       align-self: center;
-      display: inline-flex;
-    }
-
-    h3 .title {
-      margin-left: 1em;
     }
   `;
 }
