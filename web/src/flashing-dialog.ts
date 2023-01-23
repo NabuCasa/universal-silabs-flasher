@@ -147,7 +147,14 @@ export class FlashingDialog extends LitElement {
     this.flashingStep = FlashingStep.SELECTING_PORT;
 
     try {
-      this.serialPort = await navigator.serial.requestPort();
+      this.serialPort = await navigator.serial.requestPort({
+        filters: [
+          {
+            usbProductId: 60000,
+            usbVendorId: 4292,
+          },
+        ],
+      });
     } catch {
       this.serialPort = undefined;
       this.flashingStep = FlashingStep.PORT_SELECTION_CANCELLED;
