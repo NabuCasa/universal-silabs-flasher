@@ -110,16 +110,37 @@ export class FlashingDialog extends LitElement {
     );
   }
 
-  private getFirmwareMetadataString(): string {
+  private getFirmwareMetadata() {
     if (!this.selectedFirmware) {
-      return '';
+      return html``;
     }
 
+    let metadata;
+
     try {
-      return this.selectedFirmware.get_nabucasa_metadata().toString();
+      metadata = this.selectedFirmware.get_nabucasa_metadata();
     } catch (e) {
-      return 'unknown';
+      return html`<code>unknown</code>`;
     }
+
+    return html`
+      <table>
+        <tbody>
+          <tr>
+            <th>Type</th>
+            <td>${metadata.fw_type.name}</td>
+          </tr>
+          <tr>
+            <th>SDK Version</th>
+            <td>${metadata.sdk_version}</td>
+          </tr>
+          <tr>
+            <th>EZSP Version</th>
+            <td>${metadata.ezsp_version || '-'}</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
   }
 
   private async selectSerialPort() {
@@ -312,9 +333,7 @@ export class FlashingDialog extends LitElement {
         ></firmware-selector>
 
         ${this.selectedFirmware
-          ? html`<p class="firmware-metadata">
-              <code>${this.getFirmwareMetadataString()}</code>
-            </p>`
+          ? html`<p class="firmware-metadata">${this.getFirmwareMetadata()}</p>`
           : ''}
 
         <mwc-button
