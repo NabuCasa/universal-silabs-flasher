@@ -252,6 +252,8 @@ export class FlashingDialog extends LitElement {
           If you are using Windows or macOS, install the
           <a
             href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers?tab=downloads"
+            target="_blank"
+            rel="noreferrer noopener"
             >Silicon Labs CP2102 driver</a
           >.
         </p>
