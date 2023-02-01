@@ -8,7 +8,7 @@ import '@material/mwc-linear-progress';
 import '@material/mwc-formfield';
 import '@material/mwc-radio';
 import '@material/mwc-dialog';
-import './mwc-file-upload.js';
+import './usf-file-upload.js';
 
 import './pyodide-loader.js';
 import './firmware-selector.js';

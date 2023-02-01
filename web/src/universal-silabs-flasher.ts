@@ -37,10 +37,10 @@ class UniversalSilabsFlasher extends LitElement {
     return html`
       <h1>
         <img
-          src="https://skyconnect.home-assistant.io/static/skyconnect_header.png"
+          src="https://skyconnect.home-assistant.io/images/skyconnect-logo.png"
           alt="SkyConnect logo"
         />
-        SkyConnect Flasher
+        Flasher
       </h1>
 
       <section>
