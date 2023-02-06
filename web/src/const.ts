@@ -4,6 +4,12 @@ export enum FirmwareType {
   ZIGBEE_NCP_RCP_UART_802154 = 'zigbee-ncp-rcp-uart-802154',
 }
 
+export const FirmwareIcons = {
+  [FirmwareType.NCP_UART_HW]: mdiZigbee,
+  [FirmwareType.RCP_UART_802154]: mdiMulticast,
+  [FirmwareType.ZIGBEE_NCP_RCP_UART_802154]: mdiMulticast,
+};
+
 export interface USBFilter {
   pid: number;
   vid: number;

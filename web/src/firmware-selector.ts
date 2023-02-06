@@ -1,10 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state, property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
+import { mdiFileUpload } from '@mdi/js';
 
 import type { Pyodide } from './setup-pyodide';
+import { FirmwareIcons } from './const';
 import type { Manifest } from './const';
 import './usf-file-upload';
+import './usf-icon';
 
 import '@material/mwc-dialog';
 import '@material/mwc-button';
@@ -111,10 +114,12 @@ export class FirmwareSelector extends LitElement {
               <mwc-formfield label="${fw.name}">
                 <mwc-radio
                   name="firmware"
-                  .value="${index}"
+                  .value=${index}
                   @change=${this.firmwareUploadTypeChanged}
                   ?checked=${index === 0}
                 ></mwc-radio>
+
+                <usf-icon .icon=${FirmwareIcons[fw.type]}></usf-icon>
               </mwc-formfield>
             </div>
           `
@@ -129,6 +134,8 @@ export class FirmwareSelector extends LitElement {
                   @change=${this.firmwareUploadTypeChanged}
                   ?checked=${this.manifest.firmwares.length === 0}
                 ></mwc-radio>
+
+                <usf-icon .icon=${mdiFileUpload}></usf-icon>
               </mwc-formfield>
 
               <usf-file-upload
@@ -153,6 +160,10 @@ export class FirmwareSelector extends LitElement {
 
     mwc-formfield {
       display: block;
+    }
+
+    usf-icon {
+      margin-right: 1em;
     }
   `;
 }
