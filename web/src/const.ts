@@ -1,3 +1,17 @@
+import { mdiMulticast, mdiZigbee } from '@mdi/js';
+
+export enum ApplicationType {
+  GECKO_BOOTLOADER = 'bootloader',
+  CPC = 'cpc',
+  EZSP = 'ezsp',
+}
+
+export const ApplicationNames = {
+  [ApplicationType.GECKO_BOOTLOADER]: 'Bootloader (recovery)',
+  [ApplicationType.CPC]: 'CPC',
+  [ApplicationType.EZSP]: 'Zigbee',
+};
+
 export enum FirmwareType {
   NCP_UART_HW = 'ncp-uart-hw',
   RCP_UART_802154 = 'rcp-uart-802154',
@@ -8,6 +22,13 @@ export const FirmwareIcons = {
   [FirmwareType.NCP_UART_HW]: mdiZigbee,
   [FirmwareType.RCP_UART_802154]: mdiMulticast,
   [FirmwareType.ZIGBEE_NCP_RCP_UART_802154]: mdiMulticast,
+};
+
+export const FirmwareNames = {
+  [FirmwareType.NCP_UART_HW]: 'Zigbee (EZSP)',
+  [FirmwareType.RCP_UART_802154]: 'Multi-PAN (RCP)',
+  [FirmwareType.ZIGBEE_NCP_RCP_UART_802154]:
+    'Multi-PAN (Zigbee NCP & Thread RCP)',
 };
 
 export interface USBFilter {

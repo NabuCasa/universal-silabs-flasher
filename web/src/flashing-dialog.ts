@@ -12,7 +12,8 @@ import './usf-file-upload';
 
 import './pyodide-loader';
 import './firmware-selector';
-import type { Manifest } from './const';
+import type { Manifest, FirmwareType } from './const';
+import { FirmwareNames, ApplicationNames, ApplicationType } from './const';
 
 import { downloadFile } from './utils';
 
@@ -132,7 +133,10 @@ export class FlashingDialog extends LitElement {
         <tbody>
           <tr>
             <th>Type</th>
-            <td>${metadata.fw_type.name}</td>
+            <td>
+              ${FirmwareNames[metadata.fw_type.value as FirmwareType] ||
+              'unknown'}
+            </td>
           </tr>
           <tr>
             <th>SDK Version</th>
@@ -323,7 +327,12 @@ export class FlashingDialog extends LitElement {
     } else if (this.flashingStep === FlashingStep.PROBING_COMPLETE) {
       headingText = 'Connection successful';
       content = html`<p>
-          Current firmware type: <code>${this.pyFlasher.app_type.name}</code>
+          Current firmware type:
+          <code
+            >${ApplicationNames[
+              this.pyFlasher.app_type.value as ApplicationType
+            ] || 'unknown'}</code
+          >
           <br />
           Current firmware version: <code>${this.pyFlasher.app_version}</code>
         </p>
