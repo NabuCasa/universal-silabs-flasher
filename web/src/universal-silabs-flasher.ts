@@ -1,33 +1,21 @@
 import { LitElement, html, css } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { customElement, property } from 'lit/decorators.js';
+import type { Manifest } from './const';
 import './flashing-dialog.js';
 
 import '@material/mwc-button';
 
 @customElement('universal-silabs-flasher')
 class UniversalSilabsFlasher extends LitElement {
-  static styles = css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      font-size: 1em;
+  @property()
+  public manifest!: string;
 
-      padding: 5em;
+  async openFlasherDialog() {
+    const response = await fetch(this.manifest);
+    const manifest: Manifest = await response.json();
 
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    img {
-      vertical-align: middle;
-    }
-  `;
-
-  static openFlasherDialog() {
     const dialog = document.createElement('flashing-dialog');
+    dialog.manifest = manifest;
     document.body.appendChild(dialog);
   }
 
@@ -47,9 +35,7 @@ class UniversalSilabsFlasher extends LitElement {
         <p>To get started, plug your SkyConnect into this computer.</p>
 
         ${supportsWebSerial
-          ? html`<mwc-button
-              raised
-              @click=${UniversalSilabsFlasher.openFlasherDialog}
+          ? html`<mwc-button raised @click=${this.openFlasherDialog}
               >Connect</mwc-button
             >`
           : html`<p id="webserial-unsupported">
@@ -59,6 +45,26 @@ class UniversalSilabsFlasher extends LitElement {
       </section>
     `;
   }
+
+  static styles = css`
+    :host {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      font-size: 1em;
+
+      padding: 5em;
+
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    img {
+      vertical-align: middle;
+    }
+  `;
 }
 
 declare global {

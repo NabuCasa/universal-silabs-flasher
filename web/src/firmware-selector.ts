@@ -3,6 +3,7 @@ import { customElement, state, property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 
 import type { Pyodide } from './setup-pyodide.js';
+import type { Manifest } from './const';
 import './usf-file-upload.js';
 
 import '@material/mwc-dialog';
@@ -12,12 +13,7 @@ import '@material/mwc-radio';
 import '@material/mwc-circular-progress';
 
 type GBLImage = any;
-
-enum FirmwareUploadType {
-  SKYCONNECT_NCP = './assets/firmwares/NabuCasa_SkyConnect_EZSP_v7.1.3.0_ncp-uart-hw_115200.gbl',
-  SKYCONNECT_RCP = './assets/firmwares/NabuCasa_SkyConnect_RCP_v4.2.0_rcp-uart-hw-802154_115200.gbl',
-  CUSTOM_GBL = 'custom_gbl',
-}
+const CUSTOM_UPLOAD_INDEX = 9999;
 
 async function readFile(file: Blob): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
@@ -33,8 +29,11 @@ export class FirmwareSelector extends LitElement {
   @property()
   public pyodide: Pyodide;
 
+  @property()
+  public manifest!: Manifest;
+
   @state()
-  private firmwareUploadType?: FirmwareUploadType;
+  private firmwareUploadIndex: number = 0;
 
   private firmwareLoaded(firmware?: GBLImage) {
     this.dispatchEvent(
@@ -53,18 +52,21 @@ export class FirmwareSelector extends LitElement {
   }
 
   private async firmwareUploadTypeChanged(event: Event) {
-    this.firmwareUploadType = (event!.target! as HTMLInputElement)
-      .value! as FirmwareUploadType;
+    this.firmwareUploadIndex = parseInt(
+      (event!.target! as HTMLInputElement).value!,
+      10
+    );
 
     // The GBL file upload element will be rendered empty
-    if (this.firmwareUploadType === FirmwareUploadType.CUSTOM_GBL) {
+    if (this.firmwareUploadIndex === CUSTOM_UPLOAD_INDEX) {
       this.firmwareLoaded(undefined);
 
       return;
     }
 
     // Download the firmware
-    const response = await fetch(this.firmwareUploadType as string);
+    const firmware = this.manifest.firmwares[this.firmwareUploadIndex];
+    const response = await fetch(firmware.url);
 
     if (!response.ok) {
       alert(`Failed to download firmware: ${response}`);
@@ -102,46 +104,45 @@ export class FirmwareSelector extends LitElement {
 
   public render() {
     return html`
-      <div>
-        <mwc-formfield label="Zigbee (EZSP)">
-          <mwc-radio
-            name="firmware"
-            .value="${FirmwareUploadType.SKYCONNECT_NCP}"
-            @change=${this.firmwareUploadTypeChanged}
-            checked
-          ></mwc-radio>
-        </mwc-formfield>
-      </div>
+      ${this.manifest.firmwares.map(
+        (fw, index) =>
+          html`
+            <div>
+              <mwc-formfield label="${fw.name}">
+                <mwc-radio
+                  name="firmware"
+                  .value="${index}"
+                  @change=${this.firmwareUploadTypeChanged}
+                  ?checked=${index === 0}
+                ></mwc-radio>
+              </mwc-formfield>
+            </div>
+          `
+      )}
+      ${this.manifest.allow_custom_firmware_upload
+        ? html`
+            <div>
+              <mwc-formfield label="Upload your own firmware">
+                <mwc-radio
+                  name="firmware"
+                  .value="${CUSTOM_UPLOAD_INDEX}"
+                  @change=${this.firmwareUploadTypeChanged}
+                  ?checked=${this.manifest.firmwares.length === 0}
+                ></mwc-radio>
+              </mwc-formfield>
 
-      <div>
-        <mwc-formfield label="Multi-PAN (RCP)">
-          <mwc-radio
-            name="firmware"
-            .value="${FirmwareUploadType.SKYCONNECT_RCP}"
-            @change=${this.firmwareUploadTypeChanged}
-          ></mwc-radio>
-        </mwc-formfield>
-      </div>
-
-      <div>
-        <mwc-formfield label="Upload your own firmware">
-          <mwc-radio
-            name="firmware"
-            .value="${FirmwareUploadType.CUSTOM_GBL}"
-            @change=${this.firmwareUploadTypeChanged}
-          ></mwc-radio>
-        </mwc-formfield>
-
-        <usf-file-upload
-          class=${classMap({
-            hidden: this.firmwareUploadType !== FirmwareUploadType.CUSTOM_GBL,
-          })}
-          accept=".gbl"
-          ?disabled=${this.firmwareUploadType !== FirmwareUploadType.CUSTOM_GBL}
-          @change=${this.customFirmwareChosen}
-          >Upload</usf-file-upload
-        >
-      </div>
+              <usf-file-upload
+                class=${classMap({
+                  hidden: this.firmwareUploadIndex !== CUSTOM_UPLOAD_INDEX,
+                })}
+                accept=".gbl"
+                ?disabled=${this.firmwareUploadIndex !== CUSTOM_UPLOAD_INDEX}
+                @change=${this.customFirmwareChosen}
+                >Upload</usf-file-upload
+              >
+            </div>
+          `
+        : ''}
     `;
   }
 

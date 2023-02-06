@@ -12,6 +12,7 @@ import './usf-file-upload.js';
 
 import './pyodide-loader.js';
 import './firmware-selector.js';
+import type { Manifest } from './const';
 
 import { downloadFile } from './utils.js';
 
@@ -77,6 +78,9 @@ export class FlashingDialog extends LitElement {
 
   @property()
   public pyodide?: Pyodide;
+
+  @property()
+  public manifest!: Manifest;
 
   private debugLog: string = '';
 
@@ -148,12 +152,10 @@ export class FlashingDialog extends LitElement {
 
     try {
       this.serialPort = await navigator.serial.requestPort({
-        filters: [
-          {
-            usbProductId: 60000,
-            usbVendorId: 4292,
-          },
-        ],
+        filters: this.manifest.usb_filters.map(f => ({
+          usbProductId: f.pid,
+          usbVendorId: f.vid,
+        })),
       });
     } catch {
       this.serialPort = undefined;
@@ -191,8 +193,8 @@ export class FlashingDialog extends LitElement {
     );
 
     this.pyFlasher = Flasher.callKwargs({
-      bootloader_baudrate: 115200,
-      app_baudrate: 115200,
+      bootloader_baudrate: this.manifest.bootloader_baudrate,
+      app_baudrate: this.manifest.application_baudrate,
       device: '/dev/webserial', // the device name is ignored
     });
 
@@ -336,6 +338,7 @@ export class FlashingDialog extends LitElement {
 
         <firmware-selector
           .pyodide=${this.pyodide}
+          .manifest=${this.manifest}
           @firmwareLoaded=${this.onFirmwareLoaded}
         ></firmware-selector>
 

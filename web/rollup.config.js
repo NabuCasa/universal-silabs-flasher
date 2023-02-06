@@ -30,6 +30,10 @@ export default {
         dest: 'dist/assets/wheels/'
       },
       {
+        src: 'assets/manifests/*.json',
+        dest: 'dist/assets/manifests/'
+      },
+      {
         src: 'assets/webserial_transport.py',
         dest: 'dist/assets/'
       }
