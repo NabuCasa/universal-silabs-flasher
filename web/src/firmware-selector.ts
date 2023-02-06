@@ -2,9 +2,9 @@ import { LitElement, html, css } from 'lit';
 import { customElement, state, property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 
-import type { Pyodide } from './setup-pyodide.js';
+import type { Pyodide } from './setup-pyodide';
 import type { Manifest } from './const';
-import './usf-file-upload.js';
+import './usf-file-upload';
 
 import '@material/mwc-dialog';
 import '@material/mwc-button';
@@ -33,7 +33,7 @@ export class FirmwareSelector extends LitElement {
   public manifest!: Manifest;
 
   @state()
-  private firmwareUploadIndex: number = 0;
+  private firmwareUploadIndex = 0;
 
   private firmwareLoaded(firmware?: GBLImage) {
     this.dispatchEvent(

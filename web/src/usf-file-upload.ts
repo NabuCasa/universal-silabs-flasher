@@ -18,7 +18,7 @@ export class FileUpload extends LitElement {
   private fileInput!: HTMLInputElement;
 
   @property({ type: Boolean })
-  public disabled: boolean = false;
+  public disabled = false;
 
   @property()
   public accept?: string;

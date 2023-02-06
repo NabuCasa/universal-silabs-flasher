@@ -1,4 +1,4 @@
-export function downloadFile(href: string, filename: string = ''): void {
+export function downloadFile(href: string, filename = ''): void {
   const a = document.createElement('a');
   a.target = '_blank';
   a.href = href;

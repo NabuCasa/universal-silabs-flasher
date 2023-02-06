@@ -8,13 +8,13 @@ import '@material/mwc-linear-progress';
 import '@material/mwc-formfield';
 import '@material/mwc-radio';
 import '@material/mwc-dialog';
-import './usf-file-upload.js';
+import './usf-file-upload';
 
-import './pyodide-loader.js';
-import './firmware-selector.js';
+import './pyodide-loader';
+import './firmware-selector';
 import type { Manifest } from './const';
 
-import { downloadFile } from './utils.js';
+import { downloadFile } from './utils';
 
 enum UploadProgressState {
   IDLE,
@@ -82,7 +82,7 @@ export class FlashingDialog extends LitElement {
   @property()
   public manifest!: Manifest;
 
-  private debugLog: string = '';
+  private debugLog = '';
 
   @state()
   private selectedFirmware?: any;
@@ -93,7 +93,7 @@ export class FlashingDialog extends LitElement {
   private pyFlasher?: any;
 
   @state()
-  private uploadProgress: Number = 0;
+  private uploadProgress = 0;
 
   @state()
   private progressState: UploadProgressState = UploadProgressState.IDLE;

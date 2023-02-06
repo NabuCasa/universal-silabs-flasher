@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { setupPyodide, PyodideLoadState } from './setup-pyodide.js';
+import { setupPyodide, PyodideLoadState } from './setup-pyodide';
 
 import '@material/mwc-dialog';
 import '@material/mwc-button';

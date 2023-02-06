@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { Manifest } from './const';
-import './flashing-dialog.js';
+import './flashing-dialog';
 
 import '@material/mwc-button';
 
