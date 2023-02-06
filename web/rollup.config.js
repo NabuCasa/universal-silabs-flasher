@@ -21,10 +21,6 @@ export default {
   plugins: [
     /** Copy assets */
     copy({
-      targets: [{
-        src: 'assets/firmwares/*.gbl',
-        dest: 'dist/assets/firmwares/'
-      },
       {
         src: 'assets/wheels/*.whl',
         dest: 'dist/assets/wheels/'
