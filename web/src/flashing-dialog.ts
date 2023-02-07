@@ -5,13 +5,14 @@ import type { Pyodide } from './setup-pyodide';
 import '@material/mwc-button';
 import '@material/mwc-icon-button';
 import '@material/mwc-linear-progress';
+import '@material/mwc-circular-progress';
 import '@material/mwc-formfield';
 import '@material/mwc-radio';
 import '@material/mwc-dialog';
 
-import { mdiChip, mdiShimmer, mdiAutorenew, mdiTagText } from '@mdi/js';
-import './usf-file-upload';
+import { mdiChip, mdiShimmer, mdiAutorenew } from '@mdi/js';
 import './usf-icon';
+import './usf-file-upload';
 
 import { parseFirmwareBuffer } from './firmware-selector';
 import './firmware-selector';
@@ -21,6 +22,7 @@ import {
   ApplicationNames,
   ApplicationType,
   ApplicationTypeToFirmwareType,
+  mdiFirmware,
 } from './const';
 import { setupPyodide, PyodideLoadState } from './setup-pyodide';
 
@@ -49,10 +51,6 @@ enum FlashingStep {
 @customElement('flashing-dialog')
 export class FlashingDialog extends LitElement {
   static styles = css`
-    mwc-dialog {
-      --mdc-dialog-min-width: 330px;
-    }
-
     .metadata {
       font-size: 0.8em;
     }
@@ -86,8 +84,22 @@ export class FlashingDialog extends LitElement {
       margin-right: 0.2em;
     }
 
+    #firmwareInstallButtons {
+      margin-left: -3px;
+
+      text-align: left;
+    }
+
     #firmwareInstallButtons mwc-button {
       display: block;
+    }
+
+    #firmwareInstallButtons mwc-button:not(:last-child) {
+      margin-bottom: 0.3em;
+    }
+
+    .centered {
+      text-align: center;
     }
   `;
 
@@ -145,7 +157,7 @@ export class FlashingDialog extends LitElement {
     try {
       metadata = this.selectedFirmware.get_nabucasa_metadata();
     } catch (e) {
-      return html`<code>unknown</code>`;
+      return html``;
     }
 
     return html`
@@ -288,17 +300,28 @@ export class FlashingDialog extends LitElement {
     downloadFile(debugText, 'silabs_flasher.log');
   }
 
+  private formatHeadingText(text: string) {
+    if (text.length < 20) {
+      return text;
+    }
+
+    // FIXME: this moves the closing `x` out of the way
+    return text + '\u00A0'.repeat(8);
+  }
+
   render() {
     let content = html``;
     let headingText = 'Connecting';
     let showDebugLogButton = true;
     let showCloseButton = true;
+    let hideActions = false;
 
     if (this.flashingStep === FlashingStep.SELECTING_PORT) {
       if (this.mwcDialog) {
         this.mwcDialog.open = false;
       }
 
+      hideActions = true;
       showDebugLogButton = false;
       headingText = 'Select a serial port';
       content = html`<p>
@@ -332,25 +355,25 @@ export class FlashingDialog extends LitElement {
         this.flashingStep
       )
     ) {
+      hideActions = true;
       showDebugLogButton = false;
-      headingText = 'Connecting...';
+      headingText = '';
       content = html`<p>
         <p class="spinner">
           <mwc-circular-progress
             density=8
             ?indeterminate=${
-              this.pyodideLoadState === PyodideLoadState.LOADING_PYODIDE
+              this.pyodideLoadState === PyodideLoadState.LOADING_PYODIDE ||
+              this.flashingStep === FlashingStep.PROBING
             }
-            .progress=${(1 + this.pyodideLoadState) / 5}
+            .progress=${this.pyodideLoadState / 6}
           >
           </mwc-circular-progress>
         </p>
-        <p>
-          Connecting to the ${
-            this.manifest.product_name
-          } and detecting the current firmware.
+        <p class="centered">
+          Connecting...
           <br />
-          This can take a few seconds...
+          This can take a few seconds.
         </p>
       </p>`;
     } else if (this.flashingStep === FlashingStep.PROBING_FAILED) {
@@ -368,8 +391,9 @@ export class FlashingDialog extends LitElement {
           Retry
         </mwc-button>`;
     } else if (this.flashingStep === FlashingStep.PROBING_COMPLETE) {
+      hideActions = true;
       showDebugLogButton = false;
-      headingText = `Connected to ${this.manifest.product_name}`;
+      headingText = this.manifest.product_name;
 
       const AwesomeVersion =
         this.pyodide.pyimport('awesomeversion').AwesomeVersion;
@@ -387,7 +411,6 @@ export class FlashingDialog extends LitElement {
       let upgradeButton;
 
       if (compatibleFirmware) {
-        showCloseButton = false;
         upgradeButton = html`<mwc-button
           @click=${async () => {
             const response = await fetch(compatibleFirmware.url);
@@ -407,39 +430,33 @@ export class FlashingDialog extends LitElement {
 
       content = html`
         <p>
-          Detected firmware type and version:
-        </p>
-        <p>
           <table>
             <tbody>
               <tr>
-                <td><usf-icon .icon=${mdiChip}></usf-icon></td>
-                <td>${ApplicationNames[appType] || 'unknown'}</td>
+                <td><usf-icon .icon=${mdiFirmware}></usf-icon></td>
+                <td>${ApplicationNames[appType] || 'unknown'} ${
+        this.pyFlasher.app_version
+      }</td>
               </tr>
               <tr>
-                <td><usf-icon .icon=${mdiTagText}></usf-icon></td>
-                <td>${this.pyFlasher.app_version}</td>
+                <td><usf-icon .icon=${mdiChip}></usf-icon></td>
+                <td>${this.manifest.product_name}</td>
               </tr>
             </tbody>
           </table>
         </p>
 
-        <div id="firmwareInstallButtons" slot="primaryAction">
+        <div id="firmwareInstallButtons">
           ${upgradeButton || ''}
           <mwc-button @click=${this.selectFirmware}>
             <usf-icon .icon=${mdiAutorenew}></usf-icon>
             Install new firmware
           </mwc-button>
-          <mwc-button dialogAction="close">
-            Done
-          </mwc-button>
         </div>`;
     } else if (this.flashingStep === FlashingStep.SELECT_FIRMWARE) {
-      headingText = 'Select firmware';
+      headingText = this.manifest.product_name;
       content = html`
-        <p>
-          Select new firmware to install to your ${this.manifest.product_name}.
-        </p>
+        <p>Select new firmware to install.</p>
 
         <firmware-selector
           .pyodide=${this.pyodide}
@@ -462,6 +479,7 @@ export class FlashingDialog extends LitElement {
     } else if (this.flashingStep === FlashingStep.INSTALLING) {
       // Hide the close button to prevent it from being accidentally clicked during flashing.
       // The bootloader is resilient so nothing will actually break that can't be fixed by retrying.
+      hideActions = true;
       showCloseButton = false;
       headingText = 'Installing firmware';
       content = html`
@@ -504,9 +522,10 @@ export class FlashingDialog extends LitElement {
 
     return html`
       <mwc-dialog
-        heading="${headingText}"
+        heading="${this.formatHeadingText(headingText)}"
         scrimClickAction=""
         escapeKeyAction=""
+        ?hideActions=${hideActions}
       >
         ${showCloseButton
           ? html`

@@ -1,10 +1,16 @@
-import { LitElement, html } from 'lit';
+import { LitElement, html, css } from 'lit';
 import { customElement, query, property } from 'lit/decorators.js';
 
 import '@material/mwc-button';
 
 @customElement('usf-file-upload')
 export class FileUpload extends LitElement {
+  static styles = css`
+    mwc-button {
+      vertical-align: middle;
+    }
+  `;
+
   fileChanged(e: Event) {
     this.requestUpdate();
     this.dispatchEvent(new Event(e.type, e));
