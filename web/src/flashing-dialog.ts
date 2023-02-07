@@ -272,15 +272,16 @@ export class FlashingDialog extends LitElement {
       headingText = 'Select a serial port';
       content = html`<p>
         <p class="spinner"><mwc-circular-progress indeterminate density=8></mwc-circular-progress></p>
-        <p>Plug in and select your SkyConnect</p>
+        <p>Plug in and select your ${this.manifest.product_name}</p>
       </p>`;
     } else if (this.flashingStep === FlashingStep.PORT_SELECTION_CANCELLED) {
       showDebugLogButton = false;
       headingText = 'Serial port was not selected';
       content = html`<p>
-          If you didn't select a serial port because the SkyConnect was missing,
-          make sure the USB port it's plugged into works and the SkyConnect is
-          detected by your operating system.
+          If you didn't select a serial port because the
+          ${this.manifest.product_name} was missing, make sure the USB port it's
+          plugged into works and the ${this.manifest.product_name} is detected
+          by your operating system.
         </p>
         <p>
           If you are using Windows or macOS, install the
@@ -306,7 +307,9 @@ export class FlashingDialog extends LitElement {
       content = html`<p>
         <p class="spinner"><mwc-circular-progress indeterminate density=8></mwc-circular-progress></p>
         <p>
-          Detecting the current firmware.
+          Connecting to the ${
+            this.manifest.product_name
+          } and detecting the current firmware.
           <br />
           This can take a few seconds...
         </p>
@@ -317,8 +320,9 @@ export class FlashingDialog extends LitElement {
 
         <p>
           Make sure the USB port works and if you are using a USB extension
-          cable, make sure the cable can transfer data. Unplug the SkyConnect
-          and plug it back in to reset and try again.
+          cable, make sure the cable can transfer data. Unplug the
+          ${this.manifest.product_name} and plug it back in to reset and try
+          again.
         </p>
 
         <mwc-button slot="primaryAction" @click=${this.selectSerialPort}>
@@ -343,7 +347,9 @@ export class FlashingDialog extends LitElement {
     } else if (this.flashingStep === FlashingStep.SELECT_FIRMWARE) {
       headingText = 'Select firmware';
       content = html`
-        <p>Select new firmware to install to your SkyConnect.</p>
+        <p>
+          Select new firmware to install to your ${this.manifest.product_name}.
+        </p>
 
         <firmware-selector
           .pyodide=${this.pyodide}
@@ -370,8 +376,8 @@ export class FlashingDialog extends LitElement {
       headingText = 'Installing firmware';
       content = html`
         <p>
-          The new firmware is now installing. Do not disconnect the SkyConnect
-          or close this browser window.
+          The new firmware is now installing. Do not disconnect the
+          ${this.manifest.product_name} or close this browser window.
         </p>
         <p>
           <span class="progress-text"
@@ -387,8 +393,8 @@ export class FlashingDialog extends LitElement {
       headingText = 'Installation failed';
       content = html`
         <p>
-          Firmware installation failed. Unplug your SkyConnect and plug it back
-          in to retry.
+          Firmware installation failed. Unplug your
+          ${this.manifest.product_name} and plug it back in to retry.
         </p>
 
         <mwc-button slot="primaryAction" @click=${this.selectSerialPort}>

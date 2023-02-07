@@ -44,6 +44,7 @@ export interface Firmware {
 }
 
 export interface Manifest {
+  product_name: string;
   bootloader_baudrate: number;
   application_baudrate: number;
   usb_filters: USBFilter[];

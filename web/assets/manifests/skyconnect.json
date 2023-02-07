@@ -1,4 +1,5 @@
 {
+	"product_name": "SkyConnect",
 	"bootloader_baudrate": 115200,
 	"application_baudrate": 115200,
 	"usb_filters": [
