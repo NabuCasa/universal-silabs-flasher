@@ -14,6 +14,7 @@ export class UsfIcon extends LitElement {
         role="img"
         aria-hidden="true"
         viewBox="0 0 24 24"
+        fill="currentColor"
       >
         <g>
           <path d=${this.icon}></path>
@@ -23,7 +24,12 @@ export class UsfIcon extends LitElement {
   }
 
   static styles = css`
+    :host {
+      vertical-align: middle;
+    }
+
     svg {
+      vertical-align: middle;
       width: 24px;
       height: 24px;
 
