@@ -87,21 +87,21 @@ export class FirmwareSelector extends LitElement {
 
     const firmwareData = await response.arrayBuffer();
 
-    this.loadFirmware(firmwareData);
+    await this.loadFirmware(firmwareData);
   }
 
   private async customFirmwareChosen(event: Event) {
     const file = (event.target! as HTMLInputElement).files![0];
     const firmwareData = await readFile(file);
 
-    this.loadFirmware(firmwareData);
+    await this.loadFirmware(firmwareData);
   }
 
-  private loadFirmware(buffer: ArrayBuffer) {
+  private async loadFirmware(buffer: ArrayBuffer) {
     let firmware: GBLImage;
 
     try {
-      firmware = parseFirmwareBuffer(this.pyodide, buffer);
+      firmware = await parseFirmwareBuffer(this.pyodide, buffer);
     } catch (e) {
       firmware = undefined;
       alert(`Failed to parse firmware: ${e}`);
