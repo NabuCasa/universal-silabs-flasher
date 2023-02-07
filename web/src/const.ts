@@ -31,6 +31,12 @@ export const FirmwareNames = {
     'Multi-PAN (Zigbee NCP & Thread RCP)',
 };
 
+export const ApplicationTypeToFirmwareType = {
+  [ApplicationType.CPC]: FirmwareType.RCP_UART_802154,
+  [ApplicationType.EZSP]: FirmwareType.NCP_UART_HW,
+  [ApplicationType.GECKO_BOOTLOADER]: undefined,
+};
+
 export interface USBFilter {
   pid: number;
   vid: number;

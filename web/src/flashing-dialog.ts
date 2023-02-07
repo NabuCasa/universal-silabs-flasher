@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, state, property } from 'lit/decorators.js';
+import { customElement, state, property, query } from 'lit/decorators.js';
 import type { Pyodide } from './setup-pyodide';
 
 import '@material/mwc-button';
@@ -8,12 +8,20 @@ import '@material/mwc-linear-progress';
 import '@material/mwc-formfield';
 import '@material/mwc-radio';
 import '@material/mwc-dialog';
-import './usf-file-upload';
 
-import './pyodide-loader';
+import { mdiChip, mdiShimmer, mdiAutorenew, mdiTagText } from '@mdi/js';
+import './usf-file-upload';
+import './usf-icon';
+
 import './firmware-selector';
 import type { Manifest, FirmwareType } from './const';
-import { FirmwareNames, ApplicationNames, ApplicationType } from './const';
+import {
+  FirmwareNames,
+  ApplicationNames,
+  ApplicationType,
+  ApplicationTypeToFirmwareType,
+} from './const';
+import { setupPyodide, PyodideLoadState } from './setup-pyodide';
 
 import { downloadFile } from './utils';
 
@@ -72,6 +80,14 @@ export class FlashingDialog extends LitElement {
     span.progress-text {
       font-size: 0.8em;
     }
+
+    mwc-button usf-icon {
+      margin-right: 0.2em;
+    }
+
+    #firmwareInstallButtons mwc-button {
+      display: block;
+    }
   `;
 
   @state()
@@ -79,6 +95,9 @@ export class FlashingDialog extends LitElement {
 
   @property()
   public pyodide?: Pyodide;
+
+  @state()
+  private pyodideLoadState: PyodideLoadState = PyodideLoadState.LOADING_PYODIDE;
 
   @property()
   public manifest!: Manifest;
@@ -99,6 +118,9 @@ export class FlashingDialog extends LitElement {
   @state()
   private progressState: UploadProgressState = UploadProgressState.IDLE;
 
+  @query('mwc-dialog')
+  private mwcDialog!: HTMLDialogElement;
+
   public connectedCallback() {
     super.connectedCallback();
 
@@ -109,10 +131,7 @@ export class FlashingDialog extends LitElement {
   public firstUpdated(changedProperties: Map<string, any>) {
     super.firstUpdated(changedProperties);
 
-    this.shadowRoot!.querySelector('mwc-dialog')!.addEventListener(
-      'close',
-      this.close
-    );
+    this.mwcDialog.addEventListener('close', this.close);
   }
 
   private getFirmwareMetadata() {
@@ -162,17 +181,22 @@ export class FlashingDialog extends LitElement {
         })),
       });
     } catch {
+      this.mwcDialog.open = true;
       this.serialPort = undefined;
       this.flashingStep = FlashingStep.PORT_SELECTION_CANCELLED;
       return;
     }
 
+    this.mwcDialog.open = true;
     this.flashingStep = FlashingStep.LOADING_PYODIDE;
+    this.pyodide = await setupPyodide(newLoadState => {
+      this.pyodideLoadState = newLoadState;
+    });
+
+    await this.onPyodideLoaded();
   }
 
-  private async onPyodideLoaded(e: CustomEvent) {
-    this.pyodide = e.detail.pyodide;
-
+  private async onPyodideLoaded() {
     this.pyodide.setStdout({
       batched: (msg: string) => {
         console.log(msg);
@@ -268,6 +292,10 @@ export class FlashingDialog extends LitElement {
     let showCloseButton = true;
 
     if (this.flashingStep === FlashingStep.SELECTING_PORT) {
+      if (this.mwcDialog) {
+        this.mwcDialog.open = false;
+      }
+
       showDebugLogButton = false;
       headingText = 'Select a serial port';
       content = html`<p>
@@ -296,16 +324,24 @@ export class FlashingDialog extends LitElement {
         <mwc-button slot="primaryAction" @click=${this.selectSerialPort}>
           Retry
         </mwc-button> `;
-    } else if (this.flashingStep === FlashingStep.LOADING_PYODIDE) {
+    } else if (
+      [FlashingStep.LOADING_PYODIDE, FlashingStep.PROBING].includes(
+        this.flashingStep
+      )
+    ) {
       showDebugLogButton = false;
-      headingText = 'Loading environment';
-      content = html`<pyodide-loader
-        @load=${this.onPyodideLoaded}
-      ></pyodide-loader>`;
-    } else if (this.flashingStep === FlashingStep.PROBING) {
-      headingText = 'Detecting firmware';
+      headingText = 'Connecting...';
       content = html`<p>
-        <p class="spinner"><mwc-circular-progress indeterminate density=8></mwc-circular-progress></p>
+        <p class="spinner">
+          <mwc-circular-progress
+            density=8
+            ?indeterminate=${
+              this.pyodideLoadState === PyodideLoadState.LOADING_PYODIDE
+            }
+            .progress=${(1 + this.pyodideLoadState) / 5}
+          >
+          </mwc-circular-progress>
+        </p>
         <p>
           Connecting to the ${
             this.manifest.product_name
@@ -329,21 +365,66 @@ export class FlashingDialog extends LitElement {
           Retry
         </mwc-button>`;
     } else if (this.flashingStep === FlashingStep.PROBING_COMPLETE) {
-      headingText = 'Connection successful';
-      content = html`<p>
-          Current firmware type:
-          <code
-            >${ApplicationNames[
-              this.pyFlasher.app_type.value as ApplicationType
-            ] || 'unknown'}</code
-          >
-          <br />
-          Current firmware version: <code>${this.pyFlasher.app_version}</code>
+      showDebugLogButton = false;
+      headingText = `Connected to ${this.manifest.product_name}`;
+
+      const AwesomeVersion =
+        this.pyodide.pyimport('awesomeversion').AwesomeVersion;
+
+      const appType: ApplicationType = this.pyFlasher.app_type.value;
+      const appVersion = AwesomeVersion(this.pyFlasher.app_version);
+
+      const compatibleFirmwareType: FirmwareType | undefined =
+        ApplicationTypeToFirmwareType[appType];
+      const compatibleFirmware = this.manifest.firmwares.find(
+        fw => fw.type === compatibleFirmwareType && fw.version > appVersion
+      );
+
+      // Show a one-click "upgrade" button if possible
+      let upgradeButton;
+
+      if (compatibleFirmware) {
+        showCloseButton = false;
+        upgradeButton = html`<mwc-button
+          @click=${() => {
+            this.selectedFirmware = compatibleFirmware;
+            this.flashingStep = FlashingStep.INSTALLING;
+          }}
+        >
+          <usf-icon .icon=${mdiShimmer}></usf-icon>
+          Upgrade to &nbsp;<strong>${compatibleFirmware.version}</strong>
+        </mwc-button>`;
+      }
+
+      content = html`
+        <p>
+          Detected firmware type and version:
+        </p>
+        <p>
+          <table>
+            <tbody>
+              <tr>
+                <td><usf-icon .icon=${mdiChip}></usf-icon></td>
+                <td>${ApplicationNames[appType] || 'unknown'}</td>
+              </tr>
+              <tr>
+                <td><usf-icon .icon=${mdiTagText}></usf-icon></td>
+                <td>${this.pyFlasher.app_version}</td>
+              </tr>
+            </tbody>
+          </table>
         </p>
 
-        <mwc-button slot="primaryAction" @click=${this.selectFirmware}>
-          Next
-        </mwc-button> `;
+        <div id="firmwareInstallButtons" slot="primaryAction">
+          ${upgradeButton || ''}
+          <mwc-button @click=${this.selectFirmware}>
+            <usf-icon .icon=${mdiAutorenew}></usf-icon>
+            Install new firmware
+          </mwc-button>
+          <mwc-button dialogAction="close">
+            Done
+          </mwc-button>
+        </div>`;
     } else if (this.flashingStep === FlashingStep.SELECT_FIRMWARE) {
       headingText = 'Select firmware';
       content = html`
@@ -406,15 +487,14 @@ export class FlashingDialog extends LitElement {
       content = html`
         <p>Firmware has been successfully installed.</p>
 
-        <mwc-button slot="primaryAction" dialogAction="close">
-          Done
+        <mwc-button slot="primaryAction" @click=${this.detectRunningFirmware}>
+          Reconnect
         </mwc-button>
       `;
     }
 
     return html`
       <mwc-dialog
-        open
         heading="${headingText}"
         scrimClickAction=""
         escapeKeyAction=""
