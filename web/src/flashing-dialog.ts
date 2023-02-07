@@ -13,6 +13,7 @@ import { mdiChip, mdiShimmer, mdiAutorenew, mdiTagText } from '@mdi/js';
 import './usf-file-upload';
 import './usf-icon';
 
+import { parseFirmwareBuffer } from './firmware-selector';
 import './firmware-selector';
 import type { Manifest, FirmwareType } from './const';
 import {
@@ -255,6 +256,8 @@ export class FlashingDialog extends LitElement {
 
   private async flashFirmware() {
     this.flashingStep = FlashingStep.INSTALLING;
+    this.uploadProgress = 0;
+
     await this.pyFlasher.enter_bootloader();
 
     try {
@@ -386,9 +389,15 @@ export class FlashingDialog extends LitElement {
       if (compatibleFirmware) {
         showCloseButton = false;
         upgradeButton = html`<mwc-button
-          @click=${() => {
-            this.selectedFirmware = compatibleFirmware;
-            this.flashingStep = FlashingStep.INSTALLING;
+          @click=${async () => {
+            const response = await fetch(compatibleFirmware.url);
+            const firmwareData = await response.arrayBuffer();
+
+            this.selectedFirmware = await parseFirmwareBuffer(
+              this.pyodide,
+              firmwareData
+            );
+            this.flashFirmware();
           }}
         >
           <usf-icon .icon=${mdiShimmer}></usf-icon>
@@ -488,7 +497,7 @@ export class FlashingDialog extends LitElement {
         <p>Firmware has been successfully installed.</p>
 
         <mwc-button slot="primaryAction" @click=${this.detectRunningFirmware}>
-          Reconnect
+          Continue
         </mwc-button>
       `;
     }

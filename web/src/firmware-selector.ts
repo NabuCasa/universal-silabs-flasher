@@ -27,6 +27,15 @@ async function readFile(file: Blob): Promise<ArrayBuffer> {
   });
 }
 
+export async function parseFirmwareBuffer(
+  pyodide: Pyodide,
+  buffer: ArrayBuffer
+): Promise<GBLImage> {
+  const { GBLImage } = pyodide.pyimport('universal_silabs_flasher.flasher');
+
+  return await GBLImage.from_bytes.callKwargs(pyodide.toPy(buffer), {});
+}
+
 @customElement('firmware-selector')
 export class FirmwareSelector extends LitElement {
   @property()
@@ -89,14 +98,10 @@ export class FirmwareSelector extends LitElement {
   }
 
   private loadFirmware(buffer: ArrayBuffer) {
-    const { GBLImage } = this.pyodide.pyimport(
-      'universal_silabs_flasher.flasher'
-    );
-
     let firmware: GBLImage;
 
     try {
-      firmware = GBLImage.from_bytes(this.pyodide.toPy(buffer));
+      firmware = parseFirmwareBuffer(this.pyodide, buffer);
     } catch (e) {
       firmware = undefined;
       alert(`Failed to parse firmware: ${e}`);
