@@ -13,7 +13,7 @@
 			"name": "Zigbee (EZSP)",
 			"url": "https://raw.githubusercontent.com/NabuCasa/silabs-firmware/main/EmberZNet/beta/NabuCasa_SkyConnect_EZSP_v7.1.4.0_ncp-uart-hw_115200.gbl",
 			"type": "ncp-uart-hw",
-			"version": "7.1.3.0"
+			"version": "7.1.4.0"
 		},
 		{
 			"name": "Multi-PAN (RCP)",
