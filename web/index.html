@@ -21,11 +21,43 @@
 
         --mdc-theme-primary: #03a9f4;
       }
+
+      img {
+        vertical-align: middle;
+      }
+
+      main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        font-size: 1em;
+
+        padding: 5em;
+
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+      }
     </style>
   </head>
 
   <body>
-    <universal-silabs-flasher manifest="./assets/manifests/skyconnect.json"></universal-silabs-flasher>
+    <main>
+      <h1>
+        <img
+          src="https://skyconnect.home-assistant.io/images/skyconnect-logo.png"
+          alt="SkyConnect logo"
+        />
+        Flasher
+      </h1>
+
+      <p>To get started, plug your SkyConnect into this computer.</p>
+
+      <universal-silabs-flasher manifest="./assets/manifests/skyconnect.json">
+        <span slot="button">Connect</span>
+      </universal-silabs-flasher>
+    </main>
 
     <script type="module" src="./out-tsc/src/universal-silabs-flasher.js"></script>
   </body>

@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { Manifest } from './const';
 import './flashing-dialog';
@@ -23,48 +23,18 @@ class UniversalSilabsFlasher extends LitElement {
     const supportsWebSerial = 'serial' in navigator;
 
     return html`
-      <h1>
-        <img
-          src="https://skyconnect.home-assistant.io/images/skyconnect-logo.png"
-          alt="SkyConnect logo"
-        />
-        Flasher
-      </h1>
-
-      <section>
-        <p>To get started, plug your SkyConnect into this computer.</p>
-
-        ${supportsWebSerial
-          ? html`<mwc-button raised @click=${this.openFlasherDialog}
-              >Connect</mwc-button
-            >`
-          : html`<p id="webserial-unsupported">
+      ${supportsWebSerial
+        ? html`<mwc-button raised @click=${this.openFlasherDialog}
+            ><slot name="button">Connect</slot></mwc-button
+          >`
+        : html`<slot name="no-webserial"
+            ><strong>
               Unfortunately, your browser does not support Web Serial. Open this
               page in Google Chrome or Microsoft Edge.
-            </p>`}
-      </section>
+            </strong></slot
+          >`}
     `;
   }
-
-  static styles = css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      font-size: 1em;
-
-      padding: 5em;
-
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    img {
-      vertical-align: middle;
-    }
-  `;
 }
 
 declare global {
