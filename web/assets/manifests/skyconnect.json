@@ -1,5 +1,5 @@
 {
-	"product_name": "SkyConnect",
+	"product_name": "Home Assistant SkyConnect",
 	"bootloader_baudrate": 115200,
 	"application_baudrate": 115200,
 	"usb_filters": [
