@@ -5,8 +5,8 @@ import './flashing-dialog';
 
 import '@material/mwc-button';
 
-@customElement('universal-silabs-flasher')
-class UniversalSilabsFlasher extends LitElement {
+@customElement('nabucasa-zigbee-flasher')
+class NabuCasaSilabsFlasher extends LitElement {
   @property()
   public manifest!: string;
 
@@ -39,6 +39,6 @@ class UniversalSilabsFlasher extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'unversal-silabs-flasher': UniversalSilabsFlasher;
+    'nabucasa-zigbee-flasher': NabuCasaSilabsFlasher;
   }
 }

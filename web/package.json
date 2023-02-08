@@ -1,9 +1,9 @@
 {
-  "name": "universal-silabs-flasher",
-  "description": "Universal SiLabs Flasher frontend built with Pyodide",
+  "name": "@nabucasa/sl-web-tools",
+  "description": "WebSerial firmware flasher for Silicon Labs Zigbee radios",
   "license": "MIT",
-  "author": "universal-silabs-flasher",
-  "version": "0.0.1",
+  "author": "puddly",
+  "version": "0.0.9",
   "scripts": {
     "lint": "eslint --ext .ts,.html . --ignore-path .gitignore && prettier \"**/*.ts\" --check --ignore-path .gitignore",
     "format": "eslint --ext .ts,.html . --fix --ignore-path .gitignore && prettier \"**/*.ts\" --write --ignore-path .gitignore",
