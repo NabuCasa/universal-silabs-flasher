@@ -75,3 +75,7 @@ ENV/
 
 .DS_Store
 .mypy_cache/
+
+node_modules/
+out-tsc/
+web/custom-elements.json
