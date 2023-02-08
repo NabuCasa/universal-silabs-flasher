@@ -4,6 +4,7 @@ import html from '@web/rollup-plugin-html';
 import { importMetaAssets } from '@web/rollup-plugin-import-meta-assets';
 import copy from 'rollup-plugin-copy';
 import esbuild from 'rollup-plugin-esbuild';
+import { string } from "rollup-plugin-string";
 import { generateSW } from 'rollup-plugin-workbox';
 import path from 'path';
 
@@ -21,19 +22,16 @@ export default {
   plugins: [
     /** Copy assets */
     copy({
-      {
-        src: 'assets/wheels/*.whl',
-        dest: 'dist/assets/wheels/'
-      },
-      {
-        src: 'assets/manifests/*.json',
-        dest: 'dist/assets/manifests/'
-      },
-      {
-        src: 'assets/webserial_transport.py',
-        dest: 'dist/assets/'
-      }
-    ]}),
+      targets: [
+        {
+          src: 'assets/manifests/*.json',
+          dest: 'dist/assets/manifests/'
+        }
+      ]
+    }),
+    string({
+      include: "**/*.py",
+    }),
     /** Enable using HTML as rollup entrypoint */
     html({
       minify: true,

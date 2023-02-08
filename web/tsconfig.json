@@ -16,5 +16,5 @@
     "rootDir": "./",
     "incremental": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.py"]
 }

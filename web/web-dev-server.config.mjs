@@ -10,6 +10,9 @@ export default /** @type {import('@web/dev-server').DevServerConfig} */ ({
   nodeResolve: {
     exportConditions: ['browser', 'development'],
   },
+  mimeTypes: {
+    '**/*.py': 'application/javascript',
+  },
   
   /** Compile JS for older browsers. Requires @web/dev-server-esbuild plugin */
   // esbuildTarget: 'auto'
@@ -18,8 +21,14 @@ export default /** @type {import('@web/dev-server').DevServerConfig} */ ({
   appIndex: './index.html',
 
   plugins: [
-    /** Use Hot Module Replacement by uncommenting. Requires @open-wc/dev-server-hmr plugin */
-    // hmr && hmrPlugin({ exclude: ['**/*/node_modules/**/*'], presets: [presets.litElement] }),
+    {
+      name: 'py-import-wrapper',
+      transform(context) {
+        if (context.request.url.endsWith(".py")) {
+          context.response.body = `const text = ${JSON.stringify(context.response.body)};\nexport default text;`
+        }
+      },
+    },
   ],
 
   // See documentation for all available options

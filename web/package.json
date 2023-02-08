@@ -7,7 +7,7 @@
   "scripts": {
     "lint": "eslint --ext .ts,.html . --ignore-path .gitignore && prettier \"**/*.ts\" --check --ignore-path .gitignore",
     "format": "eslint --ext .ts,.html . --fix --ignore-path .gitignore && prettier \"**/*.ts\" --write --ignore-path .gitignore",
-    "build": "rimraf dist && python -m build --wheel --outdir dist/assets/wheels .. && tsc && rollup -c rollup.config.js && npm run analyze -- --exclude dist",
+    "build": "rimraf dist && tsc && copyfiles --up 1 \"src/*.py\" out-tsc/src && rollup -c rollup.config.js && npm run analyze -- --exclude dist",
     "start:build": "web-dev-server --root-dir dist --app-index index.html --open",
     "analyze": "cem analyze --litelement",
     "start": "python -m build --wheel --outdir assets/wheels .. && tsc && concurrently -k -r \"tsc --watch --preserveWatchOutput\" \"wds\""
@@ -38,6 +38,7 @@
     "@web/rollup-plugin-import-meta-assets": "^1.0.7",
     "babel-plugin-template-html-minifier": "^4.1.0",
     "concurrently": "^5.3.0",
+    "copyfiles": "^2.4.1",
     "deepmerge": "^4.2.2",
     "eslint": "^8.33.0",
     "eslint-config-prettier": "^8.3.0",
@@ -49,6 +50,7 @@
     "rollup": "^2.60.0",
     "rollup-plugin-copy": "^3.4.0",
     "rollup-plugin-esbuild": "^5.0.0",
+    "rollup-plugin-string": "^3.0.0",
     "rollup-plugin-workbox": "^6.2.0",
     "tslib": "^2.3.1",
     "typescript": "^4.9.5"

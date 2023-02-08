@@ -1,3 +1,6 @@
+import dummyModuleLoaderPy from './dummy_module_loader.py';
+import webSerialTransportPy from './webserial_transport.py';
+
 export type Pyodide = any;
 
 export enum PyodideLoadState {
@@ -22,42 +25,12 @@ async function loadPyodide(): Promise<Pyodide> {
   });
 }
 
-async function downloadModule(
-  pyodide: Pyodide,
-  moduleName: string,
-  path: string
-) {
-  console.debug('Downloading module', moduleName, 'from', path);
-
-  const contents = await (await fetch(path)).text();
-
+function writeModule(pyodide: Pyodide, moduleName: string, contents: string) {
   pyodide.FS.mkdir('modules');
   pyodide.FS.writeFile(`modules/${moduleName}.py`, contents, {
     encoding: 'utf8',
   });
 }
-
-const dummyModuleLoaderPy = `
-import sys
-import unittest.mock
-
-class DummyFinder:
-    """
-    Combined module loader and finder that recursively returns Mock objects.
-    """
-
-    def __init__(self, name):
-        self.name = name
-
-    def find_module(self, fullname, path=None):
-        if fullname.startswith(self.name):
-            return self
-
-    def load_module(self, fullname):
-        return sys.modules.setdefault(fullname, unittest.mock.MagicMock(__path__=[]))
-
-sys.meta_path.append(DummyFinder(__name__))
-`.trim();
 
 interface PythonPackageSpec {
   // The PyPI package name can differ from the module name
@@ -67,7 +40,8 @@ interface PythonPackageSpec {
 }
 
 export async function setupPyodide(
-  onStateChange: (newState: PyodideLoadState) => any
+  onStateChange: (newState: PyodideLoadState) => any,
+  flasherPackagePath?: string
 ): Promise<Pyodide> {
   onStateChange(PyodideLoadState.LOADING_PYODIDE);
   const pyodide = await loadPyodide();
@@ -93,7 +67,7 @@ export async function setupPyodide(
   // Install dependencies
   await micropip.install([
     'zigpy>=0.53.1',
-    './assets/wheels/universal_silabs_flasher-0.0.8-py3-none-any.whl',
+    flasherPackagePath || 'universal-silabs-flasher',
   ]);
 
   onStateChange(PyodideLoadState.INSTALLING_TRANSPORT);
@@ -106,12 +80,8 @@ export async function setupPyodide(
     sys.path.insert(0, "./modules/")
   `);
 
-  // Download our webserial transport
-  await downloadModule(
-    pyodide,
-    'webserial_transport',
-    './assets/webserial_transport.py'
-  );
+  // Include our webserial transport
+  writeModule(pyodide, 'webserial_transport', webSerialTransportPy);
 
   // And run it
   pyodide.runPython(`
