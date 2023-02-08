@@ -450,7 +450,7 @@ export class FlashingDialog extends LitElement {
           ${upgradeButton || ''}
           <mwc-button @click=${this.selectFirmware}>
             <usf-icon .icon=${mdiAutorenew}></usf-icon>
-            Install new firmware
+            Change firmware
           </mwc-button>
         </div>`;
     } else if (this.flashingStep === FlashingStep.SELECT_FIRMWARE) {
