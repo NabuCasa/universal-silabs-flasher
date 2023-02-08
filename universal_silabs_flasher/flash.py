@@ -184,6 +184,8 @@ async def flash(
 
     if flasher.app_type == ApplicationType.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
+    elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
+        running_image_type = None
     else:
         # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
         running_image_type = FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154
@@ -191,7 +193,9 @@ async def flash(
     # Ensure the firmware versions and image types are consistent
     if not force and flasher.app_version is not None and metadata is not None:
         is_cross_flashing = (
-            metadata.fw_type is not None and metadata.fw_type != running_image_type
+            metadata.fw_type is not None
+            and running_image_type is not None
+            and metadata.fw_type != running_image_type
         )
 
         if is_cross_flashing and not allow_cross_flashing:

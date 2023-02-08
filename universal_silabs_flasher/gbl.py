@@ -106,6 +106,9 @@ class GBLImage:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> GBLImage:
+        if isinstance(data, memoryview):
+            data = data.tobytes()
+
         tags = []
 
         for tag_bytes, value in parse_silabs_gbl(data):
@@ -131,4 +134,4 @@ class GBLImage:
     def get_nabucasa_metadata(self) -> NabuCasaMetadata:
         metadata = self.get_first_tag(TagId.METADATA)
 
-        return NabuCasaMetadata.from_json(json.loads(metadata.decode("utf-8")))
+        return NabuCasaMetadata.from_json(json.loads(metadata))

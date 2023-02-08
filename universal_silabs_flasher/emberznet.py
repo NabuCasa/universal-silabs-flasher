@@ -33,6 +33,7 @@ async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
                 "CONFIG_PACKET_BUFFER_COUNT": None,
                 "CONFIG_STACK_PROFILE": None,
             },
+            config.CONF_USE_THREAD: False,
         }
     )
 
