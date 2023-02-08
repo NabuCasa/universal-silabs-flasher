@@ -6,6 +6,7 @@
     "noEmitOnError": true,
     "lib": ["es2017", "dom"],
     "strict": true,
+    "declaration": true,
     "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,

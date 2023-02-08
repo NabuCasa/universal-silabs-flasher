@@ -6,7 +6,7 @@ import './flashing-dialog';
 import '@material/mwc-button';
 
 @customElement('nabucasa-zigbee-flasher')
-class NabuCasaSilabsFlasher extends LitElement {
+export class NabuCasaSilabsFlasher extends LitElement {
   @property()
   public manifest!: string;
 
