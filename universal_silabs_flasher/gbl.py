@@ -59,16 +59,22 @@ class FirmwareImageType(enum.Enum):
     # Zigbee NCP + OpenThread RCP
     ZIGBEE_NCP_RCP_UART_802154 = "zigbee-ncp-rcp-uart-802154"
 
+    # OpenThread RCP
+    OT_RCP = "ot-rcp"
+
 
 @dataclasses.dataclass(frozen=True)
 class NabuCasaMetadata:
     metadata_version: int
+
     sdk_version: AwesomeVersion | None
     ezsp_version: AwesomeVersion | None
+    ot_rcp_version: AwesomeVersion | None
+
     fw_type: FirmwareImageType | None
 
     def get_public_version(self) -> AwesomeVersion | None:
-        return self.ezsp_version or self.sdk_version
+        return self.ezsp_version or self.ot_rcp_version or self.sdk_version
 
     @classmethod
     def from_json(cls, obj: dict[str, typing.Any]) -> NabuCasaMetadata:
@@ -86,6 +92,9 @@ class NabuCasaMetadata:
         if ezsp_version := obj.pop("ezsp_version", None):
             ezsp_version = AwesomeVersion(ezsp_version)
 
+        if ot_rcp_version := obj.pop("ot_rcp_version", None):
+            ot_rcp_version = AwesomeVersion(ot_rcp_version)
+
         if fw_type := obj.pop("fw_type", None):
             fw_type = FirmwareImageType(fw_type)
 
@@ -96,6 +105,7 @@ class NabuCasaMetadata:
             metadata_version=metadata_version,
             sdk_version=sdk_version,
             ezsp_version=ezsp_version,
+            ot_rcp_version=ot_rcp_version,
             fw_type=fw_type,
         )
 
