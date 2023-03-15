@@ -14,6 +14,7 @@ import click
 import coloredlogs
 import zigpy.types
 import bellows.types
+import zigpy.ota.validators
 
 from .gbl import GBLImage, FirmwareImageType
 from .common import patch_pyserial_asyncio
@@ -208,7 +209,12 @@ async def flash(
     firmware_data = firmware.read()
     firmware.close()
 
-    gbl_image = GBLImage.from_bytes(firmware_data)
+    try:
+        gbl_image = GBLImage.from_bytes(firmware_data)
+    except zigpy.ota.validators.ValidationError as e:
+        raise click.ClickException(
+            f"{firmware.name!r} does not appear to be a valid GBL image: {e!r}"
+        )
 
     try:
         metadata = gbl_image.get_nabucasa_metadata()
