@@ -259,3 +259,6 @@ class SpinelProtocol(SerialProtocol):
             ResetReason.BOOTLOADER.serialize(),
             wait_response=False,
         )
+
+        # A small delay is necessary when switching baudrates
+        await asyncio.sleep(0.5)
