@@ -17,7 +17,7 @@ import bellows.types
 
 from .gbl import GBLImage, FirmwareImageType
 from .common import patch_pyserial_asyncio
-from .flasher import Flasher, ApplicationType
+from .flasher import DEFAULT_BAUDRATES, Flasher, ApplicationType
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 patch_pyserial_asyncio()
@@ -99,8 +99,31 @@ class SerialPort(click.ParamType):
 @click.group()
 @click.option("-v", "--verbose", count=True)
 @click.option("--device", type=SerialPort(), required=True)
-@click.option("--baudrate", default=115200, show_default=True)
-@click.option("--bootloader-baudrate", default=115200, show_default=True)
+@click.option(
+    "--baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
+    show_default=True,
+)
+@click.option(
+    "--bootloader-baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
+    show_default=True,
+)
+@click.option(
+    "--cpc-baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
+    show_default=True,
+)
+@click.option(
+    "--ezsp-baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.EZSP],
+    show_default=True,
+)
+@click.option(
+    "--spinel-baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.SPINEL],
+    show_default=True,
+)
 @click.option(
     "--probe-method",
     multiple=True,
@@ -109,15 +132,35 @@ class SerialPort(click.ParamType):
     show_default=True,
 )
 @click.pass_context
-def main(ctx, verbose, device, baudrate, bootloader_baudrate, probe_method):
+def main(
+    ctx,
+    verbose,
+    device,
+    baudrate,
+    bootloader_baudrate,
+    cpc_baudrate,
+    ezsp_baudrate,
+    spinel_baudrate,
+    probe_method,
+):
     coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
+
+    # Override all application baudrates if a specific value is provided
+    if ctx.get_parameter_source("baudrate") != click.core.ParameterSource.DEFAULT:
+        cpc_baudrate = baudrate
+        ezsp_baudrate = baudrate
+        spinel_baudrate = baudrate
 
     ctx.obj = {
         "verbosity": verbose,
         "flasher": Flasher(
             device=device,
-            bootloader_baudrate=bootloader_baudrate,
-            app_baudrate=baudrate,
+            baudrates={
+                ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
+                ApplicationType.CPC: cpc_baudrate,
+                ApplicationType.EZSP: ezsp_baudrate,
+                ApplicationType.SPINEL: spinel_baudrate,
+            },
             probe_methods=probe_method,
         ),
     }

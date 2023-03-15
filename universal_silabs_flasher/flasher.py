@@ -70,6 +70,14 @@ class ApplicationType(enum.Enum):
     SPINEL = "spinel"
 
 
+DEFAULT_BAUDRATES = {
+    ApplicationType.GECKO_BOOTLOADER: 115200,
+    ApplicationType.CPC: 115200,
+    ApplicationType.EZSP: 115200,
+    ApplicationType.SPINEL: 460800,
+}
+
+
 @dataclasses.dataclass(frozen=True)
 class ProbeResult:
     version: AwesomeVersion | None
@@ -80,17 +88,16 @@ class Flasher:
     def __init__(
         self,
         *,
-        bootloader_baudrate: int = 115200,
-        app_baudrate: int = 115200,
+        baudrates: dict[ApplicationType, int] = DEFAULT_BAUDRATES,
         probe_methods: tuple[ApplicationType, ...] = (
             ApplicationType.GECKO_BOOTLOADER,
             ApplicationType.CPC,
             ApplicationType.EZSP,
+            ApplicationType.SPINEL,
         ),
         device: str,
     ):
-        self._bootloader_baudrate = bootloader_baudrate
-        self._app_baudrate = app_baudrate
+        self._baudrates = baudrates
         self._probe_methods = probe_methods
         self._device = device
 
@@ -116,17 +123,39 @@ class Flasher:
 
     def _connect_gecko_bootloader(self):
         return connect_protocol(
-            self._device, self._bootloader_baudrate, GeckoBootloaderProtocol
+            self._device,
+            self._baudrates.get(
+                ApplicationType.GECKO_BOOTLOADER,
+                DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
+            ),
+            GeckoBootloaderProtocol,
         )
 
     def _connect_cpc(self):
-        return connect_protocol(self._device, self._app_baudrate, CPCProtocol)
+        return connect_protocol(
+            self._device,
+            self._baudrates.get(
+                ApplicationType.CPC, DEFAULT_BAUDRATES[ApplicationType.CPC]
+            ),
+            CPCProtocol,
+        )
 
     def _connect_ezsp(self):
-        return connect_ezsp(self._device, self._app_baudrate)
+        return connect_ezsp(
+            self._device,
+            self._baudrates.get(
+                ApplicationType.EZSP, DEFAULT_BAUDRATES[ApplicationType.EZSP]
+            ),
+        )
 
     def _connect_spinel(self):
-        return connect_protocol(self._device, self._app_baudrate, SpinelProtocol)
+        return connect_protocol(
+            self._device,
+            self._baudrates.get(
+                ApplicationType.SPINEL, DEFAULT_BAUDRATES[ApplicationType.SPINEL]
+            ),
+            SpinelProtocol,
+        )
 
     async def probe_gecko_bootloader(self, *, run_firmware: bool = True) -> ProbeResult:
         try:
