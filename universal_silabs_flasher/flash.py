@@ -17,7 +17,12 @@ import bellows.types
 
 from .gbl import GBLImage, FirmwareImageType
 from .common import patch_pyserial_asyncio
-from .flasher import DEFAULT_BAUDRATES, Flasher, ApplicationType
+from .flasher import (
+    DEFAULT_BAUDRATES,
+    FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
+    Flasher,
+    ApplicationType,
+)
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 patch_pyserial_asyncio()
@@ -182,11 +187,9 @@ async def write_ieee(ctx, ieee):
 @main.command()
 @click.option("--firmware", type=click.File("rb"), required=True, show_default=True)
 @click.option("--force", is_flag=True, default=False, show_default=True)
+@click.option("--ensure-exact-version", is_flag=True, default=False, show_default=True)
 @click.option("--allow-downgrades", is_flag=True, default=False, show_default=True)
 @click.option("--allow-cross-flashing", is_flag=True, default=False, show_default=True)
-@click.option(
-    "--allow-reflash-same-version", is_flag=True, default=False, show_default=True
-)
 @click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
 @click.pass_context
 @click_coroutine
@@ -194,9 +197,9 @@ async def flash(
     ctx,
     firmware,
     force,
+    ensure_exact_version,
     allow_downgrades,
     allow_cross_flashing,
-    allow_reflash_same_version,
     yellow_gpio_reset,
 ):
     flasher = ctx.obj["flasher"]
@@ -214,6 +217,23 @@ async def flash(
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
 
+    # Prefer to probe the expected firmware image type first, if it is known
+    if (
+        metadata.fw_type is not None
+        and ctx.parent.get_parameter_source("probe_method")
+        == click.core.ParameterSource.DEFAULT
+    ):
+        # The bootloader and current firmware type come first
+        methods = [
+            ApplicationType.GECKO_BOOTLOADER,
+            FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type],
+        ]
+
+        # Then come the rest of the probe methods
+        flasher._probe_methods = methods + [
+            m for m in flasher._probe_methods if m not in methods
+        ]
+
     try:
         await flasher.probe_app_type(yellow_gpio_reset=yellow_gpio_reset)
     except RuntimeError as e:
@@ -227,6 +247,8 @@ async def flash(
 
     if flasher.app_type == ApplicationType.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
+    elif flasher.app_type == ApplicationType.SPINEL:
+        running_image_type = FirmwareImageType.OT_RCP
     elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
         running_image_type = None
     else:
@@ -244,29 +266,32 @@ async def flash(
         if is_cross_flashing and not allow_cross_flashing:
             raise click.ClickException(
                 f"Running image type {running_image_type}"
-                f" does not match firmware image type {metadata.fw_type}"
+                f" does not match firmware image type {metadata.fw_type}."
+                f" If you intend to cross-flash, run with `--allow-cross-flashing`."
             )
 
-        if (
-            flasher.app_version == metadata.get_public_version()
-            and not allow_reflash_same_version
-        ):
-            _LOGGER.info(
-                "Firmware version %s is flashed, not upgrading", flasher.app_version
-            )
-            return
+        if not is_cross_flashing:
+            app_version = flasher.app_version
+            fw_version = metadata.get_public_version()
 
-        if (
-            not is_cross_flashing
-            and flasher.app_version > metadata.get_public_version()
-            and not allow_downgrades
-        ):
-            _LOGGER.info(
-                "Firmware version %s does not upgrade current version %s",
-                metadata.get_public_version(),
-                flasher.app_version,
-            )
-            return
+            if app_version == fw_version:
+                _LOGGER.info(
+                    "Firmware version %s is flashed, not re-installing", app_version
+                )
+                return
+            elif ensure_exact_version and app_version != fw_version:
+                _LOGGER.info(
+                    "Firmware version %s does not match expected version %s",
+                    fw_version,
+                    app_version,
+                )
+            elif not allow_downgrades and app_version > fw_version:
+                _LOGGER.info(
+                    "Firmware version %s does not upgrade current version %s",
+                    fw_version,
+                    app_version,
+                )
+                return
 
     await flasher.enter_bootloader()
 

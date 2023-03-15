@@ -249,9 +249,13 @@ class SpinelProtocol(SerialProtocol):
         prop_id, version_string = PropertyID.deserialize(rsp.data)
         assert prop_id == PropertyID.NCP_VERSION
 
+        # SL-OPENTHREAD/2.2.2.0_GitHub-91fa1f455; EFR32; Mar 14 2023 16:03:40
         version = version_string.rstrip(b"\x00").decode("ascii")
 
-        return AwesomeVersion(version)
+        # We strip off the date code to get something reasonably stable
+        short_version, _ = version.split(";", 1)
+
+        return AwesomeVersion(short_version)
 
     async def enter_bootloader(self) -> None:
         await self.send_command(

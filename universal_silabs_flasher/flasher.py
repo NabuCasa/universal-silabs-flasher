@@ -14,7 +14,7 @@ import bellows.config
 from awesomeversion import AwesomeVersion
 
 from .cpc import CPCProtocol
-from .gbl import GBLImage
+from .gbl import GBLImage, FirmwareImageType
 from .common import PROBE_TIMEOUT, connect_protocol
 from .spinel import SpinelProtocol
 from .emberznet import connect_ezsp
@@ -68,6 +68,14 @@ class ApplicationType(enum.Enum):
     CPC = "cpc"
     EZSP = "ezsp"
     SPINEL = "spinel"
+
+
+FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
+    FirmwareImageType.NCP_UART_HW: ApplicationType.GECKO_BOOTLOADER,
+    FirmwareImageType.RCP_UART_802154: ApplicationType.CPC,
+    FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154: ApplicationType.CPC,
+    FirmwareImageType.OT_RCP: ApplicationType.SPINEL,
+}
 
 
 DEFAULT_BAUDRATES = {
