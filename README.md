@@ -1,9 +1,30 @@
 # Universal Silicon Labs Flasher
-Automatically communicates with radios over CPC or EZSP to enter the bootloader and then flashes a firmware image with XMODEM.
+Automatically communicates with radios over CPC, EZSP, or Spinel to enter the bootloader and then flashes a firmware image with XMODEM.
 
 ## Installation
 ```console
 $ pip install universal-silabs-flasher
+```
+
+## Usage
+
+```console
+Usage: universal-silabs-flasher [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -v, --verbose
+  --device PATH_OR_URL           [required]
+  --baudrate INTEGER             [default: 115200]
+  --bootloader-baudrate INTEGER  [default: 115200]
+  --cpc-baudrate INTEGER         [default: 115200]
+  --ezsp-baudrate INTEGER        [default: 115200]
+  --spinel-baudrate INTEGER      [default: 460800]
+  --probe-method TEXT            [default: bootloader, cpc, ezsp, spinel]
+  --help                         Show this message and exit.
+
+Commands:
+  flash
+  write-ieee
 ```
 
 ## Flashing firmware
