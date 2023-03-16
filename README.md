@@ -13,7 +13,8 @@ In addition to validating the firmware image, the version number of the firmware
 
  - If the provided firmware image type does not match the running image type, the firmware will not be flashed. Cross-flashing can be enabled with `--allow-cross-flashing`.
  - If the provided firmware image is a lower version than the currently running image, the downgrade will not be allowed. Downgrades can be enabled with `--allow-downgrades`.
- - If the provided firmware image already matches the version running on the device, the command will exit early. Firmware re-flashing can be enabled with `--allow-reflash-same-version`.
+ - To always upgrade/downgrade firmware to a specific version (i.e. as the entry point for an addon bundling firmware), use `--ensure-exact-version`.
+ - All of the above logic can be skipped with `--force`.
 
 ### Yellow
 The Yellow's bootloader can always be activated with the `--yellow-gpio-reset` flag:
@@ -21,8 +22,6 @@ The Yellow's bootloader can always be activated with the `--yellow-gpio-reset` f
 ```bash
 $ universal-silabs-flasher \
     --device /dev/ttyAMA1 \
-    --bootloader-baudrate 115200 \
-    --baudrate 115200 \
     flash \
     --firmware NabuCasa_RCP_v4.1.3_rcp-uart-hw-802154_230400.gbl \
     --yellow-gpio-reset
@@ -34,8 +33,6 @@ The SkyConnect will be rebooted into its bootloader from the running application
 ```bash
 $ universal-silabs-flasher \
     --device /dev/cu.SLAB_USBtoUART \
-    --bootloader-baudrate 115200 \
-    --baudrate 115200 \
     flash \
     --firmware NabuCasa_SkyConnect_EZSP_v7.1.3.0_ncp-uart-hw_115200.gbl
 ```
