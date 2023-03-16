@@ -14,8 +14,9 @@ import bellows.config
 from awesomeversion import AwesomeVersion
 
 from .cpc import CPCProtocol
-from .gbl import GBLImage
+from .gbl import GBLImage, FirmwareImageType
 from .common import PROBE_TIMEOUT, connect_protocol
+from .spinel import SpinelProtocol
 from .emberznet import connect_ezsp
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 from .gecko_bootloader import NoFirmwareError, GeckoBootloaderProtocol
@@ -66,6 +67,23 @@ class ApplicationType(enum.Enum):
     GECKO_BOOTLOADER = "bootloader"
     CPC = "cpc"
     EZSP = "ezsp"
+    SPINEL = "spinel"
+
+
+FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
+    FirmwareImageType.NCP_UART_HW: ApplicationType.GECKO_BOOTLOADER,
+    FirmwareImageType.RCP_UART_802154: ApplicationType.CPC,
+    FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154: ApplicationType.CPC,
+    FirmwareImageType.OT_RCP: ApplicationType.SPINEL,
+}
+
+
+DEFAULT_BAUDRATES = {
+    ApplicationType.GECKO_BOOTLOADER: 115200,
+    ApplicationType.CPC: 115200,
+    ApplicationType.EZSP: 115200,
+    ApplicationType.SPINEL: 460800,
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -78,17 +96,16 @@ class Flasher:
     def __init__(
         self,
         *,
-        bootloader_baudrate: int = 115200,
-        app_baudrate: int = 115200,
+        baudrates: dict[ApplicationType, int] = DEFAULT_BAUDRATES,
         probe_methods: tuple[ApplicationType, ...] = (
             ApplicationType.GECKO_BOOTLOADER,
             ApplicationType.CPC,
             ApplicationType.EZSP,
+            ApplicationType.SPINEL,
         ),
         device: str,
     ):
-        self._bootloader_baudrate = bootloader_baudrate
-        self._app_baudrate = app_baudrate
+        self._baudrates = baudrates
         self._probe_methods = probe_methods
         self._device = device
 
@@ -114,14 +131,39 @@ class Flasher:
 
     def _connect_gecko_bootloader(self):
         return connect_protocol(
-            self._device, self._bootloader_baudrate, GeckoBootloaderProtocol
+            self._device,
+            self._baudrates.get(
+                ApplicationType.GECKO_BOOTLOADER,
+                DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
+            ),
+            GeckoBootloaderProtocol,
         )
 
     def _connect_cpc(self):
-        return connect_protocol(self._device, self._app_baudrate, CPCProtocol)
+        return connect_protocol(
+            self._device,
+            self._baudrates.get(
+                ApplicationType.CPC, DEFAULT_BAUDRATES[ApplicationType.CPC]
+            ),
+            CPCProtocol,
+        )
 
     def _connect_ezsp(self):
-        return connect_ezsp(self._device, self._app_baudrate)
+        return connect_ezsp(
+            self._device,
+            self._baudrates.get(
+                ApplicationType.EZSP, DEFAULT_BAUDRATES[ApplicationType.EZSP]
+            ),
+        )
+
+    def _connect_spinel(self):
+        return connect_protocol(
+            self._device,
+            self._baudrates.get(
+                ApplicationType.SPINEL, DEFAULT_BAUDRATES[ApplicationType.SPINEL]
+            ),
+            SpinelProtocol,
+        )
 
     async def probe_gecko_bootloader(self, *, run_firmware: bool = True) -> ProbeResult:
         try:
@@ -153,6 +195,12 @@ class Flasher:
             continue_probing=False,
         )
 
+    async def probe_spinel(self) -> ProbeResult:
+        async with self._connect_spinel() as spinel:
+            version = await spinel.probe()
+
+        return ProbeResult(version=version, continue_probing=False)
+
     async def probe_app_type(self, *, yellow_gpio_reset: bool = False) -> None:
         if yellow_gpio_reset:
             await self.enter_yellow_bootloader()
@@ -172,6 +220,7 @@ class Flasher:
                 ),
                 ApplicationType.CPC: self.probe_cpc,
                 ApplicationType.EZSP: self.probe_ezsp,
+                ApplicationType.SPINEL: self.probe_spinel,
             }[probe_method]
 
             _LOGGER.info("Probing %s", probe_method)
@@ -221,6 +270,10 @@ class Flasher:
             async with self._connect_cpc() as cpc:
                 async with async_timeout.timeout(PROBE_TIMEOUT):
                     await cpc.enter_bootloader()
+        elif self._app_type is ApplicationType.SPINEL:
+            async with self._connect_spinel() as spinel:
+                async with async_timeout.timeout(PROBE_TIMEOUT):
+                    await spinel.enter_bootloader()
         elif self._app_type is ApplicationType.EZSP:
             async with self._connect_ezsp() as ezsp:
                 res = await ezsp.launchStandaloneBootloader(0x01)

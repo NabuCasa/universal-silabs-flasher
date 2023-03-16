@@ -14,10 +14,16 @@ import click
 import coloredlogs
 import zigpy.types
 import bellows.types
+import zigpy.ota.validators
 
 from .gbl import GBLImage, FirmwareImageType
 from .common import patch_pyserial_asyncio
-from .flasher import Flasher, ApplicationType
+from .flasher import (
+    DEFAULT_BAUDRATES,
+    FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
+    Flasher,
+    ApplicationType,
+)
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 patch_pyserial_asyncio()
@@ -99,8 +105,31 @@ class SerialPort(click.ParamType):
 @click.group()
 @click.option("-v", "--verbose", count=True)
 @click.option("--device", type=SerialPort(), required=True)
-@click.option("--baudrate", default=115200, show_default=True)
-@click.option("--bootloader-baudrate", default=115200, show_default=True)
+@click.option(
+    "--baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
+    show_default=True,
+)
+@click.option(
+    "--bootloader-baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
+    show_default=True,
+)
+@click.option(
+    "--cpc-baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
+    show_default=True,
+)
+@click.option(
+    "--ezsp-baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.EZSP],
+    show_default=True,
+)
+@click.option(
+    "--spinel-baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.SPINEL],
+    show_default=True,
+)
 @click.option(
     "--probe-method",
     multiple=True,
@@ -109,15 +138,35 @@ class SerialPort(click.ParamType):
     show_default=True,
 )
 @click.pass_context
-def main(ctx, verbose, device, baudrate, bootloader_baudrate, probe_method):
+def main(
+    ctx,
+    verbose,
+    device,
+    baudrate,
+    bootloader_baudrate,
+    cpc_baudrate,
+    ezsp_baudrate,
+    spinel_baudrate,
+    probe_method,
+):
     coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
+
+    # Override all application baudrates if a specific value is provided
+    if ctx.get_parameter_source("baudrate") != click.core.ParameterSource.DEFAULT:
+        cpc_baudrate = baudrate
+        ezsp_baudrate = baudrate
+        spinel_baudrate = baudrate
 
     ctx.obj = {
         "verbosity": verbose,
         "flasher": Flasher(
             device=device,
-            bootloader_baudrate=bootloader_baudrate,
-            app_baudrate=baudrate,
+            baudrates={
+                ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
+                ApplicationType.CPC: cpc_baudrate,
+                ApplicationType.EZSP: ezsp_baudrate,
+                ApplicationType.SPINEL: spinel_baudrate,
+            },
             probe_methods=probe_method,
         ),
     }
@@ -139,11 +188,9 @@ async def write_ieee(ctx, ieee):
 @main.command()
 @click.option("--firmware", type=click.File("rb"), required=True, show_default=True)
 @click.option("--force", is_flag=True, default=False, show_default=True)
+@click.option("--ensure-exact-version", is_flag=True, default=False, show_default=True)
 @click.option("--allow-downgrades", is_flag=True, default=False, show_default=True)
 @click.option("--allow-cross-flashing", is_flag=True, default=False, show_default=True)
-@click.option(
-    "--allow-reflash-same-version", is_flag=True, default=False, show_default=True
-)
 @click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
 @click.pass_context
 @click_coroutine
@@ -151,9 +198,9 @@ async def flash(
     ctx,
     firmware,
     force,
+    ensure_exact_version,
     allow_downgrades,
     allow_cross_flashing,
-    allow_reflash_same_version,
     yellow_gpio_reset,
 ):
     flasher = ctx.obj["flasher"]
@@ -162,7 +209,12 @@ async def flash(
     firmware_data = firmware.read()
     firmware.close()
 
-    gbl_image = GBLImage.from_bytes(firmware_data)
+    try:
+        gbl_image = GBLImage.from_bytes(firmware_data)
+    except zigpy.ota.validators.ValidationError as e:
+        raise click.ClickException(
+            f"{firmware.name!r} does not appear to be a valid GBL image: {e!r}"
+        )
 
     try:
         metadata = gbl_image.get_nabucasa_metadata()
@@ -170,6 +222,23 @@ async def flash(
         metadata = None
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
+
+    # Prefer to probe the expected firmware image type first, if it is known
+    if (
+        metadata.fw_type is not None
+        and ctx.parent.get_parameter_source("probe_method")
+        == click.core.ParameterSource.DEFAULT
+    ):
+        # The bootloader and current firmware type come first
+        methods = [
+            ApplicationType.GECKO_BOOTLOADER,
+            FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type],
+        ]
+
+        # Then come the rest of the probe methods
+        flasher._probe_methods = methods + [
+            m for m in flasher._probe_methods if m not in methods
+        ]
 
     try:
         await flasher.probe_app_type(yellow_gpio_reset=yellow_gpio_reset)
@@ -184,6 +253,8 @@ async def flash(
 
     if flasher.app_type == ApplicationType.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
+    elif flasher.app_type == ApplicationType.SPINEL:
+        running_image_type = FirmwareImageType.OT_RCP
     elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
         running_image_type = None
     else:
@@ -201,29 +272,32 @@ async def flash(
         if is_cross_flashing and not allow_cross_flashing:
             raise click.ClickException(
                 f"Running image type {running_image_type}"
-                f" does not match firmware image type {metadata.fw_type}"
+                f" does not match firmware image type {metadata.fw_type}."
+                f" If you intend to cross-flash, run with `--allow-cross-flashing`."
             )
 
-        if (
-            flasher.app_version == metadata.get_public_version()
-            and not allow_reflash_same_version
-        ):
-            _LOGGER.info(
-                "Firmware version %s is flashed, not upgrading", flasher.app_version
-            )
-            return
+        if not is_cross_flashing:
+            app_version = flasher.app_version
+            fw_version = metadata.get_public_version()
 
-        if (
-            not is_cross_flashing
-            and flasher.app_version > metadata.get_public_version()
-            and not allow_downgrades
-        ):
-            _LOGGER.info(
-                "Firmware version %s does not upgrade current version %s",
-                metadata.get_public_version(),
-                flasher.app_version,
-            )
-            return
+            if app_version == fw_version:
+                _LOGGER.info(
+                    "Firmware version %s is flashed, not re-installing", app_version
+                )
+                return
+            elif ensure_exact_version and app_version != fw_version:
+                _LOGGER.info(
+                    "Firmware version %s does not match expected version %s",
+                    fw_version,
+                    app_version,
+                )
+            elif not allow_downgrades and app_version > fw_version:
+                _LOGGER.info(
+                    "Firmware version %s does not upgrade current version %s",
+                    fw_version,
+                    app_version,
+                )
+                return
 
     await flasher.enter_bootloader()
 
