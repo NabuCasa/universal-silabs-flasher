@@ -176,8 +176,10 @@ async def connect_protocol(port, baudrate, factory):
         await asyncio.sleep(0)
 
 
-class CommaSeparatedNumbers(click.Option):
+class CommaSeparatedNumbers(click.ParamType):
     """Click type to parse comma-separated numbers into a list of integers."""
+
+    name = "numbers"
 
     def type_cast_value(self, ctx: click.Context, value: str) -> list[int]:
         values = []
