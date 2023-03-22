@@ -16,7 +16,7 @@ Options:
   --device PATH_OR_URL           [required]
   --baudrate INTEGER             [default: 115200]
   --bootloader-baudrate INTEGER  [default: 115200]
-  --cpc-baudrate INTEGER         [default: 460800,115200]
+  --cpc-baudrate INTEGER         [default: 115200, 460800]
   --ezsp-baudrate INTEGER        [default: 115200]
   --spinel-baudrate INTEGER      [default: 460800]
   --probe-method TEXT            [default: bootloader, cpc, ezsp, spinel]
