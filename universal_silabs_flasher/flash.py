@@ -225,7 +225,8 @@ async def flash(
 
     # Prefer to probe the expected firmware image type first, if it is known
     if (
-        metadata.fw_type is not None
+        metadata is not None
+        and metadata.fw_type is not None
         and ctx.parent.get_parameter_source("probe_method")
         == click.core.ParameterSource.DEFAULT
     ):
