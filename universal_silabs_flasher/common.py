@@ -7,6 +7,7 @@ import contextlib
 import collections
 
 import crc
+import click
 import zigpy.serial
 import async_timeout
 import serial_asyncio
@@ -173,3 +174,23 @@ async def connect_protocol(port, baudrate, factory):
 
         # Required for Windows to be able to re-connect to the same serial port
         await asyncio.sleep(0)
+
+
+class CommaSeparatedNumbers(click.Option):
+    """Click type to parse comma-separated numbers into a list of integers."""
+
+    def type_cast_value(self, ctx: click.Context, value: str) -> list[int]:
+        values = []
+
+        for v in value.split(","):
+            if not v.strip():
+                continue
+
+            try:
+                values.append(int(v, 10))
+            except ValueError:
+                raise click.BadParameter(
+                    f"Comma-separated list of numbers contains bad value: {v!r}"
+                )
+
+        return values

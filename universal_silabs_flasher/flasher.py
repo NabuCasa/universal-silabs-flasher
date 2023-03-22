@@ -79,10 +79,10 @@ FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
 
 
 DEFAULT_BAUDRATES = {
-    ApplicationType.GECKO_BOOTLOADER: 115200,
-    ApplicationType.CPC: 115200,
-    ApplicationType.EZSP: 115200,
-    ApplicationType.SPINEL: 460800,
+    ApplicationType.GECKO_BOOTLOADER: [115200],
+    ApplicationType.CPC: [115200, 460800],
+    ApplicationType.EZSP: [115200],
+    ApplicationType.SPINEL: [460800],
 }
 
 
@@ -90,13 +90,14 @@ DEFAULT_BAUDRATES = {
 class ProbeResult:
     version: AwesomeVersion | None
     continue_probing: bool
+    baudrate: int
 
 
 class Flasher:
     def __init__(
         self,
         *,
-        baudrates: dict[ApplicationType, int] = DEFAULT_BAUDRATES,
+        baudrates: dict[ApplicationType, list[int]] = DEFAULT_BAUDRATES,
         probe_methods: tuple[ApplicationType, ...] = (
             ApplicationType.GECKO_BOOTLOADER,
             ApplicationType.CPC,
@@ -109,16 +110,10 @@ class Flasher:
         self._probe_methods = probe_methods
         self._device = device
 
-        self._app_type: ApplicationType | None = None
-        self._app_version: AwesomeVersion | None = None
-
-    @property
-    def app_type(self) -> ApplicationType | None:
-        return self._app_type
-
-    @property
-    def app_version(self) -> AwesomeVersion | None:
-        return self._app_version
+        self.app_type: ApplicationType | None = None
+        self.app_version: AwesomeVersion | None = None
+        self.app_baudrate: int | None = None
+        self.bootloader_baudrate: int | None = None
 
     async def enter_yellow_bootloader(self):
         await send_gpio_pattern(
@@ -129,120 +124,124 @@ class Flasher:
             toggle_delay=0.1,
         )
 
-    def _connect_gecko_bootloader(self):
-        return connect_protocol(
-            self._device,
-            self._baudrates.get(
-                ApplicationType.GECKO_BOOTLOADER,
-                DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
-            ),
-            GeckoBootloaderProtocol,
-        )
+    def _connect_gecko_bootloader(self, baudrate: int):
+        return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)
 
-    def _connect_cpc(self):
-        return connect_protocol(
-            self._device,
-            self._baudrates.get(
-                ApplicationType.CPC, DEFAULT_BAUDRATES[ApplicationType.CPC]
-            ),
-            CPCProtocol,
-        )
+    def _connect_cpc(self, baudrate: int):
+        return connect_protocol(self._device, baudrate, CPCProtocol)
 
-    def _connect_ezsp(self):
-        return connect_ezsp(
-            self._device,
-            self._baudrates.get(
-                ApplicationType.EZSP, DEFAULT_BAUDRATES[ApplicationType.EZSP]
-            ),
-        )
+    def _connect_ezsp(self, baudrate: int):
+        return connect_ezsp(self._device, baudrate)
 
-    def _connect_spinel(self):
-        return connect_protocol(
-            self._device,
-            self._baudrates.get(
-                ApplicationType.SPINEL, DEFAULT_BAUDRATES[ApplicationType.SPINEL]
-            ),
-            SpinelProtocol,
-        )
+    def _connect_spinel(self, baudrate: int):
+        return connect_protocol(self._device, baudrate, SpinelProtocol)
 
-    async def probe_gecko_bootloader(self, *, run_firmware: bool = True) -> ProbeResult:
+    async def probe_gecko_bootloader(
+        self, *, baudrate: int, run_firmware: bool = True
+    ) -> ProbeResult:
         try:
-            async with self._connect_gecko_bootloader() as gecko:
+            async with self._connect_gecko_bootloader(baudrate) as gecko:
                 bootloader_version = await gecko.probe()
 
                 if run_firmware:
                     await gecko.run_firmware()
         except NoFirmwareError:
             _LOGGER.warning("No application can be launched")
-            return ProbeResult(version=bootloader_version, continue_probing=False)
+            return ProbeResult(
+                version=bootloader_version,
+                baudrate=baudrate,
+                continue_probing=False,
+            )
         else:
             return ProbeResult(
-                version=bootloader_version, continue_probing=run_firmware
+                version=bootloader_version,
+                baudrate=baudrate,
+                continue_probing=run_firmware,
             )
 
-    async def probe_cpc(self) -> ProbeResult:
-        async with self._connect_cpc() as cpc:
+    async def probe_cpc(self, baudrate: int) -> ProbeResult:
+        async with self._connect_cpc(baudrate) as cpc:
             version = await cpc.probe()
 
-        return ProbeResult(version=version, continue_probing=False)
+        return ProbeResult(
+            version=version,
+            baudrate=baudrate,
+            continue_probing=False,
+        )
 
-    async def probe_ezsp(self) -> ProbeResult:
-        async with self._connect_ezsp() as ezsp:
+    async def probe_ezsp(self, baudrate: int) -> ProbeResult:
+        async with self._connect_ezsp(baudrate) as ezsp:
             _, _, version = await ezsp.get_board_info()
 
         return ProbeResult(
             version=AwesomeVersion(version.replace(" build ", ".")),
+            baudrate=baudrate,
             continue_probing=False,
         )
 
-    async def probe_spinel(self) -> ProbeResult:
-        async with self._connect_spinel() as spinel:
+    async def probe_spinel(self, baudrate: int) -> ProbeResult:
+        async with self._connect_spinel(baudrate) as spinel:
             version = await spinel.probe()
 
-        return ProbeResult(version=version, continue_probing=False)
+        return ProbeResult(
+            version=version,
+            baudrate=baudrate,
+            continue_probing=False,
+        )
 
     async def probe_app_type(self, *, yellow_gpio_reset: bool = False) -> None:
         if yellow_gpio_reset:
             await self.enter_yellow_bootloader()
 
-        self._app_type = None
-        self._app_version = None
-
-        bootloader_version = None
+        self.app_type = None
+        self.app_version = None
+        bootloader_probe = None
 
         # Only run firmware from the bootloader if we have other probe methods
         run_firmware = self._probe_methods != [ApplicationType.GECKO_BOOTLOADER]
 
         for probe_method in self._probe_methods:
             func = {
-                ApplicationType.GECKO_BOOTLOADER: lambda: self.probe_gecko_bootloader(
-                    run_firmware=run_firmware
+                ApplicationType.GECKO_BOOTLOADER: (
+                    lambda baudrate: self.probe_gecko_bootloader(
+                        run_firmware=run_firmware, baudrate=baudrate
+                    )
                 ),
                 ApplicationType.CPC: self.probe_cpc,
                 ApplicationType.EZSP: self.probe_ezsp,
                 ApplicationType.SPINEL: self.probe_spinel,
             }[probe_method]
 
-            _LOGGER.info("Probing %s", probe_method)
+            for baudrate in self._baudrates[probe_method]:
+                # Skip probing the bootloader twice if we already know the baudrate
+                if (
+                    self.bootloader_baudrate is not None
+                    and probe_method == ApplicationType.GECKO_BOOTLOADER
+                ):
+                    continue
 
-            try:
-                result = await func()
-            except asyncio.TimeoutError:
-                continue
+                _LOGGER.info("Probing %s at %d baud", probe_method, baudrate)
 
-            # Keep track of the bootloader version for later
-            if probe_method == ApplicationType.GECKO_BOOTLOADER:
-                _LOGGER.debug("Launched application from bootloader, continuing")
-                bootloader_version = result.version
+                try:
+                    result = await func(baudrate=baudrate)
+                except asyncio.TimeoutError:
+                    continue
 
-            if result.continue_probing:
-                continue
+                # Keep track of the bootloader version for later
+                if probe_method == ApplicationType.GECKO_BOOTLOADER:
+                    _LOGGER.debug("Launched application from bootloader, continuing")
+                    bootloader_probe = result
+                    self.bootloader_baudrate = result.baudrate
 
-            self._app_type = probe_method
-            self._app_version = result.version
-            break
+                if result.continue_probing:
+                    continue
+
+                self.app_type = probe_method
+                self.app_version = result.version
+                self.app_baudrate = result.baudrate
+                break
         else:
-            if bootloader_version is None:
+            if bootloader_probe is None:
                 raise RuntimeError("Failed to probe running application type")
             elif not yellow_gpio_reset and run_firmware:
                 raise RuntimeError(
@@ -253,29 +252,35 @@ class Flasher:
             if yellow_gpio_reset:
                 await self.enter_yellow_bootloader()
 
-            self._app_type = ApplicationType.GECKO_BOOTLOADER
-            self._app_version = bootloader_version
+            self.app_type = ApplicationType.GECKO_BOOTLOADER
+            self.app_version = bootloader_probe.version
+            self.app_baudrate = bootloader_probe.baudrate
             _LOGGER.warning("Bootloader did not launch a valid application")
 
-        _LOGGER.info("Detected %s, version %s", self._app_type, self._app_version)
+        _LOGGER.info(
+            "Detected %s, version %s at %d baud",
+            self.app_type,
+            self.app_version,
+            self.app_baudrate,
+        )
 
     async def enter_bootloader(self) -> None:
-        if self._app_type is None:
+        if self.app_type is None:
             await self.probe_app_type()
 
-        if self._app_type is ApplicationType.GECKO_BOOTLOADER:
+        if self.app_type is ApplicationType.GECKO_BOOTLOADER:
             # No firmware
             pass
-        elif self._app_type is ApplicationType.CPC:
-            async with self._connect_cpc() as cpc:
+        elif self.app_type is ApplicationType.CPC:
+            async with self._connect_cpc(self.app_baudrate) as cpc:
                 async with async_timeout.timeout(PROBE_TIMEOUT):
                     await cpc.enter_bootloader()
-        elif self._app_type is ApplicationType.SPINEL:
-            async with self._connect_spinel() as spinel:
+        elif self.app_type is ApplicationType.SPINEL:
+            async with self._connect_spinel(self.app_baudrate) as spinel:
                 async with async_timeout.timeout(PROBE_TIMEOUT):
                     await spinel.enter_bootloader()
-        elif self._app_type is ApplicationType.EZSP:
-            async with self._connect_ezsp() as ezsp:
+        elif self.app_type is ApplicationType.EZSP:
+            async with self._connect_ezsp(self.app_baudrate) as ezsp:
                 res = await ezsp.launchStandaloneBootloader(0x01)
 
                 if res[0] != bellows.types.EmberStatus.SUCCESS:
@@ -283,7 +288,7 @@ class Flasher:
                         f"EmberZNet could not enter the bootloader: {res[0]!r}"
                     )
         else:
-            raise RuntimeError(f"Invalid application type: {self._app_type}")
+            raise RuntimeError(f"Invalid application type: {self.app_type}")
 
     async def flash_firmware(
         self,
@@ -299,7 +304,7 @@ class Flasher:
             padded_size = XMODEM_BLOCK_SIZE * (num_complete_blocks + 1)
             data += b"\xFF" * (padded_size - len(data))
 
-        async with self._connect_gecko_bootloader() as gecko:
+        async with self._connect_gecko_bootloader(self.bootloader_baudrate) as gecko:
             await gecko.probe()
             await gecko.upload_firmware(data, progress_callback=progress_callback)
 
@@ -312,7 +317,7 @@ class Flasher:
         if self.app_type != ApplicationType.EZSP:
             raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
 
-        async with self._connect_ezsp() as ezsp:
+        async with self._connect_ezsp(self.app_baudrate) as ezsp:
             (current_eui64,) = await ezsp.getEui64()
             _LOGGER.info("Current device IEEE: %s", current_eui64)
 

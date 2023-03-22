@@ -17,7 +17,7 @@ import bellows.types
 import zigpy.ota.validators
 
 from .gbl import GBLImage, FirmwareImageType
-from .common import patch_pyserial_asyncio
+from .common import CommaSeparatedNumbers, patch_pyserial_asyncio
 from .flasher import (
     DEFAULT_BAUDRATES,
     FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
@@ -108,26 +108,31 @@ class SerialPort(click.ParamType):
 @click.option(
     "--baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.CPC],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
     "--bootloader-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
     "--cpc-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.CPC],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
     "--ezsp-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.EZSP],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
     "--spinel-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.SPINEL],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
