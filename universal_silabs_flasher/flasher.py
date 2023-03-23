@@ -166,61 +166,73 @@ class Flasher:
             continue_probing=False,
         )
 
-    async def probe_app_type(self, *, yellow_gpio_reset: bool = False) -> None:
+    async def probe_app_type(
+        self,
+        types: typing.Iterable[ApplicationType] | None = None,
+        *,
+        yellow_gpio_reset: bool = False,
+    ) -> None:
+        if types is None:
+            types = self._probe_methods
+
         if yellow_gpio_reset:
             await self.enter_yellow_bootloader()
 
-        self.app_type = None
-        self.app_version = None
         bootloader_probe = None
 
         # Only run firmware from the bootloader if we have other probe methods
-        run_firmware = self._probe_methods != [ApplicationType.GECKO_BOOTLOADER]
+        only_probe_bootloader = types == [ApplicationType.GECKO_BOOTLOADER]
+        probe_funcs = {
+            ApplicationType.GECKO_BOOTLOADER: (
+                lambda baudrate: self.probe_gecko_bootloader(
+                    run_firmware=(not only_probe_bootloader), baudrate=baudrate
+                )
+            ),
+            ApplicationType.CPC: self.probe_cpc,
+            ApplicationType.EZSP: self.probe_ezsp,
+            ApplicationType.SPINEL: self.probe_spinel,
+        }
 
-        for probe_method in self._probe_methods:
-            func = {
-                ApplicationType.GECKO_BOOTLOADER: (
-                    lambda baudrate: self.probe_gecko_bootloader(
-                        run_firmware=run_firmware, baudrate=baudrate
-                    )
-                ),
-                ApplicationType.CPC: self.probe_cpc,
-                ApplicationType.EZSP: self.probe_ezsp,
-                ApplicationType.SPINEL: self.probe_spinel,
-            }[probe_method]
+        for probe_method, baudrate in (
+            (m, b) for m in types for b in self._baudrates[m]
+        ):
+            # Don't probe the bootloader twice
+            if (
+                probe_method == ApplicationType.GECKO_BOOTLOADER
+                and bootloader_probe is not None
+            ):
+                _LOGGER.debug("Not probing bootloader twice")
+                continue
 
-            for baudrate in self._baudrates[probe_method]:
-                # Skip probing the bootloader twice if we already know the baudrate
-                if (
-                    self.bootloader_baudrate is not None
-                    and probe_method == ApplicationType.GECKO_BOOTLOADER
-                ):
-                    continue
+            _LOGGER.info("Probing %s at %d baud", probe_method, baudrate)
 
-                _LOGGER.info("Probing %s at %d baud", probe_method, baudrate)
+            try:
+                result = await probe_funcs[probe_method](baudrate=baudrate)
+            except asyncio.TimeoutError:
+                continue
 
-                try:
-                    result = await func(baudrate=baudrate)
-                except asyncio.TimeoutError:
-                    continue
+            # Keep track of the bootloader version for later
+            if probe_method == ApplicationType.GECKO_BOOTLOADER:
+                _LOGGER.debug("Launched application from bootloader, continuing")
+                bootloader_probe = result
+                self.bootloader_baudrate = bootloader_probe.baudrate
 
-                # Keep track of the bootloader version for later
-                if probe_method == ApplicationType.GECKO_BOOTLOADER:
-                    _LOGGER.debug("Launched application from bootloader, continuing")
-                    bootloader_probe = result
-                    self.bootloader_baudrate = result.baudrate
+                # We cannot assume that the bootloader is the only running application
+                # if we did not try to start an application
+                if only_probe_bootloader:
+                    break
 
-                if result.continue_probing:
-                    continue
+            if result.continue_probing:
+                continue
 
-                self.app_type = probe_method
-                self.app_version = result.version
-                self.app_baudrate = result.baudrate
-                break
+            self.app_type = probe_method
+            self.app_version = result.version
+            self.app_baudrate = result.baudrate
+            break
         else:
             if bootloader_probe is None:
                 raise RuntimeError("Failed to probe running application type")
-            elif not yellow_gpio_reset and run_firmware:
+            elif not yellow_gpio_reset and only_probe_bootloader:
                 raise RuntimeError(
                     "Cannot reboot back into bootloader from unknown application"
                 )
@@ -232,13 +244,15 @@ class Flasher:
             self.app_type = ApplicationType.GECKO_BOOTLOADER
             self.app_version = bootloader_probe.version
             self.app_baudrate = bootloader_probe.baudrate
+            self.bootloader_baudrate = bootloader_probe.baudrate
             _LOGGER.warning("Bootloader did not launch a valid application")
 
         _LOGGER.info(
-            "Detected %s, version %s at %d baud",
+            "Detected %s, version %s at %s baudrate (bootloader baudrate %s)",
             self.app_type,
             self.app_version,
             self.app_baudrate,
+            self.bootloader_baudrate,
         )
 
     async def enter_bootloader(self) -> None:
@@ -266,6 +280,10 @@ class Flasher:
                     )
         else:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
+
+        # Probe the bootloader baudrate
+        if self.bootloader_baudrate is None:
+            await self.probe_app_type(types=[ApplicationType.GECKO_BOOTLOADER])
 
     async def flash_firmware(
         self,
