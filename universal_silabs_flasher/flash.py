@@ -15,6 +15,7 @@ import coloredlogs
 import zigpy.types
 import bellows.types
 import zigpy.ota.validators
+from awesomeversion.exceptions import AwesomeVersionCompareException
 
 from .gbl import GBLImage, FirmwareImageType
 from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
@@ -231,6 +232,7 @@ async def flash(
             ctx.parent.get_parameter_source("probe_method")
             == click.core.ParameterSource.DEFAULT
         ):
+            _LOGGER.debug("Probing app type %s first", app_type)
             flasher._probe_methods = put_first(
                 flasher._probe_methods, [ApplicationType.GECKO_BOOTLOADER, app_type]
             )
@@ -241,6 +243,7 @@ async def flash(
             and ctx.parent.get_parameter_source(app_type.name)
             == click.core.ParameterSource.DEFAULT
         ):
+            _LOGGER.debug("Probing with %s baudrate first", app_type)
             flasher._baudrates[app_type] = put_first(
                 flasher._baudrates[app_type], [metadata.baudrate]
             )
@@ -249,12 +252,6 @@ async def flash(
         await flasher.probe_app_type(yellow_gpio_reset=yellow_gpio_reset)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
-
-    _LOGGER.info(
-        "Detected running firmware %s, version %s",
-        flasher.app_type,
-        flasher.app_version,
-    )
 
     if flasher.app_type == ApplicationType.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
@@ -268,11 +265,21 @@ async def flash(
 
     # Ensure the firmware versions and image types are consistent
     if not force and flasher.app_version is not None and metadata is not None:
+        app_version = flasher.app_version
+        fw_version = metadata.get_public_version()
+
+        try:
+            app_version > fw_version  # noqa: B015
+        except AwesomeVersionCompareException:
+            can_compare_versions = False
+        else:
+            can_compare_versions = True
+
         is_cross_flashing = (
             metadata.fw_type is not None
             and running_image_type is not None
             and metadata.fw_type != running_image_type
-        )
+        ) or not can_compare_versions
 
         if is_cross_flashing and not allow_cross_flashing:
             raise click.ClickException(
@@ -282,9 +289,6 @@ async def flash(
             )
 
         if not is_cross_flashing:
-            app_version = flasher.app_version
-            fw_version = metadata.get_public_version()
-
             if app_version == fw_version:
                 _LOGGER.info(
                     "Firmware version %s is flashed, not re-installing", app_version
