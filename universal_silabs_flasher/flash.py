@@ -18,7 +18,7 @@ import zigpy.ota.validators
 
 from .gbl import GBLImage, FirmwareImageType
 from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
-from .common import CommaSeparatedNumbers, patch_pyserial_asyncio
+from .common import CommaSeparatedNumbers, put_first, patch_pyserial_asyncio
 from .flasher import Flasher
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
@@ -221,23 +221,29 @@ async def flash(
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
 
-    # Prefer to probe the expected firmware image type first, if it is known
-    if (
-        metadata is not None
-        and metadata.fw_type is not None
-        and ctx.parent.get_parameter_source("probe_method")
-        == click.core.ParameterSource.DEFAULT
-    ):
-        # The bootloader and current firmware type come first
-        methods = [
-            ApplicationType.GECKO_BOOTLOADER,
-            FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type],
-        ]
+    # Prefer to probe with the current firmware's settings to speed up startup after the
+    # firmware is flashed for the first time
+    if metadata is not None and metadata.fw_type is not None:
+        app_type = FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type]
 
-        # Then come the rest of the probe methods
-        flasher._probe_methods = methods + [
-            m for m in flasher._probe_methods if m not in methods
-        ]
+        # Probe with the firmware's app type first
+        if (
+            ctx.parent.get_parameter_source("probe_method")
+            == click.core.ParameterSource.DEFAULT
+        ):
+            flasher._probe_methods = put_first(
+                flasher._probe_methods, [ApplicationType.GECKO_BOOTLOADER, app_type]
+            )
+
+        # Probe with the firmware's baudrate first
+        if (
+            metadata.baudrate is not None
+            and ctx.parent.get_parameter_source(app_type.name)
+            == click.core.ParameterSource.DEFAULT
+        ):
+            flasher._baudrates[app_type] = put_first(
+                flasher._baudrates[app_type], [metadata.baudrate]
+            )
 
     try:
         await flasher.probe_app_type(yellow_gpio_reset=yellow_gpio_reset)

@@ -196,3 +196,8 @@ class CommaSeparatedNumbers(click.ParamType):
                 )
 
         return values
+
+
+def put_first(lst: list[typing.Any], elements: list[typing.Any]) -> list[typing.Any]:
+    """Orders a list so that the provided element is first."""
+    return elements + [e for e in lst if e not in elements]

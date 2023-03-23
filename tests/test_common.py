@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from universal_silabs_flasher.common import StateMachine
+from universal_silabs_flasher.common import StateMachine, put_first
 
 
 async def test_state_machine_bad_initial_state():
@@ -27,3 +27,10 @@ async def test_state_machine():
     await asyncio.gather(sm.wait_for_state("a"), sm.wait_for_state("a"))
 
     assert sm.state == "a"
+
+
+def test_put_first():
+    assert put_first([1, 2, 3], [2]) == [2, 1, 3]
+    assert put_first([1, 2, 3], [4]) == [4, 1, 2, 3]
+    assert put_first([1, 2, 3], [1]) == [1, 2, 3]
+    assert put_first([1, 2, 3], [3]) == [3, 1, 2]

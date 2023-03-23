@@ -58,6 +58,7 @@ class NabuCasaMetadata:
     ot_rcp_version: AwesomeVersion | None
 
     fw_type: FirmwareImageType | None
+    baudrate: int | None
 
     def get_public_version(self) -> AwesomeVersion | None:
         return self.ezsp_version or self.ot_rcp_version or self.sdk_version
@@ -84,6 +85,8 @@ class NabuCasaMetadata:
         if fw_type := obj.pop("fw_type", None):
             fw_type = FirmwareImageType(fw_type)
 
+        baudrate = obj.pop("baudrate", None)
+
         if obj:
             _LOGGER.warning("Unexpected keys in JSON remain: %r", obj)
 
@@ -93,6 +96,7 @@ class NabuCasaMetadata:
             ezsp_version=ezsp_version,
             ot_rcp_version=ot_rcp_version,
             fw_type=fw_type,
+            baudrate=baudrate,
         )
 
 
