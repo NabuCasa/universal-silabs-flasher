@@ -17,13 +17,9 @@ import bellows.types
 import zigpy.ota.validators
 
 from .gbl import GBLImage, FirmwareImageType
+from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
 from .common import CommaSeparatedNumbers, patch_pyserial_asyncio
-from .flasher import (
-    DEFAULT_BAUDRATES,
-    FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
-    Flasher,
-    ApplicationType,
-)
+from .flasher import Flasher
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 patch_pyserial_asyncio()

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import enum
 import time
 import typing
 import asyncio
@@ -14,7 +13,8 @@ import bellows.config
 from awesomeversion import AwesomeVersion
 
 from .cpc import CPCProtocol
-from .gbl import GBLImage, FirmwareImageType
+from .gbl import GBLImage
+from .const import DEFAULT_BAUDRATES, ApplicationType
 from .common import PROBE_TIMEOUT, connect_protocol
 from .spinel import SpinelProtocol
 from .emberznet import connect_ezsp
@@ -61,29 +61,6 @@ async def send_gpio_pattern(
     await asyncio.get_running_loop().run_in_executor(
         None, _send_gpio_pattern, pin_states, toggle_delay
     )
-
-
-class ApplicationType(enum.Enum):
-    GECKO_BOOTLOADER = "bootloader"
-    CPC = "cpc"
-    EZSP = "ezsp"
-    SPINEL = "spinel"
-
-
-FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
-    FirmwareImageType.NCP_UART_HW: ApplicationType.EZSP,
-    FirmwareImageType.RCP_UART_802154: ApplicationType.CPC,
-    FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154: ApplicationType.CPC,
-    FirmwareImageType.OT_RCP: ApplicationType.SPINEL,
-}
-
-
-DEFAULT_BAUDRATES = {
-    ApplicationType.GECKO_BOOTLOADER: [115200],
-    ApplicationType.CPC: [460800, 115200, 230400],
-    ApplicationType.EZSP: [115200],
-    ApplicationType.SPINEL: [460800],
-}
 
 
 @dataclasses.dataclass(frozen=True)

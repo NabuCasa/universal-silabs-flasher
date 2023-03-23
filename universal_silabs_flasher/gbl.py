@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import enum
 import json
 import typing
 import logging
@@ -9,6 +8,7 @@ import dataclasses
 from awesomeversion import AwesomeVersion
 from zigpy.ota.validators import parse_silabs_gbl
 
+from .const import FirmwareImageType
 from .cpc_types import enum32
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,20 +47,6 @@ class TagId(enum32):
     # End of the GBL file. It contains a 32-bit CRC for the entire file as an integrity
     # check. The CRC is a non-cryptographic check. This must be the last tag.
     END = 0xFC0404FC
-
-
-class FirmwareImageType(enum.Enum):
-    # EmberZNet Zigbee firmware
-    NCP_UART_HW = "ncp-uart-hw"
-
-    # Multi-PAN RCP Multiprotocol (via zigbeed)
-    RCP_UART_802154 = "rcp-uart-802154"
-
-    # Zigbee NCP + OpenThread RCP
-    ZIGBEE_NCP_RCP_UART_802154 = "zigbee-ncp-rcp-uart-802154"
-
-    # OpenThread RCP
-    OT_RCP = "ot-rcp"
 
 
 @dataclasses.dataclass(frozen=True)
