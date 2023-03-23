@@ -105,12 +105,7 @@ class SerialPort(click.ParamType):
 @click.group()
 @click.option("-v", "--verbose", count=True)
 @click.option("--device", type=SerialPort(), required=True)
-@click.option(
-    "--baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-)
+@click.option("--baudrate", hidden=True)
 @click.option(
     "--bootloader-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
@@ -158,9 +153,11 @@ def main(
 
     # Override all application baudrates if a specific value is provided
     if ctx.get_parameter_source("baudrate") != click.core.ParameterSource.DEFAULT:
-        cpc_baudrate = baudrate
-        ezsp_baudrate = baudrate
-        spinel_baudrate = baudrate
+        raise click.ClickException(
+            "The `--baudrate` flag is deprecated. Remove it to rely on auto baudrate"
+            " probing, or replace it with an application-specific baudrate flag"
+            " (see `--help`)"
+        )
 
     ctx.obj = {
         "verbosity": verbose,
