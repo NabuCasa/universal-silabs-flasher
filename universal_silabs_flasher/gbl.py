@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import enum
 import json
 import typing
 import logging
@@ -9,6 +8,7 @@ import dataclasses
 from awesomeversion import AwesomeVersion
 from zigpy.ota.validators import parse_silabs_gbl
 
+from .const import FirmwareImageType
 from .cpc_types import enum32
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,20 +49,6 @@ class TagId(enum32):
     END = 0xFC0404FC
 
 
-class FirmwareImageType(enum.Enum):
-    # EmberZNet Zigbee firmware
-    NCP_UART_HW = "ncp-uart-hw"
-
-    # Multi-PAN RCP Multiprotocol (via zigbeed)
-    RCP_UART_802154 = "rcp-uart-802154"
-
-    # Zigbee NCP + OpenThread RCP
-    ZIGBEE_NCP_RCP_UART_802154 = "zigbee-ncp-rcp-uart-802154"
-
-    # OpenThread RCP
-    OT_RCP = "ot-rcp"
-
-
 @dataclasses.dataclass(frozen=True)
 class NabuCasaMetadata:
     metadata_version: int
@@ -72,6 +58,7 @@ class NabuCasaMetadata:
     ot_rcp_version: AwesomeVersion | None
 
     fw_type: FirmwareImageType | None
+    baudrate: int | None
 
     def get_public_version(self) -> AwesomeVersion | None:
         return self.ezsp_version or self.ot_rcp_version or self.sdk_version
@@ -98,6 +85,8 @@ class NabuCasaMetadata:
         if fw_type := obj.pop("fw_type", None):
             fw_type = FirmwareImageType(fw_type)
 
+        baudrate = obj.pop("baudrate", None)
+
         if obj:
             _LOGGER.warning("Unexpected keys in JSON remain: %r", obj)
 
@@ -107,6 +96,7 @@ class NabuCasaMetadata:
             ezsp_version=ezsp_version,
             ot_rcp_version=ot_rcp_version,
             fw_type=fw_type,
+            baudrate=baudrate,
         )
 
 

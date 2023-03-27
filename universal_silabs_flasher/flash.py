@@ -15,15 +15,12 @@ import coloredlogs
 import zigpy.types
 import bellows.types
 import zigpy.ota.validators
+from awesomeversion.exceptions import AwesomeVersionCompareException
 
 from .gbl import GBLImage, FirmwareImageType
-from .common import patch_pyserial_asyncio
-from .flasher import (
-    DEFAULT_BAUDRATES,
-    FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
-    Flasher,
-    ApplicationType,
-)
+from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
+from .common import CommaSeparatedNumbers, put_first, patch_pyserial_asyncio
+from .flasher import Flasher
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 patch_pyserial_asyncio()
@@ -105,29 +102,29 @@ class SerialPort(click.ParamType):
 @click.group()
 @click.option("-v", "--verbose", count=True)
 @click.option("--device", type=SerialPort(), required=True)
-@click.option(
-    "--baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
-    show_default=True,
-)
+@click.option("--baudrate", hidden=True)
 @click.option(
     "--bootloader-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
     "--cpc-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.CPC],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
     "--ezsp-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.EZSP],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
     "--spinel-baudrate",
     default=DEFAULT_BAUDRATES[ApplicationType.SPINEL],
+    type=CommaSeparatedNumbers(),
     show_default=True,
 )
 @click.option(
@@ -153,9 +150,11 @@ def main(
 
     # Override all application baudrates if a specific value is provided
     if ctx.get_parameter_source("baudrate") != click.core.ParameterSource.DEFAULT:
-        cpc_baudrate = baudrate
-        ezsp_baudrate = baudrate
-        spinel_baudrate = baudrate
+        raise click.ClickException(
+            "The `--baudrate` flag is deprecated. Remove it to rely on auto baudrate"
+            " probing, or replace it with an application-specific baudrate flag"
+            " (see `--help`)"
+        )
 
     ctx.obj = {
         "verbosity": verbose,
@@ -223,34 +222,36 @@ async def flash(
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
 
-    # Prefer to probe the expected firmware image type first, if it is known
-    if (
-        metadata is not None
-        and metadata.fw_type is not None
-        and ctx.parent.get_parameter_source("probe_method")
-        == click.core.ParameterSource.DEFAULT
-    ):
-        # The bootloader and current firmware type come first
-        methods = [
-            ApplicationType.GECKO_BOOTLOADER,
-            FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type],
-        ]
+    # Prefer to probe with the current firmware's settings to speed up startup after the
+    # firmware is flashed for the first time
+    if metadata is not None and metadata.fw_type is not None:
+        app_type = FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type]
 
-        # Then come the rest of the probe methods
-        flasher._probe_methods = methods + [
-            m for m in flasher._probe_methods if m not in methods
-        ]
+        # Probe with the firmware's app type first
+        if (
+            ctx.parent.get_parameter_source("probe_method")
+            == click.core.ParameterSource.DEFAULT
+        ):
+            _LOGGER.debug("Probing app type %s first", app_type)
+            flasher._probe_methods = put_first(
+                flasher._probe_methods, [ApplicationType.GECKO_BOOTLOADER, app_type]
+            )
+
+        # Probe with the firmware's baudrate first
+        if (
+            metadata.baudrate is not None
+            and ctx.parent.get_parameter_source(app_type.name)
+            == click.core.ParameterSource.DEFAULT
+        ):
+            _LOGGER.debug("Probing with %s baudrate first", app_type)
+            flasher._baudrates[app_type] = put_first(
+                flasher._baudrates[app_type], [metadata.baudrate]
+            )
 
     try:
         await flasher.probe_app_type(yellow_gpio_reset=yellow_gpio_reset)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
-
-    _LOGGER.info(
-        "Detected running firmware %s, version %s",
-        flasher.app_type,
-        flasher.app_version,
-    )
 
     if flasher.app_type == ApplicationType.EZSP:
         running_image_type = FirmwareImageType.NCP_UART_HW
@@ -264,11 +265,21 @@ async def flash(
 
     # Ensure the firmware versions and image types are consistent
     if not force and flasher.app_version is not None and metadata is not None:
+        app_version = flasher.app_version
+        fw_version = metadata.get_public_version()
+
+        try:
+            app_version > fw_version  # noqa: B015
+        except AwesomeVersionCompareException:
+            can_compare_versions = False
+        else:
+            can_compare_versions = True
+
         is_cross_flashing = (
             metadata.fw_type is not None
             and running_image_type is not None
             and metadata.fw_type != running_image_type
-        )
+        ) or not can_compare_versions
 
         if is_cross_flashing and not allow_cross_flashing:
             raise click.ClickException(
@@ -278,9 +289,6 @@ async def flash(
             )
 
         if not is_cross_flashing:
-            app_version = flasher.app_version
-            fw_version = metadata.get_public_version()
-
             if app_version == fw_version:
                 _LOGGER.info(
                     "Firmware version %s is flashed, not re-installing", app_version
