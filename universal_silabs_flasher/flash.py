@@ -257,11 +257,13 @@ async def flash(
         running_image_type = FirmwareImageType.NCP_UART_HW
     elif flasher.app_type == ApplicationType.SPINEL:
         running_image_type = FirmwareImageType.OT_RCP
+    elif flasher.app_type == ApplicationType.CPC:
+        # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
+        running_image_type = FirmwareImageType.RCP_UART_802154
     elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
         running_image_type = None
     else:
-        # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
-        running_image_type = FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154
+        raise RuntimeError(f"Unknown application type {flasher.app_type!r}")
 
     # Ensure the firmware versions and image types are consistent
     if not force and flasher.app_version is not None and metadata is not None:
