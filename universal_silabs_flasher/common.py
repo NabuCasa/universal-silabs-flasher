@@ -13,6 +13,12 @@ import zigpy.serial
 import async_timeout
 import serial_asyncio
 
+if typing.TYPE_CHECKING:
+    try:
+        from typing import Self
+    except ImportError:
+        from typing_extensions import Self
+
 _LOGGER = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 1
@@ -215,7 +221,7 @@ class Version:
     incomparable: str | None = dataclasses.field(compare=False, default=None)
 
     @classmethod
-    def from_string(cls: type[typing.Self], version: str) -> typing.Self:
+    def from_string(cls: type[Self], version: str) -> Self:
         comparable, _, incomparable = version.partition(":")
 
         return cls(
@@ -231,6 +237,6 @@ class Version:
 
         return repr(version)
 
-    def compatible_with(self, other: typing.Self) -> bool:
+    def compatible_with(self, other: Self) -> bool:
         prefix_length = min(len(self.comparable), len(other.comparable))
         return self.comparable[:prefix_length] == other.comparable[:prefix_length]
