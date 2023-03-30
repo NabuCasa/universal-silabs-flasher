@@ -301,6 +301,10 @@ async def flash(
                     app_version,
                 )
                 return
+        else:
+            _LOGGER.info(
+                "Cross-flashing from %s to %s", running_image_type, metadata.fw_type
+            )
 
     await flasher.enter_bootloader()
 
