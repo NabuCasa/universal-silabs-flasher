@@ -7,9 +7,8 @@ import dataclasses
 
 import zigpy.types
 import async_timeout
-from awesomeversion import AwesomeVersion
 
-from .common import SerialProtocol, crc16_kermit
+from .common import Version, SerialProtocol, crc16_kermit
 from .spinel_types import CommandID, PropertyID, HDLCSpecial, ResetReason
 
 _LOGGER = logging.getLogger(__name__)
@@ -240,7 +239,7 @@ class SpinelProtocol(SerialProtocol):
 
         return await self.send_frame(frame, **kwargs)
 
-    async def probe(self) -> AwesomeVersion:
+    async def probe(self) -> Version:
         rsp = await self.send_command(
             CommandID.PROP_VALUE_GET,
             PropertyID.NCP_VERSION.serialize(),
@@ -255,7 +254,7 @@ class SpinelProtocol(SerialProtocol):
         # We strip off the date code to get something reasonably stable
         short_version, _ = version.split(";", 1)
 
-        return AwesomeVersion(short_version)
+        return Version(short_version)
 
     async def enter_bootloader(self) -> None:
         await self.send_command(

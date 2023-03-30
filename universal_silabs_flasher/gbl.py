@@ -5,10 +5,10 @@ import typing
 import logging
 import dataclasses
 
-from awesomeversion import AwesomeVersion
 from zigpy.ota.validators import parse_silabs_gbl
 
 from .const import FirmwareImageType
+from .common import Version
 from .cpc_types import enum32
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,14 +53,14 @@ class TagId(enum32):
 class NabuCasaMetadata:
     metadata_version: int
 
-    sdk_version: AwesomeVersion | None
-    ezsp_version: AwesomeVersion | None
-    ot_rcp_version: AwesomeVersion | None
+    sdk_version: Version | None
+    ezsp_version: Version | None
+    ot_rcp_version: Version | None
 
     fw_type: FirmwareImageType | None
     baudrate: int | None
 
-    def get_public_version(self) -> AwesomeVersion | None:
+    def get_public_version(self) -> Version | None:
         return self.ezsp_version or self.ot_rcp_version or self.sdk_version
 
     @classmethod
@@ -74,13 +74,13 @@ class NabuCasaMetadata:
             )
 
         if sdk_version := obj.pop("sdk_version", None):
-            sdk_version = AwesomeVersion(sdk_version)
+            sdk_version = Version(sdk_version)
 
         if ezsp_version := obj.pop("ezsp_version", None):
-            ezsp_version = AwesomeVersion(ezsp_version)
+            ezsp_version = Version(ezsp_version)
 
         if ot_rcp_version := obj.pop("ot_rcp_version", None):
-            ot_rcp_version = AwesomeVersion(ot_rcp_version)
+            ot_rcp_version = Version(ot_rcp_version)
 
         if fw_type := obj.pop("fw_type", None):
             fw_type = FirmwareImageType(fw_type)

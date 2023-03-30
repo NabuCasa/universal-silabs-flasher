@@ -15,7 +15,6 @@ import coloredlogs
 import zigpy.types
 import bellows.types
 import zigpy.ota.validators
-from awesomeversion.exceptions import AwesomeVersionCompareException
 
 from .gbl import GBLImage, FirmwareImageType
 from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
@@ -270,18 +269,11 @@ async def flash(
         app_version = flasher.app_version
         fw_version = metadata.get_public_version()
 
-        try:
-            app_version > fw_version  # noqa: B015
-        except AwesomeVersionCompareException:
-            can_compare_versions = False
-        else:
-            can_compare_versions = True
-
         is_cross_flashing = (
             metadata.fw_type is not None
             and running_image_type is not None
             and metadata.fw_type != running_image_type
-        ) or not can_compare_versions
+        )
 
         if is_cross_flashing and not allow_cross_flashing:
             raise click.ClickException(
@@ -291,12 +283,12 @@ async def flash(
             )
 
         if not is_cross_flashing:
-            if app_version == fw_version:
+            if app_version.compatible_with(fw_version):
                 _LOGGER.info(
                     "Firmware version %s is flashed, not re-installing", app_version
                 )
                 return
-            elif ensure_exact_version and app_version != fw_version:
+            elif ensure_exact_version and not app_version.compatible_with(fw_version):
                 _LOGGER.info(
                     "Firmware version %s does not match expected version %s",
                     fw_version,
@@ -309,6 +301,10 @@ async def flash(
                     app_version,
                 )
                 return
+        else:
+            _LOGGER.info(
+                "Cross-flashing from %s to %s", running_image_type, metadata.fw_type
+            )
 
     await flasher.enter_bootloader()
 
