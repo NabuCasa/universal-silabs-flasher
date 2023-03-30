@@ -7,10 +7,9 @@ import dataclasses
 
 import zigpy.types
 import async_timeout
-from awesomeversion import AwesomeVersion
 
 from . import cpc_types
-from .common import BufferTooShort, SerialProtocol, crc16_ccitt
+from .common import Version, BufferTooShort, SerialProtocol, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -215,7 +214,7 @@ class CPCProtocol(SerialProtocol):
         self._command_seq: int = 0
         self._pending_frames: dict[int, asyncio.Future] = {}
 
-    async def probe(self) -> AwesomeVersion:
+    async def probe(self) -> Version:
         return await self.get_cpc_version()
 
     async def enter_bootloader(self) -> None:
@@ -233,7 +232,7 @@ class CPCProtocol(SerialProtocol):
             command_payload=ResetCommand(status=None),
         )
 
-    async def get_cpc_version(self) -> AwesomeVersion:
+    async def get_cpc_version(self) -> Version:
         """Read the secondary CPC version from the device."""
         rsp = await self.send_unnumbered_frame(
             command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET,
@@ -250,9 +249,9 @@ class CPCProtocol(SerialProtocol):
         patch, version_bytes = zigpy.types.uint32_t.deserialize(version_bytes)
         assert not version_bytes
 
-        return AwesomeVersion(f"{major}.{minor}.{patch}")
+        return Version.from_string(f"{major}.{minor}.{patch}")
 
-    async def get_secondary_version(self) -> AwesomeVersion:
+    async def get_secondary_version(self) -> Version:
         """Read the secondary app version from the device."""
         rsp = await self.send_unnumbered_frame(
             command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET,
@@ -265,7 +264,7 @@ class CPCProtocol(SerialProtocol):
 
         version_bytes = rsp.payload.payload.value
 
-        return AwesomeVersion(version_bytes.split(b"\x00", 1)[0].decode("ascii"))
+        return Version(version_bytes.split(b"\x00", 1)[0].decode("ascii"))
 
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
