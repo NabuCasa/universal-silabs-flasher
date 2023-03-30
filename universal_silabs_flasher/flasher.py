@@ -150,7 +150,7 @@ class Flasher:
             _, _, version = await ezsp.get_board_info()
 
         return ProbeResult(
-            version=Version.from_string(version.replace(" build ", ".")),
+            version=Version(version),
             baudrate=baudrate,
             continue_probing=False,
         )

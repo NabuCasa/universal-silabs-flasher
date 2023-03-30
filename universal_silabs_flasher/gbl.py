@@ -74,13 +74,13 @@ class NabuCasaMetadata:
             )
 
         if sdk_version := obj.pop("sdk_version", None):
-            sdk_version = Version.from_string(sdk_version)
+            sdk_version = Version(sdk_version)
 
         if ezsp_version := obj.pop("ezsp_version", None):
-            ezsp_version = Version.from_string(ezsp_version)
+            ezsp_version = Version(ezsp_version)
 
         if ot_rcp_version := obj.pop("ot_rcp_version", None):
-            ot_rcp_version = Version.from_string(ot_rcp_version)
+            ot_rcp_version = Version(ot_rcp_version)
 
         if fw_type := obj.pop("fw_type", None):
             fw_type = FirmwareImageType(fw_type)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 import typing
 import asyncio
 import logging
+import functools
 import contextlib
 import collections
 import dataclasses
@@ -215,28 +217,65 @@ def put_first(lst: list[typing.Any], elements: list[typing.Any]) -> list[typing.
     return elements + [e for e in lst if e not in elements]
 
 
-@dataclasses.dataclass(order=True, frozen=True)
+@dataclasses.dataclass(frozen=True, order=True)
+class VersionComponent:
+    comparable: bool
+    data: str | int
+
+
+@functools.total_ordering
 class Version:
-    comparable: tuple[int]
-    incomparable: str | None = dataclasses.field(compare=False, default=None)
+    _SEPARATORS = {".", "-", "/", "_", " build "}
+    _SEPARATORS_REGEX = re.compile(
+        "(" + "|".join(re.escape(s) for s in _SEPARATORS) + ")"
+    )
 
-    @classmethod
-    def from_string(cls: type[Self], version: str) -> Self:
-        comparable, _, incomparable = version.partition(":")
+    def __init__(self, version: str) -> None:
+        self.components: list[VersionComponent] = []
+        # 2.00.01
+        # 7.2.2.0 build 190
+        # 4.2.2
+        # SL-OPENTHREAD/2.2.2.0_GitHub-91fa1f455
+        for component in self._SEPARATORS_REGEX.split(version):
+            if component.isdigit():
+                self.components.append(
+                    VersionComponent(comparable=True, data=int(component))
+                )
+            else:
+                self.components.append(
+                    VersionComponent(comparable=False, data=component)
+                )
 
-        return cls(
-            comparable=tuple(int(v) for v in comparable.split(".")),
-            incomparable=incomparable or None,
-        )
-
-    def __repr__(self) -> str:
-        version = ".".join(map(str, self.comparable))
-
-        if self.incomparable:
-            version += f":{self.incomparable}"
-
-        return repr(version)
+    def comparable_components(self) -> tuple[VersionComponent, ...]:
+        return tuple(c for c in self.components if c.comparable)
 
     def compatible_with(self, other: Self) -> bool:
-        prefix_length = min(len(self.comparable), len(other.comparable))
-        return self.comparable[:prefix_length] == other.comparable[:prefix_length]
+        our_comparable = self.comparable_components()
+        their_comparable = other.comparable_components()
+
+        prefix_length = min(len(our_comparable), len(their_comparable))
+        return our_comparable[:prefix_length] == their_comparable[:prefix_length]
+
+    def __eq__(self, other: Self) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.components == other.components
+
+    def __lt__(self, other: Self) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        our_comparable = self.comparable_components()
+        their_comparable = other.comparable_components()
+
+        return our_comparable < their_comparable
+
+    def __repr__(self) -> str:
+        concatenated = "".join(str(c.data) for c in self.components)
+        comparable = ".".join(str(c.data) for c in self.comparable_components())
+
+        if concatenated == comparable:
+            return f"{concatenated!r}"
+
+        return f"{concatenated!r} ({comparable})"

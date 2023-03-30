@@ -254,7 +254,7 @@ class SpinelProtocol(SerialProtocol):
         # We strip off the date code to get something reasonably stable
         short_version, _ = version.split(";", 1)
 
-        return Version.from_string(short_version)
+        return Version(short_version)
 
     async def enter_bootloader(self) -> None:
         await self.send_command(

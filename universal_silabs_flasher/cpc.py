@@ -249,7 +249,7 @@ class CPCProtocol(SerialProtocol):
         patch, version_bytes = zigpy.types.uint32_t.deserialize(version_bytes)
         assert not version_bytes
 
-        return Version.from_string(f"{major}.{minor}.{patch}")
+        return Version(f"{major}.{minor}.{patch}")
 
     async def get_secondary_version(self) -> Version:
         """Read the secondary app version from the device."""

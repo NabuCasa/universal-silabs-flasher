@@ -77,7 +77,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         await self._state_machine.wait_for_state(State.IN_MENU)
 
         assert self._version is not None
-        return Version.from_string(self._version)
+        return Version(self._version)
 
     async def run_firmware(self) -> None:
         """Select `run` in the menu."""
