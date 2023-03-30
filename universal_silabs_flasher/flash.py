@@ -283,7 +283,16 @@ async def flash(
             )
 
         if not is_cross_flashing:
-            if app_version.compatible_with(fw_version):
+            if (
+                metadata.baudrate is not None
+                and metadata.baudrate != flasher.app_baudrate
+            ):
+                _LOGGER.info(
+                    "Firmware baudrate %s differs from expected baudrate %s",
+                    flasher.app_baudrate,
+                    metadata.baudrate,
+                )
+            elif app_version.compatible_with(fw_version):
                 _LOGGER.info(
                     "Firmware version %s is flashed, not re-installing", app_version
                 )
