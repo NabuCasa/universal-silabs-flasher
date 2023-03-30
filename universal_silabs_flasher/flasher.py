@@ -10,12 +10,11 @@ import bellows.ezsp
 import async_timeout
 import bellows.types
 import bellows.config
-from awesomeversion import AwesomeVersion
 
 from .cpc import CPCProtocol
 from .gbl import GBLImage
 from .const import DEFAULT_BAUDRATES, ApplicationType
-from .common import PROBE_TIMEOUT, connect_protocol
+from .common import PROBE_TIMEOUT, Version, connect_protocol
 from .spinel import SpinelProtocol
 from .emberznet import connect_ezsp
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
@@ -65,7 +64,7 @@ async def send_gpio_pattern(
 
 @dataclasses.dataclass(frozen=True)
 class ProbeResult:
-    version: AwesomeVersion | None
+    version: Version | None
     continue_probing: bool
     baudrate: int
 
@@ -88,7 +87,7 @@ class Flasher:
         self._device = device
 
         self.app_type: ApplicationType | None = None
-        self.app_version: AwesomeVersion | None = None
+        self.app_version: Version | None = None
         self.app_baudrate: int | None = None
         self.bootloader_baudrate: int | None = None
 
@@ -151,7 +150,7 @@ class Flasher:
             _, _, version = await ezsp.get_board_info()
 
         return ProbeResult(
-            version=AwesomeVersion(version.replace(" build ", ".")),
+            version=Version.from_string(version.replace(" build ", ".")),
             baudrate=baudrate,
             continue_probing=False,
         )
@@ -213,7 +212,7 @@ class Flasher:
 
             # Keep track of the bootloader version for later
             if probe_method == ApplicationType.GECKO_BOOTLOADER:
-                _LOGGER.debug("Launched application from bootloader, continuing")
+                _LOGGER.info("Detected bootloader version %s", result.version)
                 bootloader_probe = result
                 self.bootloader_baudrate = bootloader_probe.baudrate
 
@@ -221,6 +220,8 @@ class Flasher:
                 # if we did not try to start an application
                 if only_probe_bootloader:
                     break
+
+                _LOGGER.info("Launched application from bootloader, continuing probing")
 
             if result.continue_probing:
                 continue

@@ -5,6 +5,7 @@ import asyncio
 import logging
 import contextlib
 import collections
+import dataclasses
 
 import crc
 import click
@@ -181,7 +182,12 @@ class CommaSeparatedNumbers(click.ParamType):
 
     name = "numbers"
 
-    def type_cast_value(self, ctx: click.Context, value: str) -> list[int]:
+    def convert(
+        self, value: typing.Any, param: click.Parameter | None, ctx: click.Context
+    ) -> list[int]:
+        if isinstance(value, list):
+            return value
+
         values = []
 
         for v in value.split(","):
@@ -201,3 +207,30 @@ class CommaSeparatedNumbers(click.ParamType):
 def put_first(lst: list[typing.Any], elements: list[typing.Any]) -> list[typing.Any]:
     """Orders a list so that the provided element is first."""
     return elements + [e for e in lst if e not in elements]
+
+
+@dataclasses.dataclass(order=True, frozen=True)
+class Version:
+    comparable: tuple[int]
+    incomparable: str | None = dataclasses.field(compare=False, default=None)
+
+    @classmethod
+    def from_string(cls: type[typing.Self], version: str) -> typing.Self:
+        comparable, _, incomparable = version.partition(":")
+
+        return cls(
+            comparable=tuple(int(v) for v in comparable.split(".")),
+            incomparable=incomparable or None,
+        )
+
+    def __repr__(self) -> str:
+        version = ".".join(map(str, self.comparable))
+
+        if self.incomparable:
+            version += f":{self.incomparable}"
+
+        return repr(version)
+
+    def compatible_with(self, other: typing.Self) -> bool:
+        prefix_length = min(len(self.comparable), len(other.comparable))
+        return self.comparable[:prefix_length] == other.comparable[:prefix_length]
