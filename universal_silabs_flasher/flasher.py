@@ -92,6 +92,8 @@ class Flasher:
         self.bootloader_baudrate: int | None = None
 
     async def enter_yellow_bootloader(self):
+        _LOGGER.info("Triggering Yellow bootloader")
+
         await send_gpio_pattern(
             pin_states={
                 24: [True, False, False],
