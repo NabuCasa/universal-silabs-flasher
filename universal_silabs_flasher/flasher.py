@@ -138,6 +138,7 @@ class Flasher:
 
                 if run_firmware:
                     await gecko.run_firmware()
+                    _LOGGER.info("Launched application from bootloader")
         except NoFirmwareError:
             _LOGGER.warning("No application can be launched")
             return ProbeResult(
@@ -235,13 +236,6 @@ class Flasher:
                 _LOGGER.info("Detected bootloader version %s", result.version)
                 bootloader_probe = result
                 self.bootloader_baudrate = bootloader_probe.baudrate
-
-                # We cannot assume that the bootloader is the only running application
-                # if we did not try to start an application
-                if only_probe_bootloader:
-                    break
-
-                _LOGGER.info("Launched application from bootloader, continuing probing")
 
             if result.continue_probing:
                 continue
