@@ -43,7 +43,6 @@ check_untyped_defs = true
 show_error_codes = true
 show_error_context = true
 disable_error_code = [
-	"union-attr",
 	"attr-defined",
 	"arg-type",
 ]
