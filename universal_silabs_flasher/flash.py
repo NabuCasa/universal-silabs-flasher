@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import enum
+import json
 import typing
 import asyncio
 import logging
@@ -100,7 +101,7 @@ class SerialPort(click.ParamType):
 
 @click.group()
 @click.option("-v", "--verbose", count=True)
-@click.option("--device", type=SerialPort(), required=True)
+@click.option("--device", type=SerialPort())
 @click.option("--baudrate", hidden=True)
 @click.option(
     "--bootloader-baudrate",
@@ -168,6 +169,54 @@ def main(
             probe_methods=probe_method,
         ),
     }
+    # To maintain some backwards compatibility, make `--device` required only when we
+    # are actually invoking a command that interacts with a device
+    if ctx.get_parameter_source(
+        "device"
+    ) == click.core.ParameterSource.DEFAULT and ctx.invoked_subcommand not in (
+        dump_gbl_metadata.name
+    ):
+        # Replicate the "Error: Missing option" traceback
+        param = next(p for p in ctx.command.params if p.name == "device")
+        raise click.MissingParameter(ctx=ctx, param=param)
+
+    ctx.obj["flasher"] = Flasher(
+        device=device,
+        baudrates={
+            ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
+            ApplicationType.CPC: cpc_baudrate,
+            ApplicationType.EZSP: ezsp_baudrate,
+            ApplicationType.SPINEL: spinel_baudrate,
+        },
+        probe_methods=probe_method,
+    )
+
+
+@main.command()
+@click.pass_context
+@click.option("--firmware", type=click.File("rb"), required=True, show_default=True)
+@click_coroutine
+async def dump_gbl_metadata(ctx: click.Context, firmware: typing.BinaryIO) -> None:
+    # Parse and validate the firmware image
+    firmware_data = firmware.read()
+    firmware.close()
+
+    try:
+        gbl_image = GBLImage.from_bytes(firmware_data)
+    except zigpy.ota.validators.ValidationError as e:
+        raise click.ClickException(
+            f"{firmware.name!r} does not appear to be a valid GBL image: {e!r}"
+        )
+
+    try:
+        metadata = gbl_image.get_nabucasa_metadata()
+    except KeyError:
+        metadata_obj = None
+    else:
+        metadata_obj = metadata.original_json
+        _LOGGER.info("Extracted GBL metadata: %s", metadata)
+
+    print(json.dumps(metadata_obj))
 
 
 @main.command()
