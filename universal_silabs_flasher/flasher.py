@@ -11,6 +11,7 @@ import async_timeout
 import bellows.types
 import bellows.config
 
+from .common import SerialProtocol
 from .cpc import CPCProtocol
 from .gbl import GBLImage
 from .const import DEFAULT_BAUDRATES, ApplicationType
@@ -102,6 +103,20 @@ class Flasher:
             toggle_delay=0.1,
         )
 
+    async def enter_sonoff_bootloader(self):
+        _LOGGER.info("Triggering Sonoff bootloader")
+
+        baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
+        async with connect_protocol(self._device, baudrate, SerialProtocol) as sonoff:
+            serial = sonoff._transport.serial
+            serial.dtr = False
+            serial.rts = True
+            await asyncio.sleep(0.1)
+            serial.dtr = True
+            serial.rts = False
+            await asyncio.sleep(0.5)
+            serial.dtr = False
+
     def _connect_gecko_bootloader(self, baudrate: int):
         return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)
 
@@ -123,6 +138,7 @@ class Flasher:
 
                 if run_firmware:
                     await gecko.run_firmware()
+                    _LOGGER.info("Launched application from bootloader")
         except NoFirmwareError:
             _LOGGER.warning("No application can be launched")
             return ProbeResult(
@@ -172,12 +188,15 @@ class Flasher:
         types: typing.Iterable[ApplicationType] | None = None,
         *,
         yellow_gpio_reset: bool = False,
+        sonoff_reset: bool = False,
     ) -> None:
         if types is None:
             types = self._probe_methods
 
         if yellow_gpio_reset:
             await self.enter_yellow_bootloader()
+        elif sonoff_reset:
+            await self.enter_sonoff_bootloader()
 
         bootloader_probe = None
 
@@ -218,13 +237,6 @@ class Flasher:
                 bootloader_probe = result
                 self.bootloader_baudrate = bootloader_probe.baudrate
 
-                # We cannot assume that the bootloader is the only running application
-                # if we did not try to start an application
-                if only_probe_bootloader:
-                    break
-
-                _LOGGER.info("Launched application from bootloader, continuing probing")
-
             if result.continue_probing:
                 continue
 
@@ -233,22 +245,20 @@ class Flasher:
             self.app_baudrate = result.baudrate
             break
         else:
-            if bootloader_probe is None:
+            if bootloader_probe and (yellow_gpio_reset or sonoff_reset):
+                # We have no valid application image but can still reenter the bootloader
+                if yellow_gpio_reset:
+                    await self.enter_yellow_bootloader()
+                elif sonoff_reset:
+                    await self.enter_sonoff_bootloader()
+
+                self.app_type = ApplicationType.GECKO_BOOTLOADER
+                self.app_version = bootloader_probe.version
+                self.app_baudrate = bootloader_probe.baudrate
+                self.bootloader_baudrate = bootloader_probe.baudrate
+                _LOGGER.warning("Bootloader did not launch a valid application")
+            else:
                 raise RuntimeError("Failed to probe running application type")
-            elif not yellow_gpio_reset and only_probe_bootloader:
-                raise RuntimeError(
-                    "Cannot reboot back into bootloader from unknown application"
-                )
-
-            # We have no valid application image but can still enter the bootloader
-            if yellow_gpio_reset:
-                await self.enter_yellow_bootloader()
-
-            self.app_type = ApplicationType.GECKO_BOOTLOADER
-            self.app_version = bootloader_probe.version
-            self.app_baudrate = bootloader_probe.baudrate
-            self.bootloader_baudrate = bootloader_probe.baudrate
-            _LOGGER.warning("Bootloader did not launch a valid application")
 
         _LOGGER.info(
             "Detected %s, version %s at %s baudrate (bootloader baudrate %s)",

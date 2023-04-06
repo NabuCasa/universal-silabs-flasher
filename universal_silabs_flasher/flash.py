@@ -190,6 +190,7 @@ async def write_ieee(ctx, ieee):
 @click.option("--allow-downgrades", is_flag=True, default=False, show_default=True)
 @click.option("--allow-cross-flashing", is_flag=True, default=False, show_default=True)
 @click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
+@click.option("--sonoff-reset", is_flag=True, default=False, show_default=True)
 @click.pass_context
 @click_coroutine
 async def flash(
@@ -200,6 +201,7 @@ async def flash(
     allow_downgrades,
     allow_cross_flashing,
     yellow_gpio_reset,
+    sonoff_reset,
 ):
     flasher = ctx.obj["flasher"]
 
@@ -248,7 +250,7 @@ async def flash(
             )
 
     try:
-        await flasher.probe_app_type(yellow_gpio_reset=yellow_gpio_reset)
+        await flasher.probe_app_type(yellow_gpio_reset=yellow_gpio_reset, sonoff_reset=sonoff_reset)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
