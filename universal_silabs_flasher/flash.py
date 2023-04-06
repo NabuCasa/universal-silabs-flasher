@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import enum
+import json
 import typing
 import asyncio
 import logging
@@ -42,7 +43,7 @@ def click_enum_validator_factory(
     """Click enum validator factory."""
 
     def validator_callback(
-        ctx: click.Context, param: typing.Any, value: typing.Any
+        ctx: click.Context, param: click.Parameter, value: tuple[str]
     ) -> typing.Any:
         values = []
 
@@ -65,7 +66,7 @@ class SerialPort(click.ParamType):
 
     name = "path_or_url"
 
-    def convert(self, value, param, ctx):
+    def convert(self, value: tuple | str, param: click.Parameter, ctx: click.Context):
         if isinstance(value, tuple):
             return value
 
@@ -100,7 +101,7 @@ class SerialPort(click.ParamType):
 
 @click.group()
 @click.option("-v", "--verbose", count=True)
-@click.option("--device", type=SerialPort(), required=True)
+@click.option("--device", type=SerialPort())
 @click.option("--baudrate", hidden=True)
 @click.option(
     "--bootloader-baudrate",
@@ -135,16 +136,16 @@ class SerialPort(click.ParamType):
 )
 @click.pass_context
 def main(
-    ctx,
-    verbose,
-    device,
-    baudrate,
-    bootloader_baudrate,
-    cpc_baudrate,
-    ezsp_baudrate,
-    spinel_baudrate,
-    probe_method,
-):
+    ctx: click.Context,
+    verbose: bool,
+    device: str,
+    baudrate: int | None,
+    bootloader_baudrate: list[int],
+    cpc_baudrate: list[int],
+    ezsp_baudrate: list[int],
+    spinel_baudrate: list[int],
+    probe_method: list[ApplicationType],
+) -> None:
     coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
 
     # Override all application baudrates if a specific value is provided
@@ -168,13 +169,61 @@ def main(
             probe_methods=probe_method,
         ),
     }
+    # To maintain some backwards compatibility, make `--device` required only when we
+    # are actually invoking a command that interacts with a device
+    if ctx.get_parameter_source(
+        "device"
+    ) == click.core.ParameterSource.DEFAULT and ctx.invoked_subcommand not in (
+        dump_gbl_metadata.name
+    ):
+        # Replicate the "Error: Missing option" traceback
+        param = next(p for p in ctx.command.params if p.name == "device")
+        raise click.MissingParameter(ctx=ctx, param=param)
+
+    ctx.obj["flasher"] = Flasher(
+        device=device,
+        baudrates={
+            ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
+            ApplicationType.CPC: cpc_baudrate,
+            ApplicationType.EZSP: ezsp_baudrate,
+            ApplicationType.SPINEL: spinel_baudrate,
+        },
+        probe_methods=probe_method,
+    )
+
+
+@main.command()
+@click.pass_context
+@click.option("--firmware", type=click.File("rb"), required=True, show_default=True)
+@click_coroutine
+async def dump_gbl_metadata(ctx: click.Context, firmware: typing.BinaryIO) -> None:
+    # Parse and validate the firmware image
+    firmware_data = firmware.read()
+    firmware.close()
+
+    try:
+        gbl_image = GBLImage.from_bytes(firmware_data)
+    except zigpy.ota.validators.ValidationError as e:
+        raise click.ClickException(
+            f"{firmware.name!r} does not appear to be a valid GBL image: {e!r}"
+        )
+
+    try:
+        metadata = gbl_image.get_nabucasa_metadata()
+    except KeyError:
+        metadata_obj = None
+    else:
+        metadata_obj = metadata.original_json
+        _LOGGER.info("Extracted GBL metadata: %s", metadata)
+
+    print(json.dumps(metadata_obj))
 
 
 @main.command()
 @click.pass_context
 @click.option("--ieee", required=True, type=zigpy.types.EUI64.convert)
 @click_coroutine
-async def write_ieee(ctx, ieee):
+async def write_ieee(ctx: click.Context, ieee: zigpy.types.EUI64) -> None:
     new_eui64 = bellows.types.EmberEUI64(ieee)
 
     try:
@@ -194,15 +243,15 @@ async def write_ieee(ctx, ieee):
 @click.pass_context
 @click_coroutine
 async def flash(
-    ctx,
-    firmware,
-    force,
-    ensure_exact_version,
-    allow_downgrades,
-    allow_cross_flashing,
-    yellow_gpio_reset,
-    sonoff_reset,
-):
+    ctx: click.Context,
+    firmware: typing.BinaryIO,
+    force: bool,
+    ensure_exact_version: bool,
+    allow_downgrades: bool,
+    allow_cross_flashing: bool,
+    yellow_gpio_reset: bool,
+    sonoff_reset: bool,
+) -> None:
     flasher = ctx.obj["flasher"]
 
     # Parse and validate the firmware image

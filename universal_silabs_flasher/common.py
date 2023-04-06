@@ -129,6 +129,7 @@ class SerialProtocol(asyncio.Protocol):
 
     def send_data(self, data: bytes) -> None:
         """Sends data over the connected transport."""
+        assert self._transport is not None
         data = bytes(data)
         _LOGGER.debug("Sending data %s", data)
         self._transport.write(data)

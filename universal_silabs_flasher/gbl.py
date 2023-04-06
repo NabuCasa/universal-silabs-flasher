@@ -60,11 +60,14 @@ class NabuCasaMetadata:
     fw_type: FirmwareImageType | None
     baudrate: int | None
 
+    original_json: dict[str, typing.Any] = dataclasses.field(repr=False)
+
     def get_public_version(self) -> Version | None:
         return self.ezsp_version or self.ot_rcp_version or self.sdk_version
 
     @classmethod
     def from_json(cls, obj: dict[str, typing.Any]) -> NabuCasaMetadata:
+        original_json = json.loads(json.dumps(obj))
         metadata_version = obj.pop("metadata_version")
 
         if metadata_version > NABUCASA_METADATA_VERSION:
@@ -97,6 +100,7 @@ class NabuCasaMetadata:
             ot_rcp_version=ot_rcp_version,
             fw_type=fw_type,
             baudrate=baudrate,
+            original_json=original_json,
         )
 
 

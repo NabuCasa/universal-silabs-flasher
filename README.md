@@ -22,6 +22,7 @@ Options:
   --help                         Show this message and exit.
 
 Commands:
+  dump-gbl-metadata
   flash
   write-ieee
 ```
