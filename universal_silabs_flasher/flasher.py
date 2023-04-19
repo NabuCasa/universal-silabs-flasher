@@ -11,11 +11,10 @@ import async_timeout
 import bellows.types
 import bellows.config
 
-from .common import SerialProtocol
 from .cpc import CPCProtocol
 from .gbl import GBLImage
 from .const import DEFAULT_BAUDRATES, ApplicationType
-from .common import PROBE_TIMEOUT, Version, connect_protocol
+from .common import PROBE_TIMEOUT, Version, SerialProtocol, connect_protocol
 from .spinel import SpinelProtocol
 from .emberznet import connect_ezsp
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
@@ -246,7 +245,8 @@ class Flasher:
             break
         else:
             if bootloader_probe and (yellow_gpio_reset or sonoff_reset):
-                # We have no valid application image but can still reenter the bootloader
+                # We have no valid application image but can still re-enter the
+                # bootloader
                 if yellow_gpio_reset:
                     await self.enter_yellow_bootloader()
                 elif sonoff_reset:
@@ -285,12 +285,18 @@ class Flasher:
                     await spinel.enter_bootloader()
         elif self.app_type is ApplicationType.EZSP:
             async with self._connect_ezsp(self.app_baudrate) as ezsp:
-                res = await ezsp.launchStandaloneBootloader(0x01)
-
-                if res[0] != bellows.types.EmberStatus.SUCCESS:
-                    raise RuntimeError(
-                        f"EmberZNet could not enter the bootloader: {res[0]!r}"
+                try:
+                    res = await ezsp.launchStandaloneBootloader(0x01)
+                except asyncio.TimeoutError:
+                    _LOGGER.warning(
+                        "Application failed to respond to bootloader launching command."
+                        " Assuming bootloader has launched."
                     )
+                else:
+                    if res[0] != bellows.types.EmberStatus.SUCCESS:
+                        raise RuntimeError(
+                            f"EmberZNet could not enter the bootloader: {res[0]!r}"
+                        )
         else:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
 
