@@ -24,6 +24,7 @@ Options:
 Commands:
   dump-gbl-metadata
   flash
+  probe
   write-ieee
 ```
 
