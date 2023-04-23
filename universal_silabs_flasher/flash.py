@@ -218,6 +218,23 @@ async def dump_gbl_metadata(ctx: click.Context, firmware: typing.BinaryIO) -> No
 
     print(json.dumps(metadata_obj))
 
+@main.command()
+@click.pass_context
+@click_coroutine
+async def probe(ctx: click.Context) -> None:
+    flasher = ctx.obj["flasher"]
+
+    try:
+        await flasher.probe_app_type()
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
+
+    if flasher.app_type == ApplicationType.EZSP:
+        _LOGGER.info("Dumping EmberZNet Config")
+        try:
+            await flasher.dump_emberznet_config()
+        except RuntimeError as e:
+            raise click.ClickException(str(e)) from e
 
 @main.command()
 @click.pass_context
