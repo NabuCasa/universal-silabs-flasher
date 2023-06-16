@@ -325,6 +325,17 @@ class Flasher:
             if run_firmware:
                 await gecko.run_firmware()
 
+    async def dump_emberznet_config(self) -> None:
+        if self.app_type != ApplicationType.EZSP:
+            raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
+
+        async with self._connect_ezsp(self.app_baudrate) as ezsp:
+            for config in ezsp.types.EzspConfigId:
+                v = await ezsp.getConfigurationValue(config)
+                if v[0] == bellows.types.EzspStatus.ERROR_INVALID_ID:
+                    continue
+                print(f"{config.name}={v[1]}")
+
     async def write_emberznet_eui64(self, new_eui64: bellows.types.EUI64) -> bool:
         await self.probe_app_type()
 
