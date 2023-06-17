@@ -307,10 +307,10 @@ async def flash(
         # Probe with the firmware's baudrate first
         if (
             metadata.baudrate is not None
-            and ctx.parent.get_parameter_source(app_type.name)
+            and ctx.parent.get_parameter_source(f"{app_type.value}_baudrate")
             == click.core.ParameterSource.DEFAULT
         ):
-            _LOGGER.debug("Probing with %s baudrate first", app_type)
+            _LOGGER.debug("Probing with %s baudrate first", metadata.baudrate)
             flasher._baudrates[app_type] = put_first(
                 flasher._baudrates[app_type], [metadata.baudrate]
             )
