@@ -232,6 +232,9 @@ class CPCProtocol(SerialProtocol):
             command_payload=ResetCommand(status=None),
         )
 
+        # A small delay is necessary when switching baudrates
+        await asyncio.sleep(0.5)
+
     async def get_cpc_version(self) -> Version:
         """Read the secondary CPC version from the device."""
         rsp = await self.send_unnumbered_frame(
