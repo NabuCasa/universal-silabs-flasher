@@ -1,9 +1,9 @@
 import asyncio
 import contextlib
 
+import bellows.config as config
 import bellows.ezsp
 import bellows.types
-import bellows.config as config
 
 AFTER_DISCONNECT_DELAY = 0.1
 

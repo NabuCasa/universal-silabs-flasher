@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+import asyncio
+import collections
+import contextlib
+import dataclasses
+import functools
+import logging
 import re
 import typing
-import asyncio
-import logging
-import functools
-import contextlib
-import collections
-import dataclasses
 
-import crc
-import click
-import zigpy.serial
 import async_timeout
+import click
+import crc
 import serial_asyncio
+import zigpy.serial
 
 if typing.TYPE_CHECKING:
     try:

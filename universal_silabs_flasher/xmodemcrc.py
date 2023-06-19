@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import typing
 import asyncio
-import logging
 import dataclasses
+import logging
+import typing
 
-import zigpy.types
 import async_timeout
+import zigpy.types
 
 from .common import crc16_ccitt
 

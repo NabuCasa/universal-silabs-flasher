@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import typing
 import asyncio
-import logging
 import dataclasses
+import logging
+import typing
 
-import zigpy.types
 import async_timeout
+import zigpy.types
 
 from . import cpc_types
-from .common import Version, BufferTooShort, SerialProtocol, crc16_ccitt
+from .common import BufferTooShort, SerialProtocol, Version, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 

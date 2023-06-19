@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import typing
 import asyncio
-import logging
 import dataclasses
+import logging
+import typing
 
-import zigpy.types
 import async_timeout
+import zigpy.types
 
-from .common import Version, SerialProtocol, crc16_kermit
-from .spinel_types import CommandID, PropertyID, HDLCSpecial, ResetReason
+from .common import SerialProtocol, Version, crc16_kermit
+from .spinel_types import CommandID, HDLCSpecial, PropertyID, ResetReason
 
 _LOGGER = logging.getLogger(__name__)
 

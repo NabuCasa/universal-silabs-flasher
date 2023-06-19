@@ -1,27 +1,28 @@
 from __future__ import annotations
 
-import re
-import enum
-import json
-import typing
 import asyncio
+import enum
+import functools
+import json
 import logging
 import os.path
 import pathlib
-import functools
+import re
+import typing
 import urllib.parse
 
+import bellows.types
 import click
 import coloredlogs
-import zigpy.types
-import bellows.types
 import zigpy.ota.validators
+import zigpy.types
 
-from .gbl import GBLImage, FirmwareImageType
+from .common import CommaSeparatedNumbers, patch_pyserial_asyncio, put_first
 from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
-from .common import CommaSeparatedNumbers, put_first, patch_pyserial_asyncio
 from .flasher import Flasher
-from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
+from .gbl import FirmwareImageType, GBLImage
+from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
+from .xmodemcrc import ReceiverCancelled
 
 patch_pyserial_asyncio()
 
@@ -218,6 +219,7 @@ async def dump_gbl_metadata(ctx: click.Context, firmware: typing.BinaryIO) -> No
 
     print(json.dumps(metadata_obj))
 
+
 @main.command()
 @click.pass_context
 @click_coroutine
@@ -235,6 +237,7 @@ async def probe(ctx: click.Context) -> None:
             await flasher.dump_emberznet_config()
         except RuntimeError as e:
             raise click.ClickException(str(e)) from e
+
 
 @main.command()
 @click.pass_context
@@ -316,7 +319,10 @@ async def flash(
             )
 
     try:
-        await flasher.probe_app_type(yellow_gpio_reset=yellow_gpio_reset, sonoff_reset=sonoff_reset)
+        await flasher.probe_app_type(
+            yellow_gpio_reset=yellow_gpio_reset,
+            sonoff_reset=sonoff_reset,
+        )
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 

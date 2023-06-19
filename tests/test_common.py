@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from universal_silabs_flasher.common import Version, StateMachine, put_first
+from universal_silabs_flasher.common import StateMachine, Version, put_first
 
 
 async def test_state_machine_bad_initial_state():
