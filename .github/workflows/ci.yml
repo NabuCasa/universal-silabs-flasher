@@ -30,7 +30,7 @@ jobs:
         with:
           path: venv
           key: |
-            base-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('setup.cfg') }}
+            base-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('pyproject.toml') }}
 
       - name: Create Python virtual environment
         if: steps.cache-venv.outputs.cache-hit != 'true'
@@ -101,7 +101,7 @@ jobs:
         with:
           path: venv
           key: |
-            base-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('setup.cfg') }}
+            base-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('pyproject.toml') }}
 
       - name: Fail job if Python cache restore failed
         if: steps.cache-venv.outputs.cache-hit != 'true'
@@ -150,7 +150,7 @@ jobs:
         with:
           path: venv
           key: |
-            base-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('setup.cfg') }}
+            base-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('pyproject.toml') }}
 
       - name: Fail job if Python cache restore failed
         if: steps.cache-venv.outputs.cache-hit != 'true'
