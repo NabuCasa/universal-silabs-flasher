@@ -1,24 +1,24 @@
 from __future__ import annotations
 
+import asyncio
+import dataclasses
+import logging
 import time
 import typing
-import asyncio
-import logging
-import dataclasses
 
-import bellows.ezsp
 import async_timeout
-import bellows.types
 import bellows.config
+import bellows.ezsp
+import bellows.types
 
-from .cpc import CPCProtocol
-from .gbl import GBLImage
+from .common import PROBE_TIMEOUT, SerialProtocol, Version, connect_protocol
 from .const import DEFAULT_BAUDRATES, ApplicationType
-from .common import PROBE_TIMEOUT, Version, SerialProtocol, connect_protocol
-from .spinel import SpinelProtocol
+from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
+from .gbl import GBLImage
+from .gecko_bootloader import GeckoBootloaderProtocol, NoFirmwareError
+from .spinel import SpinelProtocol
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
-from .gecko_bootloader import NoFirmwareError, GeckoBootloaderProtocol
 
 _LOGGER = logging.getLogger(__name__)
 

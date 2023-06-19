@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import json
-import typing
-import logging
 import dataclasses
+import json
+import logging
+import typing
 
 from zigpy.ota.validators import parse_silabs_gbl
 
-from .const import FirmwareImageType
 from .common import Version
+from .const import FirmwareImageType
 from .cpc_types import enum32
 
 _LOGGER = logging.getLogger(__name__)

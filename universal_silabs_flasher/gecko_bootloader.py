@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import re
-import enum
-import typing
 import asyncio
+import enum
 import logging
+import re
+import typing
 
 import async_timeout
 
-from .common import PROBE_TIMEOUT, Version, StateMachine, SerialProtocol
+from .common import PROBE_TIMEOUT, SerialProtocol, StateMachine, Version
 from .xmodemcrc import send_xmodem128_crc
 
 _LOGGER = logging.getLogger(__name__)
