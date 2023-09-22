@@ -282,7 +282,7 @@ class CPCProtocol(SerialProtocol):
                 self._buffer = self._buffer[
                     self._buffer.find(bytes([cpc_types.FLAG])) :
                 ]
-                _LOGGER.warning("Failed to parse buffer %r: %r", self._buffer, e)
+                _LOGGER.debug("Failed to parse buffer %r: %r", self._buffer, e)
             else:
                 self.frame_received(frame)
 
@@ -291,7 +291,7 @@ class CPCProtocol(SerialProtocol):
 
         if frame.unnumbered_type() == cpc_types.UnnumberedFrameType.POLL_FINAL:
             if frame.payload.command_seq not in self._pending_frames:
-                _LOGGER.warning("Received an unsolicited frame: %s", frame)
+                _LOGGER.debug("Received an unsolicited frame: %s", frame)
                 return
 
             future = self._pending_frames.pop(frame.payload.command_seq)
