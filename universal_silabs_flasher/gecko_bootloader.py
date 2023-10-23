@@ -153,7 +153,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
                 if match is None:
                     return
 
-                if match.group("type") == "Gecko":
+                if match.group("type") == b"Gecko":
                     self._bootloader_type = BootloaderType.GECKO
                 else:
                     self._bootloader_type = BootloaderType.EMBER
