@@ -1,25 +1,62 @@
 [build-system]
-requires = ["setuptools>=34.4.0", "wheel"]
+requires = ["setuptools>=61.0.0", "wheel", "setuptools-git-versioning<2"]
 build-backend = "setuptools.build_meta"
 
-[tool.black]
-safe = true
-quiet = true
+[project]
+name = "universal-silabs-flasher"
+dynamic = ["version"]
+description = "Tool to flash firmware onto any Silicon Labs radio running EmberZNet, CPC multi-PAN, or just a bare Gecko Bootloader"
+urls = {repository = "https://github.com/NabuCasa/universal-silabs-flasher"}
+authors = [
+    {name = "Puddly", email = "puddly3@gmail.com"}
+]
+readme = "README.md"
+license = {text = "GPL-3.0"}
+requires-python = ">=3.8"
+dependencies = [
+    "click",
+    "zigpy",
+    "crc",
+    "bellows>=0.34.3",
+    'gpiod; platform_system=="Linux"',
+    "coloredlogs",
+    "async_timeout",
+    "typing_extensions",
+]
 
-[tool.isort]
-multi_line_output = 3
-length_sort = true
-balanced_wrapping = true
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-line_length = 88
-indent = "    "
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-default_section = "THIRDPARTY"
-known_first_party = ["universal_silabs_flasher", "tests"]
-forced_separate = "tests"
-combine_as_imports = true
+[tool.setuptools.packages.find]
+exclude = ["tests", "tests.*"]
+
+[project.optional-dependencies]
+testing = [
+    "pytest>=7.3.1",
+    "pytest-asyncio>=0.21.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-mock>=3.10.0",
+    "pytest-cov>=4.1.0",
+    "pytest-github-actions-annotate-failures",
+]
+
+[tool.setuptools-git-versioning]
+enabled = true
+
+[project.scripts]
+universal-silabs-flasher = "universal_silabs_flasher.__main__:main"
+
+[tool.ruff]
+select = [
+    # Pyflakes
+    "F",
+    # Pycodestyle
+    "E",
+    "W",
+    # isort
+    "I001"
+]
+src = ["universal_silabs_flasher", "tests"]
+
+[tool.ruff.isort]
+known-first-party = ["universal_silabs_flasher", "tests"]
 
 [tool.pytest.ini_options]
 addopts = "--showlocals --verbose"
@@ -29,21 +66,11 @@ log_format = "%(asctime)s.%(msecs)03d %(levelname)s %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"
 asyncio_mode = "auto"
 
-[tool.flake8]
-exclude = ".venv,.git,.tox,docs,venv,bin,lib,deps,build"
-# To work with Black
-max-line-length = 88
-# W503: Line break occurred before a binary operator
-# E203: Whitespace before ':'
-# D202 No blank lines allowed after function docstring
-ignore = "W503,E203,D202"
-
 [tool.mypy]
 check_untyped_defs = true
 show_error_codes = true
 show_error_context = true
 disable_error_code = [
-	"union-attr",
 	"attr-defined",
 	"arg-type",
 ]

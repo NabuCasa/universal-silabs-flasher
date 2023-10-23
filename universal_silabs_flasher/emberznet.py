@@ -1,9 +1,9 @@
 import asyncio
 import contextlib
 
+import bellows.config as config
 import bellows.ezsp
 import bellows.types
-import bellows.config as config
 
 AFTER_DISCONNECT_DELAY = 0.1
 
@@ -33,6 +33,7 @@ async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
                 "CONFIG_PACKET_BUFFER_COUNT": None,
                 "CONFIG_STACK_PROFILE": None,
             },
+            config.CONF_USE_THREAD: False,
         }
     )
 

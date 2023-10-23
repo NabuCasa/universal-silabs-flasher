@@ -1,15 +1,25 @@
 from __future__ import annotations
 
-import typing
 import asyncio
-import logging
-import binascii
-import contextlib
 import collections
+import contextlib
+import dataclasses
+import functools
+import logging
+import re
+import typing
 
-import zigpy.serial
 import async_timeout
+import click
+import crc
 import serial_asyncio
+import zigpy.serial
+
+if typing.TYPE_CHECKING:
+    try:
+        from typing import Self
+    except ImportError:
+        from typing_extensions import Self
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,9 +27,37 @@ CONNECT_TIMEOUT = 1
 PROBE_TIMEOUT = 2
 
 
+CRC_CCITT = crc.Calculator(
+    crc.Configuration(
+        width=16,
+        polynomial=0x1021,
+        init_value=0x0000,
+        final_xor_value=0x0000,
+        reverse_input=False,
+        reverse_output=False,
+    )
+)
+
+CRC_KERMIT = crc.Calculator(
+    crc.Configuration(
+        width=16,
+        polynomial=0x1021,
+        init_value=0xFFFF,
+        final_xor_value=0xFFFF,
+        reverse_input=True,
+        reverse_output=True,
+    )
+)
+
+
 # Used by both CPC and XModem
 def crc16_ccitt(data: bytes) -> int:
-    return binascii.crc_hqx(data, 0x0000)
+    return CRC_CCITT.checksum(data)
+
+
+# Used by HDLC-Lite
+def crc16_kermit(data: bytes) -> int:
+    return CRC_KERMIT.checksum(data)
 
 
 def pad_to_multiple(data: bytes, multiple: int, padding: bytes) -> bytes:
@@ -103,6 +141,7 @@ class SerialProtocol(asyncio.Protocol):
 
     def send_data(self, data: bytes) -> None:
         """Sends data over the connected transport."""
+        assert self._transport is not None
         data = bytes(data)
         _LOGGER.debug("Sending data %s", data)
         self._transport.write(data)
@@ -157,3 +196,99 @@ async def connect_protocol(port, baudrate, factory):
 
         # Required for Windows to be able to re-connect to the same serial port
         await asyncio.sleep(0)
+
+
+class CommaSeparatedNumbers(click.ParamType):
+    """Click type to parse comma-separated numbers into a list of integers."""
+
+    name = "numbers"
+
+    def convert(
+        self, value: typing.Any, param: click.Parameter | None, ctx: click.Context
+    ) -> list[int]:
+        if isinstance(value, list):
+            return value
+
+        values = []
+
+        for v in value.split(","):
+            if not v.strip():
+                continue
+
+            try:
+                values.append(int(v, 10))
+            except ValueError:
+                raise click.BadParameter(
+                    f"Comma-separated list of numbers contains bad value: {v!r}"
+                )
+
+        return values
+
+
+def put_first(lst: list[typing.Any], elements: list[typing.Any]) -> list[typing.Any]:
+    """Orders a list so that the provided element is first."""
+    return elements + [e for e in lst if e not in elements]
+
+
+@dataclasses.dataclass(frozen=True, order=True)
+class VersionComponent:
+    comparable: bool
+    data: str | int
+
+
+@functools.total_ordering
+class Version:
+    _SEPARATORS = {".", "-", "/", "_", " build "}
+    _SEPARATORS_REGEX = re.compile(
+        "(" + "|".join(re.escape(s) for s in _SEPARATORS) + ")"
+    )
+
+    def __init__(self, version: str) -> None:
+        self.components: list[VersionComponent] = []
+        # 2.00.01
+        # 7.2.2.0 build 190
+        # 4.2.2
+        # SL-OPENTHREAD/2.2.2.0_GitHub-91fa1f455
+        for component in self._SEPARATORS_REGEX.split(version):
+            if component.isdigit():
+                self.components.append(
+                    VersionComponent(comparable=True, data=int(component))
+                )
+            else:
+                self.components.append(
+                    VersionComponent(comparable=False, data=component)
+                )
+
+    def comparable_components(self) -> tuple[VersionComponent, ...]:
+        return tuple(c for c in self.components if c.comparable)
+
+    def compatible_with(self, other: Self) -> bool:
+        our_comparable = self.comparable_components()
+        their_comparable = other.comparable_components()
+
+        prefix_length = min(len(our_comparable), len(their_comparable))
+        return our_comparable[:prefix_length] == their_comparable[:prefix_length]
+
+    def __eq__(self, other: Self) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.components == other.components
+
+    def __lt__(self, other: Self) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        our_comparable = self.comparable_components()
+        their_comparable = other.comparable_components()
+
+        return our_comparable < their_comparable
+
+    def __repr__(self) -> str:
+        concatenated = "".join(str(c.data) for c in self.components)
+        comparable = ".".join(str(c.data) for c in self.comparable_components())
+
+        if concatenated == comparable:
+            return f"{concatenated!r}"
+
+        return f"{concatenated!r} ({comparable})"

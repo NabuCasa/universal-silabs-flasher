@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import typing
 import asyncio
-import logging
 import dataclasses
+import logging
+import typing
 
-import zigpy.types
 import async_timeout
-from awesomeversion import AwesomeVersion
+import zigpy.types
 
 from . import cpc_types
-from .common import BufferTooShort, SerialProtocol, crc16_ccitt
+from .common import BufferTooShort, SerialProtocol, Version, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -215,7 +214,7 @@ class CPCProtocol(SerialProtocol):
         self._command_seq: int = 0
         self._pending_frames: dict[int, asyncio.Future] = {}
 
-    async def probe(self) -> AwesomeVersion:
+    async def probe(self) -> Version:
         return await self.get_cpc_version()
 
     async def enter_bootloader(self) -> None:
@@ -233,7 +232,10 @@ class CPCProtocol(SerialProtocol):
             command_payload=ResetCommand(status=None),
         )
 
-    async def get_cpc_version(self) -> AwesomeVersion:
+        # A small delay is necessary when switching baudrates
+        await asyncio.sleep(0.5)
+
+    async def get_cpc_version(self) -> Version:
         """Read the secondary CPC version from the device."""
         rsp = await self.send_unnumbered_frame(
             command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET,
@@ -250,9 +252,9 @@ class CPCProtocol(SerialProtocol):
         patch, version_bytes = zigpy.types.uint32_t.deserialize(version_bytes)
         assert not version_bytes
 
-        return AwesomeVersion(f"{major}.{minor}.{patch}")
+        return Version(f"{major}.{minor}.{patch}")
 
-    async def get_secondary_version(self) -> AwesomeVersion:
+    async def get_secondary_version(self) -> Version:
         """Read the secondary app version from the device."""
         rsp = await self.send_unnumbered_frame(
             command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET,
@@ -265,7 +267,7 @@ class CPCProtocol(SerialProtocol):
 
         version_bytes = rsp.payload.payload.value
 
-        return AwesomeVersion(version_bytes.split(b"\x00", 1)[0].decode("ascii"))
+        return Version(version_bytes.split(b"\x00", 1)[0].decode("ascii"))
 
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
@@ -280,7 +282,7 @@ class CPCProtocol(SerialProtocol):
                 self._buffer = self._buffer[
                     self._buffer.find(bytes([cpc_types.FLAG])) :
                 ]
-                _LOGGER.warning("Failed to parse buffer %r: %r", self._buffer, e)
+                _LOGGER.debug("Failed to parse buffer %r: %r", self._buffer, e)
             else:
                 self.frame_received(frame)
 
@@ -289,7 +291,7 @@ class CPCProtocol(SerialProtocol):
 
         if frame.unnumbered_type() == cpc_types.UnnumberedFrameType.POLL_FINAL:
             if frame.payload.command_seq not in self._pending_frames:
-                _LOGGER.warning("Received an unsolicited frame: %s", frame)
+                _LOGGER.debug("Received an unsolicited frame: %s", frame)
                 return
 
             future = self._pending_frames.pop(frame.payload.command_seq)

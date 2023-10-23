@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import enum
-import json
-import typing
-import logging
 import dataclasses
+import json
+import logging
+import typing
 
 import zigpy.types as zigpy_t
-from awesomeversion import AwesomeVersion
 from zigpy.ota.validators import ValidationError, parse_silabs_ebl, parse_silabs_gbl
 
-from .common import pad_to_multiple
+from .common import Version, pad_to_multiple
+from .const import FirmwareImageType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,29 +62,25 @@ class EBLTagId(zigpy_t.enum16):
     ENC_MAC = 0x09F7
 
 
-class FirmwareImageType(enum.Enum):
-    # EmberZNet Zigbee firmware
-    NCP_UART_HW = "ncp-uart-hw"
-
-    # Multi-PAN RCP Multiprotocol (via zigbeed)
-    RCP_UART_802154 = "rcp-uart-802154"
-
-    # Zigbee NCP + OpenThread RCP
-    ZIGBEE_NCP_RCP_UART_802154 = "zigbee-ncp-rcp-uart-802154"
-
-
 @dataclasses.dataclass(frozen=True)
 class NabuCasaMetadata:
     metadata_version: int
-    sdk_version: AwesomeVersion | None
-    ezsp_version: AwesomeVersion | None
-    fw_type: FirmwareImageType | None
 
-    def get_public_version(self) -> AwesomeVersion | None:
-        return self.ezsp_version or self.sdk_version
+    sdk_version: Version | None
+    ezsp_version: Version | None
+    ot_rcp_version: Version | None
+
+    fw_type: FirmwareImageType | None
+    baudrate: int | None
+
+    original_json: dict[str, typing.Any] = dataclasses.field(repr=False)
+
+    def get_public_version(self) -> Version | None:
+        return self.ezsp_version or self.ot_rcp_version or self.sdk_version
 
     @classmethod
     def from_json(cls, obj: dict[str, typing.Any]) -> NabuCasaMetadata:
+        original_json = json.loads(json.dumps(obj))
         metadata_version = obj.pop("metadata_version")
 
         if metadata_version > NABUCASA_METADATA_VERSION:
@@ -95,13 +90,18 @@ class NabuCasaMetadata:
             )
 
         if sdk_version := obj.pop("sdk_version", None):
-            sdk_version = AwesomeVersion(sdk_version)
+            sdk_version = Version(sdk_version)
 
         if ezsp_version := obj.pop("ezsp_version", None):
-            ezsp_version = AwesomeVersion(ezsp_version)
+            ezsp_version = Version(ezsp_version)
+
+        if ot_rcp_version := obj.pop("ot_rcp_version", None):
+            ot_rcp_version = Version(ot_rcp_version)
 
         if fw_type := obj.pop("fw_type", None):
             fw_type = FirmwareImageType(fw_type)
+
+        baudrate = obj.pop("baudrate", None)
 
         if obj:
             _LOGGER.warning("Unexpected keys in JSON remain: %r", obj)
@@ -110,7 +110,10 @@ class NabuCasaMetadata:
             metadata_version=metadata_version,
             sdk_version=sdk_version,
             ezsp_version=ezsp_version,
+            ot_rcp_version=ot_rcp_version,
             fw_type=fw_type,
+            baudrate=baudrate,
+            original_json=original_json,
         )
 
 
@@ -136,6 +139,9 @@ class FirmwareImage:
 class GBLImage(FirmwareImage):
     @classmethod
     def from_bytes(cls, data: bytes) -> GBLImage:
+        if isinstance(data, memoryview):
+            data = data.tobytes()
+
         tags = []
 
         for tag_bytes, value in parse_silabs_gbl(data):
@@ -159,7 +165,7 @@ class GBLImage(FirmwareImage):
     def get_nabucasa_metadata(self) -> NabuCasaMetadata:
         metadata = self.get_first_tag(GBLTagId.METADATA)
 
-        return NabuCasaMetadata.from_json(json.loads(metadata.decode("utf-8")))
+        return NabuCasaMetadata.from_json(json.loads(metadata))
 
 
 @dataclasses.dataclass(frozen=True)
