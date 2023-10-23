@@ -26,8 +26,8 @@ MENU_AFTER_UPLOAD_TIMEOUT = 0.5
 RUN_APPLICATION_DELAY = 0.1
 
 MENU_REGEX = re.compile(
-    rb"\r\nGecko Bootloader v(?P<version>.*?)\r\n"
-    rb"1\. upload gbl\r\n"
+    rb"\r\n(?P<type>Gecko|\w+ Serial) Bootloader v(?P<version>.*?)\r\n"
+    rb"1\. upload (?:gbl|ebl)\r\n"
     rb"2\. run\r\n"
     rb"3\. ebl info\r\n"
     rb"BL > "
@@ -35,7 +35,7 @@ MENU_REGEX = re.compile(
 
 UPLOAD_STATUS_REGEX = re.compile(
     rb"\r\nSerial upload (?P<status>complete|aborted)\r\n"
-    rb"(?P<message>.*?)\x00",
+    rb"(?P<message>.*?)\x00?",
     flags=re.DOTALL,
 )  # fmt: skip
 
@@ -46,6 +46,11 @@ class State(str, enum.Enum):
     WAITING_XMODEM_READY = "waiting_xmodem_ready"
     XMODEM_READY = "xmodem_ready"
     WAITING_UPLOAD_DONE = "waiting_upload_done"
+
+
+class BootloaderType(str, enum.Enum):
+    EMBER = "ember"
+    GECKO = "gecko"
 
 
 class GeckoBootloaderOption(bytes, enum.Enum):
@@ -63,6 +68,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         )
         self._version: str | None = None
         self._upload_status: str | None = None
+        self._bootloader_type: BootloaderType | None = None
 
     async def probe(self) -> Version:
         """Attempt to communicate with the bootloader."""
@@ -124,7 +130,14 @@ class GeckoBootloaderProtocol(SerialProtocol):
             progress_callback=progress_callback,
         )
 
-        await self._state_machine.wait_for_state(State.IN_MENU)
+        try:
+            async with async_timeout.timeout(2):
+                await self._state_machine.wait_for_state(State.IN_MENU)
+        except asyncio.TimeoutError:
+            if self._bootloader_type == BootloaderType.GECKO:
+                raise
+
+            _LOGGER.debug("Assuming Ember bootloader launched application")
 
         if self._upload_status != "complete":
             raise UploadError(self._upload_status)
@@ -140,13 +153,27 @@ class GeckoBootloaderProtocol(SerialProtocol):
                 if match is None:
                     return
 
+                if match.group("type") == "Gecko":
+                    self._bootloader_type = BootloaderType.GECKO
+                else:
+                    self._bootloader_type = BootloaderType.EMBER
+
+                _LOGGER.debug("Detected bootloader type %r", self._bootloader_type)
+
                 self._version = match.group("version").decode("ascii")
                 _LOGGER.debug("Detected version string %r", self._version)
 
                 self._buffer.clear()
                 self._state_machine.state = State.IN_MENU
             elif self._state_machine.state == State.WAITING_XMODEM_READY:
-                if b"\r\nbegin upload\r\n\x00" not in self._buffer:
+                begin = b"\r\nbegin upload\r\n"
+
+                if self._bootloader_type == BootloaderType.GECKO:
+                    begin += b"\x00"
+                else:
+                    begin += b"C"
+
+                if begin not in self._buffer:
                     break
 
                 self._buffer.clear()
@@ -166,6 +193,8 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
                 del self._buffer[: match.span()[1]]
                 self._state_machine.state = State.WAITING_FOR_MENU
+
+                _LOGGER.debug("Upload status: %s", self._upload_status)
             else:
                 # Ignore data otherwise
                 break

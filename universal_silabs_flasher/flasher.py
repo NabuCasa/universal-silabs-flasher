@@ -144,6 +144,8 @@ class Flasher:
                 if run_firmware:
                     await gecko.run_firmware()
                     _LOGGER.info("Launched application from bootloader")
+
+            await asyncio.sleep(1)
         except NoFirmwareError:
             _LOGGER.warning("No application can be launched")
             return ProbeResult(
