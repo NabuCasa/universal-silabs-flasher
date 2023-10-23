@@ -305,6 +305,8 @@ class Flasher:
                         raise RuntimeError(
                             f"EmberZNet could not enter the bootloader: {res[0]!r}"
                         )
+
+                    await asyncio.sleep(4)
         else:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
 
