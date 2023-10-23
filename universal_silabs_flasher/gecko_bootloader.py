@@ -78,7 +78,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
     async def ebl_info(self) -> Version:
         """Select `ebl info` in the menu and return the bootloader version."""
         self._state_machine.state = State.WAITING_FOR_MENU
-        self.send_data(GeckoBootloaderOption.EBL_INFO)
+        self.send_data(b"\n" + GeckoBootloaderOption.EBL_INFO)
 
         await self._state_machine.wait_for_state(State.IN_MENU)
 
