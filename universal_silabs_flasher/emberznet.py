@@ -1,9 +1,10 @@
 import asyncio
 import contextlib
 
-import bellows.config as config
+import bellows.config
 import bellows.ezsp
 import bellows.types
+import zigpy.config
 
 AFTER_DISCONNECT_DELAY = 0.1
 
@@ -11,13 +12,13 @@ AFTER_DISCONNECT_DELAY = 0.1
 @contextlib.asynccontextmanager
 async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
     """Context manager to return a connected EZSP instance for a serial port."""
-    app_config = config.CONFIG_SCHEMA(
+    app_config = zigpy.config.CONFIG_SCHEMA(
         {
-            config.CONF_DEVICE: {
-                config.CONF_DEVICE_PATH: port,
-                config.CONF_DEVICE_BAUDRATE: baudrate,
+            zigpy.config.CONF_DEVICE: {
+                zigpy.config.CONF_DEVICE_PATH: port,
+                zigpy.config.CONF_DEVICE_BAUDRATE: baudrate,
             },
-            config.CONF_EZSP_CONFIG: {
+            bellows.config.CONF_EZSP_CONFIG: {
                 # Do not set any configuration on startup
                 "CONFIG_END_DEVICE_POLL_TIMEOUT": None,
                 "CONFIG_INDIRECT_TRANSMISSION_TIMEOUT": None,
@@ -33,7 +34,7 @@ async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
                 "CONFIG_PACKET_BUFFER_COUNT": None,
                 "CONFIG_STACK_PROFILE": None,
             },
-            config.CONF_USE_THREAD: False,
+            bellows.config.CONF_USE_THREAD: False,
         }
     )
 
