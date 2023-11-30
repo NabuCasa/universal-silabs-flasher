@@ -27,31 +27,26 @@ def _send_gpio_pattern(pin_states: dict[int, list[bool]], toggle_delay: float) -
     # `gpiod` isn't available on Windows
     import gpiod
 
-    chip = gpiod.chip(0, gpiod.chip.OPEN_BY_NUMBER)
-    lines = {pin: chip.get_line(pin) for pin in pin_states.keys()}
+    num_states = len(next(iter(pin_states.values())))
 
-    config = gpiod.line_request()
-    config.consumer = "universal-silabs-flasher"
-    config.request_type = gpiod.line_request.DIRECTION_OUTPUT
-
-    try:
-        # Open the pins and set their initial states
-        for pin, line in lines.items():
-            state = pin_states[pin][0]
-            line.request(config, int(state))
-
-        time.sleep(toggle_delay)
-
+    with gpiod.request_lines(
+        path="/dev/gpiochip0",
+        consumer="universal-silabs-flasher",
+        config={
+            # Set initial states
+            pin: gpiod.LineSettings(
+                direction=gpiod.line.Direction.OUTPUT,
+                output_value=gpiod.line.Value(states[0]),
+            )
+            for pin, states in pin_states.items()
+        },
+    ) as request:
         # Send all subsequent states
-        for i in range(1, len(pin_states[pin])):
-            for pin, line in lines.items():
-                line.set_value(int(pin_states[pin][i]))
-
+        for i in range(1, num_states):
             time.sleep(toggle_delay)
-    finally:
-        # Clean up and ensure the GPIO pins are reset to inputs
-        for line in lines.values():
-            line.set_direction_input()
+
+            for pin, states in pin_states.items():
+                request.set_value(pin, gpiod.line.Value(int(pin_states[pin][i])))
 
 
 async def send_gpio_pattern(
