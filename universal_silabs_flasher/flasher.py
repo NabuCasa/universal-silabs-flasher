@@ -44,9 +44,12 @@ def _send_gpio_pattern(pin_states: dict[int, list[bool]], toggle_delay: float) -
         # Send all subsequent states
         for i in range(1, num_states):
             time.sleep(toggle_delay)
-
-            for pin, states in pin_states.items():
-                request.set_value(pin, gpiod.line.Value(int(pin_states[pin][i])))
+            request.set_values(
+                {
+                    pin: gpiod.line.Value(int(pin_states[pin][i]))
+                    for pin, states in pin_states.items()
+                }
+            )
 
 
 async def send_gpio_pattern(
