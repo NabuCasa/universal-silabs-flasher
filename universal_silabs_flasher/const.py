@@ -40,6 +40,7 @@ DEFAULT_BAUDRATES = {
 
 class ResetTarget(enum.Enum):
     YELLOW = "yellow"
+    IHOST = "ihost"
     SONOFF = "sonoff"
 
 
@@ -49,6 +50,14 @@ GPIO_CONFIGS = {
         "pin_states": {
             24: [True, False, False, True],
             25: [True, False, True, True],
+        },
+        "toggle_delay": 0.1,
+    },
+    ResetTarget.IHOST: {
+        "chip": "/dev/gpiochip1",
+        "pin_states": {
+            27: [True, False, False, True],
+            26: [True, False, True, True],
         },
         "toggle_delay": 0.1,
     },
