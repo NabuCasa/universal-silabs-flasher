@@ -11,7 +11,7 @@ import bellows.ezsp
 import bellows.types
 
 from .common import PROBE_TIMEOUT, SerialProtocol, Version, connect_protocol
-from .const import DEFAULT_BAUDRATES, ApplicationType
+from .const import DEFAULT_BAUDRATES, ApplicationType, ResetTarget
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .gbl import GBLImage
@@ -42,6 +42,7 @@ class Flasher:
             ApplicationType.SPINEL,
         ),
         device: str,
+        bootloader_reset: str,
     ):
         self._baudrates = baudrates
         self._probe_methods = probe_methods
@@ -51,6 +52,10 @@ class Flasher:
         self.app_version: Version | None = None
         self.app_baudrate: int | None = None
         self.bootloader_baudrate: int | None = None
+
+        self._reset_target: ResetTarget | None = (
+            ResetTarget(bootloader_reset) if bootloader_reset else None
+        )
 
     async def enter_yellow_bootloader(self):
         _LOGGER.info("Triggering Yellow bootloader")

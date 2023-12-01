@@ -21,7 +21,6 @@ class ApplicationType(enum.Enum):
     EZSP = "ezsp"
     SPINEL = "spinel"
 
-
 FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
     FirmwareImageType.NCP_UART_HW: ApplicationType.EZSP,
     FirmwareImageType.RCP_UART_802154: ApplicationType.CPC,
@@ -36,3 +35,7 @@ DEFAULT_BAUDRATES = {
     ApplicationType.EZSP: [115200],
     ApplicationType.SPINEL: [460800],
 }
+
+class ResetTarget(enum.Enum):
+    YELLOW = "yellow"
+    SONOFF = "sonoff"

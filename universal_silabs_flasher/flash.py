@@ -18,7 +18,7 @@ import zigpy.ota.validators
 import zigpy.types
 
 from .common import CommaSeparatedNumbers, patch_pyserial_asyncio, put_first
-from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
+from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType, ResetTarget
 from .flasher import Flasher
 from .gbl import FirmwareImageType, GBLImage
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
@@ -134,6 +134,11 @@ class SerialPort(click.ParamType):
     callback=click_enum_validator_factory(ApplicationType),
     show_default=True,
 )
+@click.option(
+    "--bootloader-reset",
+    type=click.Choice([t.value for t in ResetTarget]),
+)
+
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -145,6 +150,7 @@ def main(
     ezsp_baudrate: list[int],
     spinel_baudrate: list[int],
     probe_method: list[ApplicationType],
+    bootloader_reset: str | None,
 ) -> None:
     coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
 
@@ -178,6 +184,7 @@ def main(
                 ApplicationType.SPINEL: spinel_baudrate,
             },
             probe_methods=probe_method,
+            bootloader_reset=bootloader_reset,
         ),
     }
 
