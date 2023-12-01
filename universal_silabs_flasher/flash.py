@@ -317,12 +317,20 @@ async def flash(
             flasher._baudrates[app_type] = put_first(
                 flasher._baudrates[app_type], [metadata.baudrate]
             )
+    # Maintain backward compatibility with the deprecated reset flags
+    reset_msg = (
+        "The '%s' flag is deprecated. Use '--bootloader-reset' "
+        "instead, see --help for details."
+    )
+    if yellow_gpio_reset:
+        flasher._reset_target = ResetTarget.YELLOW
+        _LOGGER.info(reset_msg, "--yellow-gpio-reset")
+    elif sonoff_reset:
+        flasher._reset_target = ResetTarget.SONOFF
+        _LOGGER.info(reset_msg, "--sonoff-reset")
 
     try:
-        await flasher.probe_app_type(
-            yellow_gpio_reset=yellow_gpio_reset,
-            sonoff_reset=sonoff_reset,
-        )
+        await flasher.probe_app_type()
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 

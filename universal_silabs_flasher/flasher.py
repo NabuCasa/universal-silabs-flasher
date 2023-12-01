@@ -148,17 +148,13 @@ class Flasher:
     async def probe_app_type(
         self,
         types: typing.Iterable[ApplicationType] | None = None,
-        *,
-        yellow_gpio_reset: bool = False,
-        sonoff_reset: bool = False,
     ) -> None:
         if types is None:
             types = self._probe_methods
 
-        if yellow_gpio_reset:
-            await self.enter_yellow_bootloader()
-        elif sonoff_reset:
-            await self.enter_sonoff_bootloader()
+        # Reset into bootloader
+        if self._reset_target:
+            await self.enter_bootloader_reset(self._reset_target)
 
         bootloader_probe = None
 
@@ -207,13 +203,10 @@ class Flasher:
             self.app_baudrate = result.baudrate
             break
         else:
-            if bootloader_probe and (yellow_gpio_reset or sonoff_reset):
+            if bootloader_probe and self._reset_target:
                 # We have no valid application image but can still re-enter the
                 # bootloader
-                if yellow_gpio_reset:
-                    await self.enter_yellow_bootloader()
-                elif sonoff_reset:
-                    await self.enter_sonoff_bootloader()
+                await self.enter_bootloader_reset(self._reset_target)
 
                 self.app_type = ApplicationType.GECKO_BOOTLOADER
                 self.app_version = bootloader_probe.version
