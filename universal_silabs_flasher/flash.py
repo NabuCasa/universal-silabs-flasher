@@ -156,6 +156,17 @@ def main(
             " (see `--help`)"
         )
 
+    # To maintain some backwards compatibility, make `--device` required only when we
+    # are actually invoking a command that interacts with a device
+    if ctx.get_parameter_source(
+        "device"
+    ) == click.core.ParameterSource.DEFAULT and ctx.invoked_subcommand not in (
+        dump_gbl_metadata.name
+    ):
+        # Replicate the "Error: Missing option" traceback
+        param = next(p for p in ctx.command.params if p.name == "device")
+        raise click.MissingParameter(ctx=ctx, param=param)
+
     ctx.obj = {
         "verbosity": verbose,
         "flasher": Flasher(
@@ -169,28 +180,6 @@ def main(
             probe_methods=probe_method,
         ),
     }
-    # To maintain some backwards compatibility, make `--device` required only when we
-    # are actually invoking a command that interacts with a device
-    if ctx.get_parameter_source(
-        "device"
-    ) == click.core.ParameterSource.DEFAULT and ctx.invoked_subcommand not in (
-        dump_gbl_metadata.name
-    ):
-        # Replicate the "Error: Missing option" traceback
-        param = next(p for p in ctx.command.params if p.name == "device")
-        raise click.MissingParameter(ctx=ctx, param=param)
-
-    ctx.obj["flasher"] = Flasher(
-        device=device,
-        baudrates={
-            ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
-            ApplicationType.CPC: cpc_baudrate,
-            ApplicationType.EZSP: ezsp_baudrate,
-            ApplicationType.SPINEL: spinel_baudrate,
-        },
-        probe_methods=probe_method,
-    )
-
 
 @main.command()
 @click.pass_context
