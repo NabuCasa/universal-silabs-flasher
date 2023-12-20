@@ -56,7 +56,7 @@ class Flasher:
         _LOGGER.info("Triggering Yellow bootloader")
 
         await send_gpio_pattern(
-            chip=0,
+            chip="/dev/gpiochip0",
             pin_states={
                 24: [True, False, False, True],
                 25: [True, False, True, True],
