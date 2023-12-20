@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-import time
 import typing
 
 import async_timeout
@@ -17,47 +16,11 @@ from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .gbl import GBLImage
 from .gecko_bootloader import GeckoBootloaderProtocol, NoFirmwareError
+from .gpio import send_gpio_pattern
 from .spinel import SpinelProtocol
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _send_gpio_pattern(pin_states: dict[int, list[bool]], toggle_delay: float) -> None:
-    # `gpiod` isn't available on Windows
-    import gpiod
-
-    num_states = len(next(iter(pin_states.values())))
-
-    with gpiod.request_lines(
-        path="/dev/gpiochip0",
-        consumer="universal-silabs-flasher",
-        config={
-            # Set initial states
-            pin: gpiod.LineSettings(
-                direction=gpiod.line.Direction.OUTPUT,
-                output_value=gpiod.line.Value(states[0]),
-            )
-            for pin, states in pin_states.items()
-        },
-    ) as request:
-        # Send all subsequent states
-        for i in range(1, num_states):
-            time.sleep(toggle_delay)
-            request.set_values(
-                {
-                    pin: gpiod.line.Value(int(pin_states[pin][i]))
-                    for pin, states in pin_states.items()
-                }
-            )
-
-
-async def send_gpio_pattern(
-    pin_states: dict[int, list[bool]], toggle_delay: float
-) -> None:
-    await asyncio.get_running_loop().run_in_executor(
-        None, _send_gpio_pattern, pin_states, toggle_delay
-    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -93,6 +56,7 @@ class Flasher:
         _LOGGER.info("Triggering Yellow bootloader")
 
         await send_gpio_pattern(
+            chip=0,
             pin_states={
                 24: [True, False, False],
                 25: [True, False, True],
