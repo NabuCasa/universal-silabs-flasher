@@ -58,8 +58,8 @@ class Flasher:
         await send_gpio_pattern(
             chip=0,
             pin_states={
-                24: [True, False, False],
-                25: [True, False, True],
+                24: [True, False, False, True],
+                25: [True, False, True, True],
             },
             toggle_delay=0.1,
         )
