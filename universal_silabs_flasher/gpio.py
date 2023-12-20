@@ -18,8 +18,10 @@ elif hasattr(gpiod, "line_request"):
     def _send_gpio_pattern(
         chip: str, pin_states: dict[int, list[bool]], toggle_delay: float
     ) -> None:
-        chip = gpiod.chip(0, gpiod.chip.OPEN_BY_NUMBER)
-        lines = {pin: chip.get_line(pin) for pin in pin_states.keys()}
+        num_states = len(next(iter(pin_states.values())))
+
+        chip = gpiod.chip(chip, gpiod.chip.OPEN_BY_PATH)
+        lines = chip.get_lines(pin_states.keys())
 
         config = gpiod.line_request()
         config.consumer = "universal-silabs-flasher"
@@ -27,20 +29,16 @@ elif hasattr(gpiod, "line_request"):
 
         try:
             # Open the pins and set their initial states
-            for pin, line in lines.items():
-                state = pin_states[pin][0]
-                line.request(config, int(state))
-
-            time.sleep(toggle_delay)
+            lines.request(config, [int(states[0]) for states in pin_states.values()])
 
             # Send all subsequent states
-            for i in range(1, len(pin_states[pin])):
-                for pin, line in lines.items():
-                    line.set_value(int(pin_states[pin][i]))
+            for i in range(1, num_states):
+                time.sleep(toggle_delay)
+                lines.set_values([int(states[i]) for states in pin_states.values()])
         finally:
             # Clean up and ensure the GPIO pins are reset to inputs
-            for line in lines.values():
-                line.set_direction_input()
+            lines.set_direction_input()
+            lines.release()
 
 else:
     # gpiod >= 2.0.2
