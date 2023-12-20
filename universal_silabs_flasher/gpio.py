@@ -13,7 +13,7 @@ if gpiod is None:
     ) -> None:
         raise NotImplementedError()
 
-elif hasattr(gpiod, "line_request"):
+elif hasattr(gpiod.chip, "OPEN_BY_PATH"):
     # gpiod <= 1.5.4
     def _send_gpio_pattern(
         chip: str, pin_states: dict[int, list[bool]], toggle_delay: float
