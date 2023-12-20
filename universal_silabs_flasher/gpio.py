@@ -60,12 +60,21 @@ else:
                 for pin, states in pin_states.items()
             },
         ) as request:
-            # Send all subsequent states
-            for i in range(1, num_states):
-                time.sleep(toggle_delay)
-                request.set_values(
+            try:
+                # Send all subsequent states
+                for i in range(1, num_states):
+                    time.sleep(toggle_delay)
+                    request.set_values(
+                        {
+                            pin: gpiod.line.Value(int(pin_states[pin][i]))
+                            for pin, states in pin_states.items()
+                        }
+                    )
+            finally:
+                # Clean up and ensure the GPIO pins are reset to inputs
+                request.reconfigure_lines(
                     {
-                        pin: gpiod.line.Value(int(pin_states[pin][i]))
+                        pin: gpiod.LineSettings(direction=gpiod.line.Direction.INPUT)
                         for pin, states in pin_states.items()
                     }
                 )
