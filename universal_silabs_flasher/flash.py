@@ -18,7 +18,12 @@ import zigpy.ota.validators
 import zigpy.types
 
 from .common import CommaSeparatedNumbers, patch_pyserial_asyncio, put_first
-from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType, ResetTarget
+from .const import (
+    DEFAULT_BAUDRATES,
+    FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
+    ApplicationType,
+    ResetTarget,
+)
 from .flasher import Flasher
 from .gbl import FirmwareImageType, GBLImage
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled

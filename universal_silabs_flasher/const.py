@@ -21,6 +21,7 @@ class ApplicationType(enum.Enum):
     EZSP = "ezsp"
     SPINEL = "spinel"
 
+
 FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
     FirmwareImageType.NCP_UART_HW: ApplicationType.EZSP,
     FirmwareImageType.RCP_UART_802154: ApplicationType.CPC,
@@ -36,6 +37,19 @@ DEFAULT_BAUDRATES = {
     ApplicationType.SPINEL: [460800],
 }
 
+
 class ResetTarget(enum.Enum):
     YELLOW = "yellow"
     SONOFF = "sonoff"
+
+
+GPIO_CONFIGS = {
+    ResetTarget.YELLOW: {
+        "chip": "/dev/gpiochip0",
+        "pin_states": {
+            24: [True, False, False, True],
+            25: [True, False, True, True],
+        },
+        "toggle_delay": 0.1,
+    },
+}

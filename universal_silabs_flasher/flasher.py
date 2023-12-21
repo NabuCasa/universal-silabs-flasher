@@ -11,7 +11,7 @@ import bellows.ezsp
 import bellows.types
 
 from .common import PROBE_TIMEOUT, SerialProtocol, Version, connect_protocol
-from .const import DEFAULT_BAUDRATES, ApplicationType, ResetTarget
+from .const import DEFAULT_BAUDRATES, GPIO_CONFIGS, ApplicationType, ResetTarget
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .gbl import GBLImage
@@ -57,21 +57,17 @@ class Flasher:
             ResetTarget(bootloader_reset) if bootloader_reset else None
         )
 
-    async def enter_yellow_bootloader(self):
-        _LOGGER.info("Triggering Yellow bootloader")
+    async def enter_bootloader_reset(self, target):
+        _LOGGER.info(f"Triggering {target.value} bootloader")
+        if target in GPIO_CONFIGS.keys():
+            config = GPIO_CONFIGS[target]
+            await send_gpio_pattern(
+                config["chip"], config["pin_states"], config["toggle_delay"]
+            )
+        else:
+            await self.enter_serial_bootloader()
 
-        await send_gpio_pattern(
-            chip="/dev/gpiochip0",
-            pin_states={
-                24: [True, False, False, True],
-                25: [True, False, True, True],
-            },
-            toggle_delay=0.1,
-        )
-
-    async def enter_sonoff_bootloader(self):
-        _LOGGER.info("Triggering Sonoff bootloader")
-
+    async def enter_serial_bootloader(self):
         baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
         async with connect_protocol(self._device, baudrate, SerialProtocol) as sonoff:
             serial = sonoff._transport.serial
