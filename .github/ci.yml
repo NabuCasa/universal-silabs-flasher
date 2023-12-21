@@ -1,0 +1,16 @@
+name: CI
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+  pull_request: ~
+
+jobs:
+  shared-ci:
+    uses: zigpy/workflows/.github/workflows/ci.yml@main
+    with:
+      CODE_FOLDER: universal_silabs_flasher
+      CACHE_VERSION: 2
+      PYTHON_VERSION_DEFAULT: 3.8.14
+      PRE_COMMIT_CACHE_PATH:  ~/.cache/pre-commit
+      MINIMUM_COVERAGE_PERCENTAGE: 40
