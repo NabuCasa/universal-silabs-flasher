@@ -21,8 +21,7 @@ from .common import CommaSeparatedNumbers, patch_pyserial_asyncio, put_first
 from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
 from .flasher import Flasher
 from .gbl import FirmwareImageType, GBLImage
-from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
-from .xmodemcrc import ReceiverCancelled
+from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 patch_pyserial_asyncio()
 
