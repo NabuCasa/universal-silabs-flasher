@@ -18,7 +18,7 @@ dependencies = [
     "zigpy",
     "crc",
     "bellows~=0.37.1",
-    'gpiod; platform_system=="Linux"',
+    'gpiod==1.5.4; platform_system=="Linux"',
     "coloredlogs",
     "async_timeout",
     "typing_extensions",

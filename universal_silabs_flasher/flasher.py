@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-import time
 import typing
 
 import async_timeout
@@ -17,49 +16,11 @@ from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .gbl import GBLImage
 from .gecko_bootloader import GeckoBootloaderProtocol, NoFirmwareError
+from .gpio import send_gpio_pattern
 from .spinel import SpinelProtocol
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _send_gpio_pattern(pin_states: dict[int, list[bool]], toggle_delay: float) -> None:
-    # `gpiod` isn't available on Windows
-    import gpiod
-
-    chip = gpiod.chip(0, gpiod.chip.OPEN_BY_NUMBER)
-    lines = {pin: chip.get_line(pin) for pin in pin_states.keys()}
-
-    config = gpiod.line_request()
-    config.consumer = "universal-silabs-flasher"
-    config.request_type = gpiod.line_request.DIRECTION_OUTPUT
-
-    try:
-        # Open the pins and set their initial states
-        for pin, line in lines.items():
-            state = pin_states[pin][0]
-            line.request(config, int(state))
-
-        time.sleep(toggle_delay)
-
-        # Send all subsequent states
-        for i in range(1, len(pin_states[pin])):
-            for pin, line in lines.items():
-                line.set_value(int(pin_states[pin][i]))
-
-            time.sleep(toggle_delay)
-    finally:
-        # Clean up and ensure the GPIO pins are reset to inputs
-        for line in lines.values():
-            line.set_direction_input()
-
-
-async def send_gpio_pattern(
-    pin_states: dict[int, list[bool]], toggle_delay: float
-) -> None:
-    await asyncio.get_running_loop().run_in_executor(
-        None, _send_gpio_pattern, pin_states, toggle_delay
-    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -95,9 +56,10 @@ class Flasher:
         _LOGGER.info("Triggering Yellow bootloader")
 
         await send_gpio_pattern(
+            chip="/dev/gpiochip0",
             pin_states={
-                24: [True, False, False],
-                25: [True, False, True],
+                24: [True, False, False, True],
+                25: [True, False, True, True],
             },
             toggle_delay=0.1,
         )
