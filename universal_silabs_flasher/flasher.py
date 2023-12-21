@@ -158,12 +158,14 @@ class Flasher:
 
         bootloader_probe = None
 
-        # Only run firmware from the bootloader if we have other probe methods
+        # Only run firmware from the bootloader if we have bootloader reset and
+        # other probe methods
         only_probe_bootloader = types == [ApplicationType.GECKO_BOOTLOADER]
+        run_firmware = self._reset_target and not only_probe_bootloader
         probe_funcs = {
             ApplicationType.GECKO_BOOTLOADER: (
                 lambda baudrate: self.probe_gecko_bootloader(
-                    run_firmware=(not only_probe_bootloader), baudrate=baudrate
+                    run_firmware=run_firmware, baudrate=baudrate
                 )
             ),
             ApplicationType.CPC: self.probe_cpc,
