@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import time
 
@@ -11,7 +13,7 @@ if gpiod is None:
     def _send_gpio_pattern(
         chip: str, pin_states: dict[int, list[bool]], toggle_delay: float
     ) -> None:
-        raise NotImplementedError()
+        raise NotImplementedError("GPIO not supported on this platform")
 
 elif hasattr(gpiod.chip, "OPEN_BY_PATH"):
     # gpiod <= 1.5.4
