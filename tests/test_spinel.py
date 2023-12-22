@@ -1,7 +1,7 @@
 import pytest
 
-import universal_silabs_flasher.spinel as spinel
 from universal_silabs_flasher.common import crc16_kermit
+import universal_silabs_flasher.spinel as spinel
 
 
 @pytest.mark.parametrize(
