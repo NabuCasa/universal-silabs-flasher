@@ -11,7 +11,7 @@ import bellows.ezsp
 import bellows.types
 
 from .common import PROBE_TIMEOUT, SerialProtocol, Version, connect_protocol
-from .const import DEFAULT_BAUDRATES, ApplicationType
+from .const import DEFAULT_BAUDRATES, GPIO_CONFIGS, ApplicationType, ResetTarget
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .gbl import GBLImage
@@ -42,6 +42,7 @@ class Flasher:
             ApplicationType.SPINEL,
         ),
         device: str,
+        bootloader_reset: str,
     ):
         self._baudrates = baudrates
         self._probe_methods = probe_methods
@@ -52,21 +53,21 @@ class Flasher:
         self.app_baudrate: int | None = None
         self.bootloader_baudrate: int | None = None
 
-    async def enter_yellow_bootloader(self):
-        _LOGGER.info("Triggering Yellow bootloader")
-
-        await send_gpio_pattern(
-            chip="/dev/gpiochip0",
-            pin_states={
-                24: [True, False, False, True],
-                25: [True, False, True, True],
-            },
-            toggle_delay=0.1,
+        self._reset_target: ResetTarget | None = (
+            ResetTarget(bootloader_reset) if bootloader_reset else None
         )
 
-    async def enter_sonoff_bootloader(self):
-        _LOGGER.info("Triggering Sonoff bootloader")
+    async def enter_bootloader_reset(self, target):
+        _LOGGER.info(f"Triggering {target.value} bootloader")
+        if target in GPIO_CONFIGS.keys():
+            config = GPIO_CONFIGS[target]
+            await send_gpio_pattern(
+                config["chip"], config["pin_states"], config["toggle_delay"]
+            )
+        else:
+            await self.enter_serial_bootloader()
 
+    async def enter_serial_bootloader(self):
         baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
         async with connect_protocol(self._device, baudrate, SerialProtocol) as sonoff:
             serial = sonoff._transport.serial
@@ -147,26 +148,24 @@ class Flasher:
     async def probe_app_type(
         self,
         types: typing.Iterable[ApplicationType] | None = None,
-        *,
-        yellow_gpio_reset: bool = False,
-        sonoff_reset: bool = False,
     ) -> None:
         if types is None:
             types = self._probe_methods
 
-        if yellow_gpio_reset:
-            await self.enter_yellow_bootloader()
-        elif sonoff_reset:
-            await self.enter_sonoff_bootloader()
+        # Reset into bootloader
+        if self._reset_target:
+            await self.enter_bootloader_reset(self._reset_target)
 
         bootloader_probe = None
 
-        # Only run firmware from the bootloader if we have other probe methods
+        # Only run firmware from the bootloader if we have bootloader reset and
+        # other probe methods
         only_probe_bootloader = types == [ApplicationType.GECKO_BOOTLOADER]
+        run_firmware = self._reset_target and not only_probe_bootloader
         probe_funcs = {
             ApplicationType.GECKO_BOOTLOADER: (
                 lambda baudrate: self.probe_gecko_bootloader(
-                    run_firmware=(not only_probe_bootloader), baudrate=baudrate
+                    run_firmware=run_firmware, baudrate=baudrate
                 )
             ),
             ApplicationType.CPC: self.probe_cpc,
@@ -206,13 +205,10 @@ class Flasher:
             self.app_baudrate = result.baudrate
             break
         else:
-            if bootloader_probe and (yellow_gpio_reset or sonoff_reset):
+            if bootloader_probe and self._reset_target:
                 # We have no valid application image but can still re-enter the
                 # bootloader
-                if yellow_gpio_reset:
-                    await self.enter_yellow_bootloader()
-                elif sonoff_reset:
-                    await self.enter_sonoff_bootloader()
+                await self.enter_bootloader_reset(self._reset_target)
 
                 self.app_type = ApplicationType.GECKO_BOOTLOADER
                 self.app_version = bootloader_probe.version

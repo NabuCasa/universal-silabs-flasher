@@ -18,7 +18,12 @@ import zigpy.ota.validators
 import zigpy.types
 
 from .common import CommaSeparatedNumbers, patch_pyserial_asyncio, put_first
-from .const import DEFAULT_BAUDRATES, FW_IMAGE_TYPE_TO_APPLICATION_TYPE, ApplicationType
+from .const import (
+    DEFAULT_BAUDRATES,
+    FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
+    ApplicationType,
+    ResetTarget,
+)
 from .flasher import Flasher
 from .gbl import FirmwareImageType, GBLImage
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
@@ -134,6 +139,10 @@ class SerialPort(click.ParamType):
     callback=click_enum_validator_factory(ApplicationType),
     show_default=True,
 )
+@click.option(
+    "--bootloader-reset",
+    type=click.Choice([t.value for t in ResetTarget]),
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -145,6 +154,7 @@ def main(
     ezsp_baudrate: list[int],
     spinel_baudrate: list[int],
     probe_method: list[ApplicationType],
+    bootloader_reset: str | None,
 ) -> None:
     coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
 
@@ -155,6 +165,17 @@ def main(
             " probing, or replace it with an application-specific baudrate flag"
             " (see `--help`)"
         )
+
+    # To maintain some backwards compatibility, make `--device` required only when we
+    # are actually invoking a command that interacts with a device
+    if ctx.get_parameter_source(
+        "device"
+    ) == click.core.ParameterSource.DEFAULT and ctx.invoked_subcommand not in (
+        dump_gbl_metadata.name
+    ):
+        # Replicate the "Error: Missing option" traceback
+        param = next(p for p in ctx.command.params if p.name == "device")
+        raise click.MissingParameter(ctx=ctx, param=param)
 
     ctx.obj = {
         "verbosity": verbose,
@@ -167,29 +188,9 @@ def main(
                 ApplicationType.SPINEL: spinel_baudrate,
             },
             probe_methods=probe_method,
+            bootloader_reset=bootloader_reset,
         ),
     }
-    # To maintain some backwards compatibility, make `--device` required only when we
-    # are actually invoking a command that interacts with a device
-    if ctx.get_parameter_source(
-        "device"
-    ) == click.core.ParameterSource.DEFAULT and ctx.invoked_subcommand not in (
-        dump_gbl_metadata.name
-    ):
-        # Replicate the "Error: Missing option" traceback
-        param = next(p for p in ctx.command.params if p.name == "device")
-        raise click.MissingParameter(ctx=ctx, param=param)
-
-    ctx.obj["flasher"] = Flasher(
-        device=device,
-        baudrates={
-            ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
-            ApplicationType.CPC: cpc_baudrate,
-            ApplicationType.EZSP: ezsp_baudrate,
-            ApplicationType.SPINEL: spinel_baudrate,
-        },
-        probe_methods=probe_method,
-    )
 
 
 @main.command()
@@ -316,12 +317,20 @@ async def flash(
             flasher._baudrates[app_type] = put_first(
                 flasher._baudrates[app_type], [metadata.baudrate]
             )
+    # Maintain backward compatibility with the deprecated reset flags
+    reset_msg = (
+        "The '%s' flag is deprecated. Use '--bootloader-reset' "
+        "instead, see --help for details."
+    )
+    if yellow_gpio_reset:
+        flasher._reset_target = ResetTarget.YELLOW
+        _LOGGER.info(reset_msg, "--yellow-gpio-reset")
+    elif sonoff_reset:
+        flasher._reset_target = ResetTarget.SONOFF
+        _LOGGER.info(reset_msg, "--sonoff-reset")
 
     try:
-        await flasher.probe_app_type(
-            yellow_gpio_reset=yellow_gpio_reset,
-            sonoff_reset=sonoff_reset,
-        )
+        await flasher.probe_app_type()
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
