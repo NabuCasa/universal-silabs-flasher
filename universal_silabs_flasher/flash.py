@@ -143,7 +143,6 @@ class SerialPort(click.ParamType):
     "--bootloader-reset",
     type=click.Choice([t.value for t in ResetTarget]),
 )
-
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -192,6 +191,7 @@ def main(
             bootloader_reset=bootloader_reset,
         ),
     }
+
 
 @main.command()
 @click.pass_context
