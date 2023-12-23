@@ -19,6 +19,7 @@ Options:
   --ezsp-baudrate NUMBERS        [default: 115200]
   --spinel-baudrate NUMBERS      [default: 460800]
   --probe-method TEXT            [default: bootloader, cpc, ezsp, spinel]
+  --bootloader-reset [yellow|ihost|sonoff]
   --help                         Show this message and exit.
 
 Commands:
@@ -39,14 +40,14 @@ In addition to validating the firmware image, the version number of the firmware
  - All of the above logic can be skipped with `--force`.
 
 ### Yellow
-The Yellow's bootloader can always be activated with the `--yellow-gpio-reset` flag:
+The Yellow's bootloader can always be activated with the `--bootloader-reset yellow` option:
 
 ```bash
 $ universal-silabs-flasher \
     --device /dev/ttyAMA1 \
+    --bootloader-reset yellow
     flash \
     --firmware NabuCasa_RCP_v4.1.3_rcp-uart-hw-802154_230400.gbl \
-    --yellow-gpio-reset
 ```
 
 ### SkyConnect
