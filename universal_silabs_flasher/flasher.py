@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-import time
 import typing
 
 import async_timeout
@@ -18,54 +17,16 @@ from .common import (
     connect_protocol,
     pad_to_multiple,
 )
-from .const import DEFAULT_BAUDRATES, ApplicationType
+from .const import DEFAULT_BAUDRATES, GPIO_CONFIGS, ApplicationType, ResetTarget
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .firmware import FirmwareImage
 from .gecko_bootloader import GeckoBootloaderProtocol, NoFirmwareError
+from .gpio import send_gpio_pattern
 from .spinel import SpinelProtocol
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _send_gpio_pattern(pin_states: dict[int, list[bool]], toggle_delay: float) -> None:
-    # `gpiod` isn't available on Windows
-    import gpiod
-
-    chip = gpiod.chip(0, gpiod.chip.OPEN_BY_NUMBER)
-    lines = {pin: chip.get_line(pin) for pin in pin_states.keys()}
-
-    config = gpiod.line_request()
-    config.consumer = "universal-silabs-flasher"
-    config.request_type = gpiod.line_request.DIRECTION_OUTPUT
-
-    try:
-        # Open the pins and set their initial states
-        for pin, line in lines.items():
-            state = pin_states[pin][0]
-            line.request(config, int(state))
-
-        time.sleep(toggle_delay)
-
-        # Send all subsequent states
-        for i in range(1, len(pin_states[pin])):
-            for pin, line in lines.items():
-                line.set_value(int(pin_states[pin][i]))
-
-            time.sleep(toggle_delay)
-    finally:
-        # Clean up and ensure the GPIO pins are reset to inputs
-        for line in lines.values():
-            line.set_direction_input()
-
-
-async def send_gpio_pattern(
-    pin_states: dict[int, list[bool]], toggle_delay: float
-) -> None:
-    await asyncio.get_running_loop().run_in_executor(
-        None, _send_gpio_pattern, pin_states, toggle_delay
-    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -87,6 +48,7 @@ class Flasher:
             ApplicationType.SPINEL,
         ),
         device: str,
+        bootloader_reset: str,
     ):
         self._baudrates = baudrates
         self._probe_methods = probe_methods
@@ -97,20 +59,21 @@ class Flasher:
         self.app_baudrate: int | None = None
         self.bootloader_baudrate: int | None = None
 
-    async def enter_yellow_bootloader(self):
-        _LOGGER.info("Triggering Yellow bootloader")
-
-        await send_gpio_pattern(
-            pin_states={
-                24: [True, False, False],
-                25: [True, False, True],
-            },
-            toggle_delay=0.1,
+        self._reset_target: ResetTarget | None = (
+            ResetTarget(bootloader_reset) if bootloader_reset else None
         )
 
-    async def enter_sonoff_bootloader(self):
-        _LOGGER.info("Triggering Sonoff bootloader")
+    async def enter_bootloader_reset(self, target):
+        _LOGGER.info(f"Triggering {target.value} bootloader")
+        if target in GPIO_CONFIGS.keys():
+            config = GPIO_CONFIGS[target]
+            await send_gpio_pattern(
+                config["chip"], config["pin_states"], config["toggle_delay"]
+            )
+        else:
+            await self.enter_serial_bootloader()
 
+    async def enter_serial_bootloader(self):
         baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
         async with connect_protocol(self._device, baudrate, SerialProtocol) as sonoff:
             serial = sonoff._transport.serial
@@ -193,26 +156,24 @@ class Flasher:
     async def probe_app_type(
         self,
         types: typing.Iterable[ApplicationType] | None = None,
-        *,
-        yellow_gpio_reset: bool = False,
-        sonoff_reset: bool = False,
     ) -> None:
         if types is None:
             types = self._probe_methods
 
-        if yellow_gpio_reset:
-            await self.enter_yellow_bootloader()
-        elif sonoff_reset:
-            await self.enter_sonoff_bootloader()
+        # Reset into bootloader
+        if self._reset_target:
+            await self.enter_bootloader_reset(self._reset_target)
 
         bootloader_probe = None
 
-        # Only run firmware from the bootloader if we have other probe methods
+        # Only run firmware from the bootloader if we have bootloader reset and
+        # other probe methods
         only_probe_bootloader = types == [ApplicationType.GECKO_BOOTLOADER]
+        run_firmware = self._reset_target and not only_probe_bootloader
         probe_funcs = {
             ApplicationType.GECKO_BOOTLOADER: (
                 lambda baudrate: self.probe_gecko_bootloader(
-                    run_firmware=(not only_probe_bootloader), baudrate=baudrate
+                    run_firmware=run_firmware, baudrate=baudrate
                 )
             ),
             ApplicationType.CPC: self.probe_cpc,
@@ -252,13 +213,10 @@ class Flasher:
             self.app_baudrate = result.baudrate
             break
         else:
-            if bootloader_probe and (yellow_gpio_reset or sonoff_reset):
+            if bootloader_probe and self._reset_target:
                 # We have no valid application image but can still re-enter the
                 # bootloader
-                if yellow_gpio_reset:
-                    await self.enter_yellow_bootloader()
-                elif sonoff_reset:
-                    await self.enter_sonoff_bootloader()
+                await self.enter_bootloader_reset(self._reset_target)
 
                 self.app_type = ApplicationType.GECKO_BOOTLOADER
                 self.app_version = bootloader_probe.version

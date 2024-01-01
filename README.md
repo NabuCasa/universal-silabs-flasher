@@ -72,4 +72,4 @@ $ universal-silabs-flasher \
 
 The IEEE address can also be specified without colons: `--ieee 003c84fffe92bb2c`.
 
-If the current device's IEEE address already matches the provided one, the command will not write it unnecesarily.
+If the current device's IEEE address already matches the provided one, the command will not write it unnecessarily.

@@ -36,3 +36,29 @@ DEFAULT_BAUDRATES = {
     ApplicationType.EZSP: [115200],
     ApplicationType.SPINEL: [460800],
 }
+
+
+class ResetTarget(enum.Enum):
+    YELLOW = "yellow"
+    IHOST = "ihost"
+    SONOFF = "sonoff"
+
+
+GPIO_CONFIGS = {
+    ResetTarget.YELLOW: {
+        "chip": "/dev/gpiochip0",
+        "pin_states": {
+            24: [True, False, False, True],
+            25: [True, False, True, True],
+        },
+        "toggle_delay": 0.1,
+    },
+    ResetTarget.IHOST: {
+        "chip": "/dev/gpiochip1",
+        "pin_states": {
+            27: [True, False, False, True],
+            26: [True, False, True, True],
+        },
+        "toggle_delay": 0.1,
+    },
+}

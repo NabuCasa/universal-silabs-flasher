@@ -1,16 +1,53 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.3.1
     hooks:
-      - id: debug-statements
+      - id: pyupgrade
+        args: [--py38-plus]
 
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: 'v0.0.272'
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.0.2
     hooks:
-      - id: ruff
-        args: ["--fix"]
+      - id: autoflake
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        args:
+          - --quiet
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+        additional_dependencies: 
+          - Flake8-pyproject==1.2.3
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.4
+    hooks:
+      - id: codespell
+        args:
+          - --ignore-words-list=zigpy,hass
+          - --skip="./.*"
+          - --quiet-level=2
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.1.1
+    rev: v1.3.0
     hooks:
       - id: mypy
+        additional_dependencies:
+          - zigpy
+  
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.261
+    hooks:
+      - id: ruff
+        args:
+          - --fix

@@ -16,10 +16,7 @@ import serial_asyncio
 import zigpy.serial
 
 if typing.TYPE_CHECKING:
-    try:
-        from typing import Self
-    except ImportError:
-        from typing_extensions import Self
+    from typing_extensions import Self
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -269,14 +266,14 @@ class Version:
         prefix_length = min(len(our_comparable), len(their_comparable))
         return our_comparable[:prefix_length] == their_comparable[:prefix_length]
 
-    def __eq__(self, other: Self) -> bool:
-        if not isinstance(other, type(self)):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Version):
             return NotImplemented
 
         return self.components == other.components
 
-    def __lt__(self, other: Self) -> bool:
-        if not isinstance(other, type(self)):
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Version):
             return NotImplemented
 
         our_comparable = self.comparable_components()
