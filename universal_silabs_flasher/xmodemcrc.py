@@ -15,6 +15,8 @@ _LOGGER = logging.getLogger(__name__)
 BLOCK_SIZE = 128
 RECEIVE_TIMEOUT = 2
 
+_WRITER_GRAVEYARD: list[asyncio.StreamWriter] = []
+
 
 class PacketType(zigpy.types.enum8):
     """XModem packet type byte."""
@@ -144,6 +146,16 @@ async def send_xmodem128_crc(
             max_failures=max_failures,
         )
     finally:
+        # XXX: Make sure the writer doesn't close our transport when garbage collected
+        global _WRITER_GRAVEYARD
+
+        _WRITER_GRAVEYARD.append(writer)
+        _WRITER_GRAVEYARD = [
+            w
+            for w in _WRITER_GRAVEYARD
+            if w.transport is not None and not w.transport.is_closing()
+        ]
+
         # Reset the old protocol
         transport.set_protocol(old_protocol)
 
