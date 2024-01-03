@@ -149,6 +149,16 @@ async def send_xmodem128_crc(
         # XXX: Make sure the writer doesn't close our transport when garbage collected
         _WRITER_GRAVEYARD.append(writer)
 
+        stale_entries = [
+            index
+            for index, writer in enumerate(_WRITER_GRAVEYARD)
+            if writer.transport.is_closing()
+        ]
+
+        for index in stale_entries[::-1]:
+            _LOGGER.debug("Removing stale writer %s", _WRITER_GRAVEYARD[index])
+            del _WRITER_GRAVEYARD[index]
+
         # Reset the old protocol
         transport.set_protocol(old_protocol)
 
