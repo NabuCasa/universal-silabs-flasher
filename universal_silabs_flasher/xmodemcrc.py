@@ -15,7 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 BLOCK_SIZE = 128
 RECEIVE_TIMEOUT = 2
 
-_WRITER_GRAVEYARD = []
+_WRITER_GRAVEYARD: list[asyncio.StreamWriter] = []
 
 
 class PacketType(zigpy.types.enum8):
@@ -147,17 +147,14 @@ async def send_xmodem128_crc(
         )
     finally:
         # XXX: Make sure the writer doesn't close our transport when garbage collected
+        global _WRITER_GRAVEYARD
+
         _WRITER_GRAVEYARD.append(writer)
-
-        stale_entries = [
-            index
-            for index, writer in enumerate(_WRITER_GRAVEYARD)
-            if writer.transport.is_closing()
+        _WRITER_GRAVEYARD = [
+            w
+            for w in _WRITER_GRAVEYARD
+            if w.transport is None or w.transport.is_closing()
         ]
-
-        for index in stale_entries[::-1]:
-            _LOGGER.debug("Removing stale writer %s", _WRITER_GRAVEYARD[index])
-            del _WRITER_GRAVEYARD[index]
 
         # Reset the old protocol
         transport.set_protocol(old_protocol)
