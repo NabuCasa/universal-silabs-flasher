@@ -16,6 +16,17 @@ BLOCK_SIZE = 128
 RECEIVE_TIMEOUT = 2
 
 
+class UncloseableTransport(asyncio.Transport):
+    """Transport that cannot be closed."""
+
+    def close(self) -> None:
+        """Do nothing."""
+
+    def is_closing(self) -> bool:
+        """Always return False."""
+        return False
+
+
 class PacketType(zigpy.types.enum8):
     """XModem packet type byte."""
 
@@ -144,6 +155,10 @@ async def send_xmodem128_crc(
             max_failures=max_failures,
         )
     finally:
+        # Make sure the writer doesn't close our transport when garbage collected
+        writer._transport = UncloseableTransport()
+        del writer
+
         # Reset the old protocol
         transport.set_protocol(old_protocol)
 
