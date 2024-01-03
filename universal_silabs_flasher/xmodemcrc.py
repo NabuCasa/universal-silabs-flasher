@@ -153,7 +153,7 @@ async def send_xmodem128_crc(
         _WRITER_GRAVEYARD = [
             w
             for w in _WRITER_GRAVEYARD
-            if w.transport is None or w.transport.is_closing()
+            if w.transport is not None and not w.transport.is_closing()
         ]
 
         # Reset the old protocol
