@@ -46,11 +46,7 @@ class State(str, enum.Enum):
     WAITING_XMODEM_READY = "waiting_xmodem_ready"
     XMODEM_READY = "xmodem_ready"
     WAITING_UPLOAD_DONE = "waiting_upload_done"
-
-
-class BootloaderType(str, enum.Enum):
-    EMBER = "ember"
-    GECKO = "gecko"
+    UPLOAD_DONE = "upload_done"
 
 
 class GeckoBootloaderOption(bytes, enum.Enum):
@@ -68,7 +64,6 @@ class GeckoBootloaderProtocol(SerialProtocol):
         )
         self._version: str | None = None
         self._upload_status: str | None = None
-        self._bootloader_type: BootloaderType | None = None
 
     async def probe(self) -> Version:
         """Attempt to communicate with the bootloader."""
@@ -78,7 +73,10 @@ class GeckoBootloaderProtocol(SerialProtocol):
     async def ebl_info(self) -> Version:
         """Select `ebl info` in the menu and return the bootloader version."""
         self._state_machine.state = State.WAITING_FOR_MENU
-        self.send_data(b"\n" + GeckoBootloaderOption.EBL_INFO)
+
+        # Ember bootloader requires a newline
+        self.send_data(b"\n")
+        self.send_data(GeckoBootloaderOption.EBL_INFO)
 
         await self._state_machine.wait_for_state(State.IN_MENU)
 
@@ -130,14 +128,16 @@ class GeckoBootloaderProtocol(SerialProtocol):
             progress_callback=progress_callback,
         )
 
+        await self._state_machine.wait_for_state(State.UPLOAD_DONE)
+        self._state_machine.state = State.WAITING_FOR_MENU
+
+        # The menu is sometimes sent immediately after upload
         try:
-            async with async_timeout.timeout(2):
+            async with async_timeout.timeout(MENU_AFTER_UPLOAD_TIMEOUT):
                 await self._state_machine.wait_for_state(State.IN_MENU)
         except asyncio.TimeoutError:
-            if self._bootloader_type == BootloaderType.GECKO:
-                raise
-
-            _LOGGER.debug("Assuming Ember bootloader launched application")
+            # If not, trigger it manually
+            await self.ebl_info()
 
         if self._upload_status != "complete":
             raise UploadError(self._upload_status)
@@ -153,27 +153,13 @@ class GeckoBootloaderProtocol(SerialProtocol):
                 if match is None:
                     return
 
-                if match.group("type") == b"Gecko":
-                    self._bootloader_type = BootloaderType.GECKO
-                else:
-                    self._bootloader_type = BootloaderType.EMBER
-
-                _LOGGER.debug("Detected bootloader type %r", self._bootloader_type)
-
                 self._version = match.group("version").decode("ascii")
                 _LOGGER.debug("Detected version string %r", self._version)
 
                 self._buffer.clear()
                 self._state_machine.state = State.IN_MENU
             elif self._state_machine.state == State.WAITING_XMODEM_READY:
-                begin = b"\r\nbegin upload\r\n"
-
-                if self._bootloader_type == BootloaderType.GECKO:
-                    begin += b"\x00"
-                else:
-                    begin += b"C"
-
-                if begin not in self._buffer:
+                if not self._buffer.endswith(b"C"):
                     break
 
                 self._buffer.clear()
@@ -192,7 +178,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
                     self._upload_status = match.group("message").decode("ascii")
 
                 del self._buffer[: match.span()[1]]
-                self._state_machine.state = State.WAITING_FOR_MENU
+                self._state_machine.state = State.UPLOAD_DONE
 
                 _LOGGER.debug("Upload status: %s", self._upload_status)
             else:
