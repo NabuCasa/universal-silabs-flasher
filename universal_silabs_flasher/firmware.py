@@ -5,8 +5,8 @@ import json
 import logging
 import typing
 
-import zigpy.types as zigpy_t
 from zigpy.ota.validators import ValidationError, parse_silabs_ebl, parse_silabs_gbl
+import zigpy.types as zigpy_t
 
 from .common import Version, pad_to_multiple
 from .const import FirmwareImageType
