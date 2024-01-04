@@ -156,7 +156,15 @@ def main(
     probe_method: list[ApplicationType],
     bootloader_reset: str | None,
 ) -> None:
-    coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
+    coloredlogs.install(
+        fmt=(
+            "%(asctime)s.%(msecs)03d"
+            " %(hostname)s"
+            " %(name)s"
+            " %(levelname)s %(message)s"
+        ),
+        level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)],
+    )
 
     # Override all application baudrates if a specific value is provided
     if ctx.get_parameter_source("baudrate") != click.core.ParameterSource.DEFAULT:
