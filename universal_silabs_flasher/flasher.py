@@ -10,17 +10,25 @@ import bellows.config
 import bellows.ezsp
 import bellows.types
 
-from .common import PROBE_TIMEOUT, SerialProtocol, Version, connect_protocol
+from .common import (
+    PROBE_TIMEOUT,
+    SerialProtocol,
+    Version,
+    connect_protocol,
+    pad_to_multiple,
+)
 from .const import DEFAULT_BAUDRATES, GPIO_CONFIGS, ApplicationType, ResetTarget
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
-from .gbl import GBLImage
+from .firmware import FirmwareImage
 from .gecko_bootloader import GeckoBootloaderProtocol, NoFirmwareError
 from .gpio import send_gpio_pattern
 from .spinel import SpinelProtocol
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 
 _LOGGER = logging.getLogger(__name__)
+
+EZSP_BOOTLOADER_LAUNCH_DELAY = 5
 
 
 @dataclasses.dataclass(frozen=True)
@@ -101,6 +109,8 @@ class Flasher:
                 if run_firmware:
                     await gecko.run_firmware()
                     _LOGGER.info("Launched application from bootloader")
+
+            await asyncio.sleep(1)
         except NoFirmwareError:
             _LOGGER.warning("No application can be launched")
             return ProbeResult(
@@ -255,6 +265,8 @@ class Flasher:
                         raise RuntimeError(
                             f"EmberZNet could not enter the bootloader: {res[0]!r}"
                         )
+
+                    await asyncio.sleep(EZSP_BOOTLOADER_LAUNCH_DELAY)
         else:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
 
@@ -264,17 +276,14 @@ class Flasher:
 
     async def flash_firmware(
         self,
-        firmware: GBLImage,
+        firmware: FirmwareImage,
         run_firmware: bool = True,
         progress_callback: typing.Callable[[int, int], typing.Any] | None = None,
     ) -> None:
         data = firmware.serialize()
 
         # Pad the image to the XMODEM block size
-        if len(data) % XMODEM_BLOCK_SIZE != 0:
-            num_complete_blocks = len(data) // XMODEM_BLOCK_SIZE
-            padded_size = XMODEM_BLOCK_SIZE * (num_complete_blocks + 1)
-            data += b"\xFF" * (padded_size - len(data))
+        data = pad_to_multiple(data, XMODEM_BLOCK_SIZE, b"\xFF")
 
         async with self._connect_gecko_bootloader(self.bootloader_baudrate) as gecko:
             await gecko.probe()

@@ -1,10 +1,5 @@
 import zigpy.types as zigpy_t
 
-
-class enum32(zigpy_t.enum_factory(zigpy_t.uint32_t)):  # type: ignore
-    pass
-
-
 FLAG = zigpy_t.uint8_t(0x14)
 
 
@@ -50,7 +45,7 @@ class UnnumberedFrameCommandId(zigpy_t.enum8):
     INVALID = 0xFF
 
 
-class PropertyId(enum32):
+class PropertyId(zigpy_t.enum32):
     LAST_STATUS = 0x0000
     PROTOCOL_VERSION = 0x0001
     CAPABILITIES = 0x0002
@@ -326,12 +321,12 @@ class PropertyId(enum32):
     ENDPOINT_STATES = 0x1100
 
 
-class RebootMode(enum32):
+class RebootMode(zigpy_t.enum32):
     APPLICATION = 0
     BOOTLOADER = 1
 
 
-class Status(enum32):
+class Status(zigpy_t.enum32):
     # Operation has completed successfully.
     OK = 0
     # Operation has failed for some undefined reason.

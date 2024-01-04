@@ -57,6 +57,18 @@ def crc16_kermit(data: bytes) -> int:
     return CRC_KERMIT.checksum(data)
 
 
+def pad_to_multiple(data: bytes, multiple: int, padding: bytes) -> bytes:
+    assert len(padding) == 1
+
+    if len(data) % multiple == 0:
+        return data
+
+    num_complete_blocks = len(data) // multiple
+    padded_size = multiple * (num_complete_blocks + 1)
+
+    return data + padding * (padded_size - len(data))
+
+
 class BufferTooShort(Exception):
     """Protocol buffer requires more data to parse a packet."""
 

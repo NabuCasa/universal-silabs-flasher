@@ -24,8 +24,8 @@ from .const import (
     ApplicationType,
     ResetTarget,
 )
+from .firmware import FirmwareImageType, parse_firmware_image
 from .flasher import Flasher
-from .gbl import FirmwareImageType, GBLImage
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 patch_pyserial_asyncio()
@@ -156,7 +156,15 @@ def main(
     probe_method: list[ApplicationType],
     bootloader_reset: str | None,
 ) -> None:
-    coloredlogs.install(level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)])
+    coloredlogs.install(
+        fmt=(
+            "%(asctime)s.%(msecs)03d"
+            " %(hostname)s"
+            " %(name)s"
+            " %(levelname)s %(message)s"
+        ),
+        level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)],
+    )
 
     # Override all application baudrates if a specific value is provided
     if ctx.get_parameter_source("baudrate") != click.core.ParameterSource.DEFAULT:
@@ -203,19 +211,19 @@ async def dump_gbl_metadata(ctx: click.Context, firmware: typing.BinaryIO) -> No
     firmware.close()
 
     try:
-        gbl_image = GBLImage.from_bytes(firmware_data)
+        fw_image = parse_firmware_image(firmware_data)
     except zigpy.ota.validators.ValidationError as e:
         raise click.ClickException(
-            f"{firmware.name!r} does not appear to be a valid GBL image: {e!r}"
+            f"{firmware.name!r} does not appear to be a valid firmware image: {e!r}"
         )
 
     try:
-        metadata = gbl_image.get_nabucasa_metadata()
+        metadata = fw_image.get_nabucasa_metadata()
     except KeyError:
         metadata_obj = None
     else:
         metadata_obj = metadata.original_json
-        _LOGGER.info("Extracted GBL metadata: %s", metadata)
+        _LOGGER.info("Extracted firmware metadata: %s", metadata)
 
     print(json.dumps(metadata_obj))
 
@@ -279,14 +287,14 @@ async def flash(
     firmware.close()
 
     try:
-        gbl_image = GBLImage.from_bytes(firmware_data)
-    except zigpy.ota.validators.ValidationError as e:
+        fw_image = parse_firmware_image(firmware_data)
+    except (zigpy.ota.validators.ValidationError, ValueError) as e:
         raise click.ClickException(
-            f"{firmware.name!r} does not appear to be a valid GBL image: {e!r}"
+            f"{firmware.name!r} does not appear to be a valid firmware image: {e!r}"
         )
 
     try:
-        metadata = gbl_image.get_nabucasa_metadata()
+        metadata = fw_image.get_nabucasa_metadata()
     except KeyError:
         metadata = None
     else:
@@ -413,7 +421,7 @@ async def flash(
     with pbar:
         try:
             await flasher.flash_firmware(
-                gbl_image,
+                fw_image,
                 run_firmware=True,
                 progress_callback=lambda current, _: pbar.update(XMODEM_BLOCK_SIZE),
             )
