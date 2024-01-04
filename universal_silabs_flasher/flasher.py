@@ -28,6 +28,8 @@ from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 
 _LOGGER = logging.getLogger(__name__)
 
+EZSP_BOOTLOADER_LAUNCH_DELAY = 5
+
 
 @dataclasses.dataclass(frozen=True)
 class ProbeResult:
@@ -264,7 +266,7 @@ class Flasher:
                             f"EmberZNet could not enter the bootloader: {res[0]!r}"
                         )
 
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(EZSP_BOOTLOADER_LAUNCH_DELAY)
         else:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
 
