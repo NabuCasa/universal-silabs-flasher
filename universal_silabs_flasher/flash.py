@@ -280,7 +280,7 @@ async def flash(
 
     try:
         fw_image = parse_firmware_image(firmware_data)
-    except zigpy.ota.validators.ValidationError as e:
+    except (zigpy.ota.validators.ValidationError, ValueError) as e:
         raise click.ClickException(
             f"{firmware.name!r} does not appear to be a valid firmware image: {e!r}"
         )
