@@ -31,6 +31,7 @@ def test_firmware_gbl_valid_with_metadata():
         metadata_version=1,
         sdk_version=Version("4.1.3"),
         ezsp_version=None,
+        cpc_version=None,
         fw_type=firmware.FirmwareImageType.RCP_UART_802154,
         ot_rcp_version=None,
         baudrate=None,
