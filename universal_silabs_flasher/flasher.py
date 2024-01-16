@@ -50,7 +50,7 @@ class Flasher:
             ApplicationType.SPINEL,
         ),
         device: str,
-        bootloader_reset: str,
+        bootloader_reset: str | None = None,
     ):
         self._baudrates = baudrates
         self._probe_methods = probe_methods
