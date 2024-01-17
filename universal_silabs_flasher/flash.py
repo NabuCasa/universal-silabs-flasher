@@ -382,17 +382,17 @@ async def flash(
                     flasher.app_baudrate,
                     metadata.baudrate,
                 )
-            elif app_version.compatible_with(fw_version):
-                _LOGGER.info(
-                    "Firmware version %s is flashed, not re-installing", app_version
-                )
-                return
-            elif ensure_exact_version and not app_version.compatible_with(fw_version):
+            elif ensure_exact_version and app_version != fw_version:
                 _LOGGER.info(
                     "Firmware version %s does not match expected version %s",
                     fw_version,
                     app_version,
                 )
+            elif app_version.compatible_with(fw_version):
+                _LOGGER.info(
+                    "Firmware version %s is flashed, not re-installing", app_version
+                )
+                return
             elif not allow_downgrades and app_version > fw_version:
                 _LOGGER.info(
                     "Firmware version %s does not upgrade current version %s",

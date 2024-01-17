@@ -215,7 +215,14 @@ class CPCProtocol(SerialProtocol):
         self._pending_frames: dict[int, asyncio.Future] = {}
 
     async def probe(self) -> Version:
-        return await self.get_cpc_version()
+        cpc_version = await self.get_cpc_version()
+        secondary_version = await self.get_secondary_version()
+
+        # Prefer the secondary version if possible, on newer firmwares we customize it
+        if secondary_version is not None:
+            return secondary_version
+
+        return cpc_version
 
     async def enter_bootloader(self) -> None:
         """Reboot into the bootloader."""
@@ -254,7 +261,7 @@ class CPCProtocol(SerialProtocol):
 
         return Version(f"{major}.{minor}.{patch}")
 
-    async def get_secondary_version(self) -> Version:
+    async def get_secondary_version(self) -> Version | None:
         """Read the secondary app version from the device."""
         rsp = await self.send_unnumbered_frame(
             command_id=cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET,
@@ -266,6 +273,9 @@ class CPCProtocol(SerialProtocol):
         )
 
         version_bytes = rsp.payload.payload.value
+
+        if version_bytes == b"UNDEFINED\x00":
+            return None
 
         return Version(version_bytes.split(b"\x00", 1)[0].decode("ascii"))
 

@@ -246,6 +246,7 @@ class Version:
         # 7.2.2.0 build 190
         # 4.2.2
         # SL-OPENTHREAD/2.2.2.0_GitHub-91fa1f455
+        # 4.4.0-2546d625-dirty-676fdb09
         for component in self._SEPARATORS_REGEX.split(version):
             if component.isdigit():
                 self.components.append(

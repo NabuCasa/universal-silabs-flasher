@@ -69,6 +69,7 @@ class NabuCasaMetadata:
     sdk_version: Version | None
     ezsp_version: Version | None
     ot_rcp_version: Version | None
+    cpc_version: Version | None
 
     fw_type: FirmwareImageType | None
     baudrate: int | None
@@ -76,7 +77,12 @@ class NabuCasaMetadata:
     original_json: dict[str, typing.Any] = dataclasses.field(repr=False)
 
     def get_public_version(self) -> Version | None:
-        return self.ezsp_version or self.ot_rcp_version or self.sdk_version
+        return (
+            self.cpc_version
+            or self.ezsp_version
+            or self.ot_rcp_version
+            or self.sdk_version
+        )
 
     @classmethod
     def from_json(cls, obj: dict[str, typing.Any]) -> NabuCasaMetadata:
@@ -98,6 +104,9 @@ class NabuCasaMetadata:
         if ot_rcp_version := obj.pop("ot_rcp_version", None):
             ot_rcp_version = Version(ot_rcp_version)
 
+        if cpc_version := obj.pop("cpc_version", None):
+            cpc_version = Version(cpc_version)
+
         if fw_type := obj.pop("fw_type", None):
             fw_type = FirmwareImageType(fw_type)
 
@@ -111,6 +120,7 @@ class NabuCasaMetadata:
             sdk_version=sdk_version,
             ezsp_version=ezsp_version,
             ot_rcp_version=ot_rcp_version,
+            cpc_version=cpc_version,
             fw_type=fw_type,
             baudrate=baudrate,
             original_json=original_json,

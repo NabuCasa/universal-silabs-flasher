@@ -14,6 +14,12 @@ class FirmwareImageType(enum.Enum):
     # OpenThread RCP
     OT_RCP = "ot-rcp"
 
+    # Z-Wave
+    Z_WAVE = "z-wave"
+
+    # Gecko Bootloader
+    GECKO_BOOTLOADER = "gecko-bootloader"
+
 
 class ApplicationType(enum.Enum):
     GECKO_BOOTLOADER = "bootloader"
@@ -27,6 +33,7 @@ FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
     FirmwareImageType.RCP_UART_802154: ApplicationType.CPC,
     FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154: ApplicationType.CPC,
     FirmwareImageType.OT_RCP: ApplicationType.SPINEL,
+    FirmwareImageType.GECKO_BOOTLOADER: ApplicationType.GECKO_BOOTLOADER,
 }
 
 
