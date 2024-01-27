@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from os import scandir
 import time
+import typing
 
 try:
     import gpiod
+
+    is_gpiod_v1 = hasattr(gpiod.chip, "OPEN_BY_PATH")
 except ImportError:
     gpiod = None
 
@@ -15,7 +19,7 @@ if gpiod is None:
     ) -> None:
         raise NotImplementedError("GPIO not supported on this platform")
 
-elif hasattr(gpiod.chip, "OPEN_BY_PATH"):
+elif is_gpiod_v1:
     # gpiod <= 1.5.4
     def _send_gpio_pattern(
         chip: str, pin_states: dict[int, list[bool]], toggle_delay: float
@@ -80,6 +84,39 @@ else:
                         for pin, states in pin_states.items()
                     }
                 )
+
+
+def _generate_gpio_chips() -> typing.Iterable[str]:
+    for entry in scandir("/dev/"):
+        if is_gpiod_v1:
+            if entry.name.startswith("gpiochip"):
+                yield entry.path
+        else:
+            if gpiod.is_gpiochip_device(entry.path):
+                yield entry.path
+
+
+def _find_gpiochip_by_label(label: str) -> str:
+    for path in _generate_gpio_chips():
+        try:
+            if is_gpiod_v1:
+                chip = gpiod.chip(path, gpiod.chip.OPEN_BY_PATH)
+                if chip.label == label:
+                    return path
+            else:
+                with gpiod.Chip(path) as chip:
+                    if chip.get_info().label == label:
+                        return path
+        except PermissionError:
+            pass
+    raise RuntimeError("No matching gpiochip device found")
+
+
+async def find_gpiochip_by_label(label: str) -> str:
+    result = await asyncio.get_running_loop().run_in_executor(
+        None, _find_gpiochip_by_label, label
+    )
+    return result
 
 
 async def send_gpio_pattern(
