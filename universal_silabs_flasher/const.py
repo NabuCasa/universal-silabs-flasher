@@ -48,6 +48,7 @@ DEFAULT_BAUDRATES = {
 class ResetTarget(enum.Enum):
     YELLOW = "yellow"
     IHOST = "ihost"
+    SLZB07 = "slzb07"
     SONOFF = "sonoff"
 
 
@@ -65,6 +66,14 @@ GPIO_CONFIGS = {
         "pin_states": {
             27: [True, False, False, True],
             26: [True, False, True, True],
+        },
+        "toggle_delay": 0.1,
+    },
+    ResetTarget.SLZB07: {
+        "chip_name": "cp210x",
+        "pin_states": {
+            5: [True, False, False, True],
+            4: [True, False, True, True],
         },
         "toggle_delay": 0.1,
     },
