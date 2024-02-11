@@ -70,6 +70,10 @@ class Flasher:
         if target in GPIO_CONFIGS.keys():
             config = GPIO_CONFIGS[target]
             if "chip" not in config.keys():
+                _LOGGER.warning(
+                    f"When using {target.value} bootloader reset "
+                    + "ensure no other CP2102 USB serial devices are connected."
+                )
                 config["chip"] = await find_gpiochip_by_label(config["chip_name"])
             await send_gpio_pattern(
                 config["chip"], config["pin_states"], config["toggle_delay"]
