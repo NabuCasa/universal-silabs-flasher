@@ -22,7 +22,7 @@ from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .firmware import FirmwareImage
 from .gecko_bootloader import GeckoBootloaderProtocol, NoFirmwareError
-from .gpio import send_gpio_pattern
+from .gpio import find_gpiochip_by_label, send_gpio_pattern
 from .spinel import SpinelProtocol
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 
@@ -69,6 +69,12 @@ class Flasher:
         _LOGGER.info(f"Triggering {target.value} bootloader")
         if target in GPIO_CONFIGS.keys():
             config = GPIO_CONFIGS[target]
+            if "chip" not in config.keys():
+                _LOGGER.warning(
+                    f"When using {target.value} bootloader reset "
+                    + "ensure no other CP2102 USB serial devices are connected."
+                )
+                config["chip"] = await find_gpiochip_by_label(config["chip_name"])
             await send_gpio_pattern(
                 config["chip"], config["pin_states"], config["toggle_delay"]
             )
