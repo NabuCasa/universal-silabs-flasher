@@ -1,12 +1,22 @@
 # Universal Silicon Labs Flasher
-Automatically communicates with radios over CPC, EZSP, or Spinel to enter the bootloader and then flashes a firmware image with XMODEM.
+
+Universal Silicon Labs Flasher is a basic Python 3 script to flash the firmware of Silabs based Zigbee and Thread products to a newer version.
+
+It automatically communicates with radios over CPC, EZSP, or Spinel to enter bootloader mode and then flashes a firmware image using XMODEM.
+
+### Disclaimer
+
+This utility should also work with other generic Silicon Labs based radio adapters and modules from other vendors if they support CPC (Co-Processor Communication), EZSP (EmberZNet Serial Protocol) or Spinel (Openthread Serial Protocol) interfaces. Note however that firmwares for products not from Nabu Casa are not provided as part of this package and there is no guarantees that that it will work with products that are not officially Home Assistant branded. Please be hereby warned that you may void your warranty or possibly even brick your adapter if the firmware image and firmware update method is not officially supported by your mnaufacturer.
 
 ## Installation
+
 ```console
 $ pip install universal-silabs-flasher
 ```
 
 ## Usage
+
+Note! The baudrate speed is set to 115200 by default as that is used as standard in most application firmware images, however keep in mind that you may have to try different baud rate speeds as some application firapplication firmware imagemware images use might use slower or faster. Also, if you enter the bootloader manually then you may need to use a other baudrate speed than what the application firmware image uses.
 
 ```console
 Usage: universal-silabs-flasher [OPTIONS] COMMAND [ARGS]...
