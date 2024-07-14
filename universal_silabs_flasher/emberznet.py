@@ -1,12 +1,9 @@
-import asyncio
 import contextlib
 
 import bellows.config
 import bellows.ezsp
 import bellows.types
 import zigpy.config
-
-AFTER_DISCONNECT_DELAY = 0.1
 
 
 @contextlib.asynccontextmanager
@@ -38,10 +35,14 @@ async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
         }
     )
 
-    ezsp = await bellows.ezsp.EZSP.initialize(app_config)
+    ezsp = bellows.ezsp.EZSP(app_config[zigpy.config.CONF_DEVICE])
+    await ezsp.connect(use_thread=False)
+    await ezsp.startup_reset()
+
+    # Writing config is required here because network info can't be loaded
+    await ezsp.write_config(app_config[bellows.config.CONF_EZSP_CONFIG])
 
     try:
         yield ezsp
     finally:
-        ezsp.close()
-        await asyncio.sleep(AFTER_DISCONNECT_DELAY)
+        await ezsp.disconnect()

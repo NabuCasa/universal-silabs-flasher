@@ -7,8 +7,9 @@ import re
 import typing
 
 import async_timeout
+import zigpy.serial
 
-from .common import PROBE_TIMEOUT, SerialProtocol, StateMachine, Version
+from .common import PROBE_TIMEOUT, StateMachine, Version
 from .xmodemcrc import send_xmodem128_crc
 
 _LOGGER = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ class GeckoBootloaderOption(bytes, enum.Enum):
     EBL_INFO = b"3"
 
 
-class GeckoBootloaderProtocol(SerialProtocol):
+class GeckoBootloaderProtocol(zigpy.serial.SerialProtocol):
     def __init__(self) -> None:
         super().__init__()
         self._state_machine = StateMachine(
