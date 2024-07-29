@@ -260,7 +260,7 @@ class Flasher:
         elif self.app_type is ApplicationType.EZSP:
             async with self._connect_ezsp(self.app_baudrate) as ezsp:
                 try:
-                    res = await ezsp.launchStandaloneBootloader(0x01)
+                    res = await ezsp.launchStandaloneBootloader(mode=0x01)
                 except asyncio.TimeoutError:
                     _LOGGER.warning(
                         "Application failed to respond to bootloader launching command."
@@ -303,8 +303,8 @@ class Flasher:
             raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
 
         async with self._connect_ezsp(self.app_baudrate) as ezsp:
-            for config in ezsp.types.EzspConfigId:
-                v = await ezsp.getConfigurationValue(config)
+            for config in bellows.types.EzspConfigId:
+                v = await ezsp.getConfigurationValue(configId=config)
                 if v[0] == bellows.types.EzspStatus.ERROR_INVALID_ID:
                     continue
                 print(f"{config.name}={v[1]}")
