@@ -260,7 +260,7 @@ class Flasher:
         elif self.app_type is ApplicationType.EZSP:
             async with self._connect_ezsp(self.app_baudrate) as ezsp:
                 try:
-                    res = await ezsp.launchStandaloneBootloader(0x01)
+                    res = await ezsp.launchStandaloneBootloader(mode=0x01)
                 except asyncio.TimeoutError:
                     _LOGGER.warning(
                         "Application failed to respond to bootloader launching command."
