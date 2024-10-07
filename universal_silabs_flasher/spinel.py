@@ -157,8 +157,7 @@ class SpinelProtocol(SerialProtocol):
         retries: int,
         timeout: float,
         retry_delay: float,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @typing.overload
     async def send_frame(
@@ -169,8 +168,7 @@ class SpinelProtocol(SerialProtocol):
         retries: int,
         timeout: float,
         retry_delay: float,
-    ) -> SpinelFrame:
-        ...
+    ) -> SpinelFrame: ...
 
     async def send_frame(
         self,

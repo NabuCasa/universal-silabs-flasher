@@ -181,7 +181,7 @@ class GBLImage(FirmwareImage):
                 ]
             ),
             4,
-            b"\xFF",
+            b"\xff",
         )
 
     def get_nabucasa_metadata(self) -> NabuCasaMetadata:
@@ -211,7 +211,7 @@ class EBLImage(FirmwareImage):
                 ]
             ),
             64,
-            b"\xFF",
+            b"\xff",
         )
 
     def get_nabucasa_metadata(self) -> NabuCasaMetadata:
