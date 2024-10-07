@@ -13,7 +13,7 @@ from .const import LEGACY_FIRMWARE_TYPE_REMAPPING, FirmwareImageType
 
 _LOGGER = logging.getLogger(__name__)
 
-NABUCASA_METADATA_VERSION = 1
+NABUCASA_METADATA_VERSION = 2
 
 
 class GBLTagId(zigpy_t.enum32):
