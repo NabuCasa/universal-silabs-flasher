@@ -289,7 +289,7 @@ class Flasher:
         data = firmware.serialize()
 
         # Pad the image to the XMODEM block size
-        data = pad_to_multiple(data, XMODEM_BLOCK_SIZE, b"\xFF")
+        data = pad_to_multiple(data, XMODEM_BLOCK_SIZE, b"\xff")
 
         async with self._connect_gecko_bootloader(self.bootloader_baudrate) as gecko:
             await gecko.probe()
