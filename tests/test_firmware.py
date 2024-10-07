@@ -33,6 +33,7 @@ def test_firmware_gbl_valid_with_metadata():
         ezsp_version=None,
         cpc_version=None,
         fw_type=firmware.FirmwareImageType.MULTIPAN,
+        fw_variant=None,
         ot_rcp_version=None,
         baudrate=None,
         original_json={

@@ -72,6 +72,7 @@ class NabuCasaMetadata:
     cpc_version: Version | None
 
     fw_type: FirmwareImageType | None
+    fw_variant: str | None
     baudrate: int | None
 
     original_json: dict[str, typing.Any] = dataclasses.field(repr=False)
@@ -117,6 +118,9 @@ class NabuCasaMetadata:
                 _LOGGER.warning("Unknown firmware type: %r", fw_type)
                 fw_type = None
 
+        if fw_variant := obj.pop("fw_variant", None):
+            fw_variant = fw_variant
+
         baudrate = obj.pop("baudrate", None)
 
         if obj:
@@ -129,6 +133,7 @@ class NabuCasaMetadata:
             ot_rcp_version=ot_rcp_version,
             cpc_version=cpc_version,
             fw_type=fw_type,
+            fw_variant=fw_variant,
             baudrate=baudrate,
             original_json=original_json,
         )
