@@ -9,7 +9,7 @@ from zigpy.ota.validators import ValidationError, parse_silabs_ebl, parse_silabs
 import zigpy.types as zigpy_t
 
 from .common import Version, pad_to_multiple
-from .const import FirmwareImageType
+from .const import LEGACY_FIRMWARE_TYPE_REMAPPING, FirmwareImageType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -108,7 +108,14 @@ class NabuCasaMetadata:
             cpc_version = Version(cpc_version)
 
         if fw_type := obj.pop("fw_type", None):
-            fw_type = FirmwareImageType(fw_type)
+            if fw_type in LEGACY_FIRMWARE_TYPE_REMAPPING:
+                fw_type = LEGACY_FIRMWARE_TYPE_REMAPPING[fw_type]
+
+            try:
+                fw_type = FirmwareImageType(fw_type)
+            except ValueError:
+                _LOGGER.warning("Unknown firmware type: %r", fw_type)
+                fw_type = None
 
         baudrate = obj.pop("baudrate", None)
 

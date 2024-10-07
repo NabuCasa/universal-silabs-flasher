@@ -32,7 +32,7 @@ def test_firmware_gbl_valid_with_metadata():
         sdk_version=Version("4.1.3"),
         ezsp_version=None,
         cpc_version=None,
-        fw_type=firmware.FirmwareImageType.RCP_UART_802154,
+        fw_type=firmware.FirmwareImageType.MULTIPAN,
         ot_rcp_version=None,
         baudrate=None,
         original_json={

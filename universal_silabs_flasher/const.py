@@ -2,23 +2,23 @@ import enum
 
 
 class FirmwareImageType(enum.Enum):
-    # EmberZNet Zigbee firmware
-    NCP_UART_HW = "ncp-uart-hw"
+    ZIGBEE_NCP = "zigbee_ncp"
+    OPENTHREAD_RCP = "openthread_rcp"
+    ZWAVE_NCP = "zwave_ncp"
+    BOOTLOADER = "bootloader"
+    MULTIPAN = "multipan"
 
-    # Multi-PAN RCP Multiprotocol (via zigbeed)
-    RCP_UART_802154 = "rcp-uart-802154"
+    UNKNOWN = "unknown"
 
-    # Zigbee NCP + OpenThread RCP
-    ZIGBEE_NCP_RCP_UART_802154 = "zigbee-ncp-rcp-uart-802154"
 
-    # OpenThread RCP
-    OT_RCP = "ot-rcp"
-
-    # Z-Wave
-    Z_WAVE = "z-wave"
-
-    # Gecko Bootloader
-    GECKO_BOOTLOADER = "gecko-bootloader"
+LEGACY_FIRMWARE_TYPE_REMAPPING = {
+    "ncp-uart-hw": FirmwareImageType.ZIGBEE_NCP,
+    "ncp-uart-sw": FirmwareImageType.ZIGBEE_NCP,
+    "rcp-uart-802154": FirmwareImageType.MULTIPAN,
+    "ot-rcp": FirmwareImageType.OPENTHREAD_RCP,
+    "z-wave": FirmwareImageType.ZWAVE_NCP,
+    "gecko-bootloader": FirmwareImageType.BOOTLOADER,
+}
 
 
 class ApplicationType(enum.Enum):
@@ -29,11 +29,10 @@ class ApplicationType(enum.Enum):
 
 
 FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
-    FirmwareImageType.NCP_UART_HW: ApplicationType.EZSP,
-    FirmwareImageType.RCP_UART_802154: ApplicationType.CPC,
-    FirmwareImageType.ZIGBEE_NCP_RCP_UART_802154: ApplicationType.CPC,
-    FirmwareImageType.OT_RCP: ApplicationType.SPINEL,
-    FirmwareImageType.GECKO_BOOTLOADER: ApplicationType.GECKO_BOOTLOADER,
+    FirmwareImageType.ZIGBEE_NCP: ApplicationType.EZSP,
+    FirmwareImageType.MULTIPAN: ApplicationType.CPC,
+    FirmwareImageType.OPENTHREAD_RCP: ApplicationType.SPINEL,
+    FirmwareImageType.BOOTLOADER: ApplicationType.GECKO_BOOTLOADER,
 }
 
 

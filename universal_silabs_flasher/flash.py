@@ -343,12 +343,12 @@ async def flash(
         raise click.ClickException(str(e)) from e
 
     if flasher.app_type == ApplicationType.EZSP:
-        running_image_type = FirmwareImageType.NCP_UART_HW
+        running_image_type = FirmwareImageType.ZIGBEE_NCP
     elif flasher.app_type == ApplicationType.SPINEL:
-        running_image_type = FirmwareImageType.OT_RCP
+        running_image_type = FirmwareImageType.OPENTHREAD_RCP
     elif flasher.app_type == ApplicationType.CPC:
         # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
-        running_image_type = FirmwareImageType.RCP_UART_802154
+        running_image_type = FirmwareImageType.MULTIPAN
     elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
         running_image_type = None
     else:
