@@ -118,42 +118,6 @@ class StateMachine:
             self._futures_for_state[state].remove(future)
 
 
-class SerialProtocol(asyncio.Protocol):
-    """Base class for packet-parsing serial protocol implementations."""
-
-    def __init__(self) -> None:
-        self._buffer = bytearray()
-        self._transport: serial_asyncio.SerialTransport | None = None
-        self._connected_event = asyncio.Event()
-
-    async def wait_until_connected(self) -> None:
-        """Wait for the protocol's transport to be connected."""
-        await self._connected_event.wait()
-
-    def connection_made(self, transport: serial_asyncio.SerialTransport) -> None:
-        _LOGGER.debug("Connection made: %s", transport)
-
-        self._transport = transport
-        self._connected_event.set()
-
-    def send_data(self, data: bytes) -> None:
-        """Sends data over the connected transport."""
-        assert self._transport is not None
-        data = bytes(data)
-        _LOGGER.debug("Sending data %s", data)
-        self._transport.write(data)
-
-    def data_received(self, data: bytes) -> None:
-        _LOGGER.debug("Received data %s", data)
-        self._buffer += data
-
-    def disconnect(self) -> None:
-        if self._transport is not None:
-            self._transport.close()
-            self._buffer.clear()
-            self._connected_event.clear()
-
-
 def patch_pyserial_asyncio() -> None:
     """Patches pyserial-asyncio's `SerialTransport` to support swapping protocols."""
 
@@ -176,23 +140,22 @@ def patch_pyserial_asyncio() -> None:
 @contextlib.asynccontextmanager
 async def connect_protocol(port, baudrate, factory):
     loop = asyncio.get_running_loop()
-
-    async with async_timeout.timeout(CONNECT_TIMEOUT):
-        _, protocol = await zigpy.serial.create_serial_connection(
-            loop=loop,
-            protocol_factory=factory,
-            url=port,
-            baudrate=baudrate,
-        )
-        await protocol.wait_until_connected()
+    protocol: zigpy.serial.SerialProtocol | None = None
 
     try:
+        async with async_timeout.timeout(CONNECT_TIMEOUT):
+            _, protocol = await zigpy.serial.create_serial_connection(
+                loop=loop,
+                protocol_factory=factory,
+                url=port,
+                baudrate=baudrate,
+            )
+            await protocol.wait_until_connected()
+
         yield protocol
     finally:
-        protocol.disconnect()
-
-        # Required for Windows to be able to re-connect to the same serial port
-        await asyncio.sleep(0)
+        if protocol is not None:
+            await protocol.disconnect()
 
 
 class CommaSeparatedNumbers(click.ParamType):

@@ -6,9 +6,10 @@ import logging
 import typing
 
 import async_timeout
+import zigpy.serial
 import zigpy.types
 
-from .common import SerialProtocol, Version, crc16_kermit
+from .common import Version, crc16_kermit
 from .spinel_types import CommandID, HDLCSpecial, PropertyID, ResetReason
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ class SpinelFrame:
         return self.header.serialize() + self.command_id.serialize() + self.data
 
 
-class SpinelProtocol(SerialProtocol):
+class SpinelProtocol(zigpy.serial.SerialProtocol):
     def __init__(self) -> None:
         super().__init__()
         self._transaction_id: int = 1
@@ -112,7 +113,7 @@ class SpinelProtocol(SerialProtocol):
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
 
-        self._buffer = self._buffer.lstrip(bytes([HDLCSpecial.FLAG]))
+        self._buffer: bytearray = self._buffer.lstrip(bytes([HDLCSpecial.FLAG]))
 
         if bytes([HDLCSpecial.FLAG]) not in self._buffer:
             return

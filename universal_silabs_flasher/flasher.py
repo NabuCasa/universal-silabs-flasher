@@ -9,14 +9,9 @@ import async_timeout
 import bellows.config
 import bellows.ezsp
 import bellows.types
+import zigpy.serial
 
-from .common import (
-    PROBE_TIMEOUT,
-    SerialProtocol,
-    Version,
-    connect_protocol,
-    pad_to_multiple,
-)
+from .common import PROBE_TIMEOUT, Version, connect_protocol, pad_to_multiple
 from .const import DEFAULT_BAUDRATES, GPIO_CONFIGS, ApplicationType, ResetTarget
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
@@ -83,7 +78,9 @@ class Flasher:
 
     async def enter_serial_bootloader(self):
         baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
-        async with connect_protocol(self._device, baudrate, SerialProtocol) as sonoff:
+        async with connect_protocol(
+            self._device, baudrate, zigpy.serial.SerialProtocol
+        ) as sonoff:
             serial = sonoff._transport.serial
             serial.dtr = False
             serial.rts = True

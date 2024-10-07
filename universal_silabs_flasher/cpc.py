@@ -6,10 +6,11 @@ import logging
 import typing
 
 import async_timeout
+import zigpy.serial
 import zigpy.types
 
 from . import cpc_types
-from .common import BufferTooShort, SerialProtocol, Version, crc16_ccitt
+from .common import BufferTooShort, Version, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -206,7 +207,7 @@ class CPCTransportFrame:
         return bool((self.control & 0b00001000) >> 3)
 
 
-class CPCProtocol(SerialProtocol):
+class CPCProtocol(zigpy.serial.SerialProtocol):
     """Partial implementation of the CPC protocol."""
 
     def __init__(self) -> None:
@@ -281,6 +282,8 @@ class CPCProtocol(SerialProtocol):
 
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
+
+        self._buffer: bytearray
 
         while self._buffer:
             try:
