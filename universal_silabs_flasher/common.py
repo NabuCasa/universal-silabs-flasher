@@ -83,9 +83,9 @@ class StateMachine:
         self._states = states
         self._state = initial
 
-        self._futures_for_state: typing.DefaultDict[
-            str, list[asyncio.Future]
-        ] = collections.defaultdict(list)
+        self._futures_for_state: collections.defaultdict[str, list[asyncio.Future]] = (
+            collections.defaultdict(list)
+        )
 
     @property
     def state(self) -> str:
