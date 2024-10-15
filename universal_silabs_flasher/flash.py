@@ -295,7 +295,8 @@ async def flash(
 
     try:
         metadata = fw_image.get_nabucasa_metadata()
-    except KeyError:
+    except Exception:
+        _LOGGER.info("Failed to read firmware metadata: {exc!r}")
         metadata = None
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
