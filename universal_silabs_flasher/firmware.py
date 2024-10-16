@@ -9,11 +9,11 @@ from zigpy.ota.validators import ValidationError, parse_silabs_ebl, parse_silabs
 import zigpy.types as zigpy_t
 
 from .common import Version, pad_to_multiple
-from .const import FirmwareImageType
+from .const import LEGACY_FIRMWARE_TYPE_REMAPPING, FirmwareImageType
 
 _LOGGER = logging.getLogger(__name__)
 
-NABUCASA_METADATA_VERSION = 1
+NABUCASA_METADATA_VERSION = 2
 
 
 class GBLTagId(zigpy_t.enum32):
@@ -72,6 +72,7 @@ class NabuCasaMetadata:
     cpc_version: Version | None
 
     fw_type: FirmwareImageType | None
+    fw_variant: str | None
     baudrate: int | None
 
     original_json: dict[str, typing.Any] = dataclasses.field(repr=False)
@@ -108,7 +109,17 @@ class NabuCasaMetadata:
             cpc_version = Version(cpc_version)
 
         if fw_type := obj.pop("fw_type", None):
-            fw_type = FirmwareImageType(fw_type)
+            if fw_type in LEGACY_FIRMWARE_TYPE_REMAPPING:
+                fw_type = LEGACY_FIRMWARE_TYPE_REMAPPING[fw_type]
+
+            try:
+                fw_type = FirmwareImageType(fw_type)
+            except ValueError:
+                _LOGGER.warning("Unknown firmware type: %r", fw_type)
+                fw_type = None
+
+        if fw_variant := obj.pop("fw_variant", None):
+            fw_variant = fw_variant
 
         baudrate = obj.pop("baudrate", None)
 
@@ -122,6 +133,7 @@ class NabuCasaMetadata:
             ot_rcp_version=ot_rcp_version,
             cpc_version=cpc_version,
             fw_type=fw_type,
+            fw_variant=fw_variant,
             baudrate=baudrate,
             original_json=original_json,
         )

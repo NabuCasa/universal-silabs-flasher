@@ -295,7 +295,8 @@ async def flash(
 
     try:
         metadata = fw_image.get_nabucasa_metadata()
-    except KeyError:
+    except Exception:
+        _LOGGER.info("Failed to read firmware metadata: {exc!r}")
         metadata = None
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
@@ -343,12 +344,12 @@ async def flash(
         raise click.ClickException(str(e)) from e
 
     if flasher.app_type == ApplicationType.EZSP:
-        running_image_type = FirmwareImageType.NCP_UART_HW
+        running_image_type = FirmwareImageType.ZIGBEE_NCP
     elif flasher.app_type == ApplicationType.SPINEL:
-        running_image_type = FirmwareImageType.OT_RCP
+        running_image_type = FirmwareImageType.OPENTHREAD_RCP
     elif flasher.app_type == ApplicationType.CPC:
         # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
-        running_image_type = FirmwareImageType.RCP_UART_802154
+        running_image_type = FirmwareImageType.MULTIPAN
     elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
         running_image_type = None
     else:
