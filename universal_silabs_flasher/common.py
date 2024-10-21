@@ -125,16 +125,27 @@ class SerialProtocol(asyncio.Protocol):
         self._buffer = bytearray()
         self._transport: serial_asyncio.SerialTransport | None = None
         self._connected_event = asyncio.Event()
+        self._disconnected_event = asyncio.Event()
 
     async def wait_until_connected(self) -> None:
         """Wait for the protocol's transport to be connected."""
         await self._connected_event.wait()
+
+    async def wait_closed(self) -> None:
+        await self._disconnected_event.wait()
 
     def connection_made(self, transport: serial_asyncio.SerialTransport) -> None:
         _LOGGER.debug("Connection made: %s", transport)
 
         self._transport = transport
         self._connected_event.set()
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        _LOGGER.debug("Connection lost: %s", exc)
+
+        self._transport = None
+        self._connected_event.clear()
+        self._disconnected_event.set()
 
     def send_data(self, data: bytes) -> None:
         """Sends data over the connected transport."""
@@ -147,7 +158,7 @@ class SerialProtocol(asyncio.Protocol):
         _LOGGER.debug("Received data %s", data)
         self._buffer += data
 
-    def disconnect(self) -> None:
+    def close(self) -> None:
         if self._transport is not None:
             self._transport.close()
             self._buffer.clear()
@@ -189,10 +200,8 @@ async def connect_protocol(port, baudrate, factory):
     try:
         yield protocol
     finally:
-        protocol.disconnect()
-
-        # Required for Windows to be able to re-connect to the same serial port
-        await asyncio.sleep(0)
+        protocol.close()
+        await protocol.wait_closed()
 
 
 class CommaSeparatedNumbers(click.ParamType):
