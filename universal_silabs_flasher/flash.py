@@ -17,7 +17,7 @@ import coloredlogs
 import zigpy.ota.validators
 import zigpy.types
 
-from .common import CommaSeparatedNumbers, patch_pyserial_asyncio, put_first
+from .common import CommaSeparatedNumbers, put_first
 from .const import (
     DEFAULT_BAUDRATES,
     FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
@@ -27,8 +27,6 @@ from .const import (
 from .firmware import FirmwareImageType, parse_firmware_image
 from .flasher import Flasher
 from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
-
-patch_pyserial_asyncio()
 
 _LOGGER = logging.getLogger(__name__)
 LOG_LEVELS = ["INFO", "DEBUG"]

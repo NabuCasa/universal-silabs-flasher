@@ -165,25 +165,6 @@ class SerialProtocol(asyncio.Protocol):
             self._connected_event.clear()
 
 
-def patch_pyserial_asyncio() -> None:
-    """Patches pyserial-asyncio's `SerialTransport` to support swapping protocols."""
-
-    if (
-        serial_asyncio.SerialTransport.get_protocol
-        is not asyncio.BaseTransport.get_protocol
-    ):
-        return
-
-    def get_protocol(self) -> asyncio.Protocol:
-        return self._protocol
-
-    def set_protocol(self, protocol: asyncio.Protocol) -> None:
-        self._protocol = protocol
-
-    serial_asyncio.SerialTransport.get_protocol = get_protocol
-    serial_asyncio.SerialTransport.set_protocol = set_protocol
-
-
 @contextlib.asynccontextmanager
 async def connect_protocol(port, baudrate, factory):
     loop = asyncio.get_running_loop()
