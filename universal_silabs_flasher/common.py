@@ -133,8 +133,7 @@ async def connect_protocol(port, baudrate, factory):
     try:
         yield protocol
     finally:
-        protocol.close()
-        await protocol.wait_closed()
+        await protocol.disconnect()
 
 
 class CommaSeparatedNumbers(click.ParamType):
