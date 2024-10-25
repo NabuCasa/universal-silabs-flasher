@@ -12,7 +12,6 @@ import typing
 import async_timeout
 import click
 import crc
-import serial_asyncio
 import zigpy.serial
 
 if typing.TYPE_CHECKING:
@@ -116,53 +115,6 @@ class StateMachine:
         finally:
             # Always clean up the future
             self._futures_for_state[state].remove(future)
-
-
-class SerialProtocol(asyncio.Protocol):
-    """Base class for packet-parsing serial protocol implementations."""
-
-    def __init__(self) -> None:
-        self._buffer = bytearray()
-        self._transport: serial_asyncio.SerialTransport | None = None
-        self._connected_event = asyncio.Event()
-        self._disconnected_event = asyncio.Event()
-
-    async def wait_until_connected(self) -> None:
-        """Wait for the protocol's transport to be connected."""
-        await self._connected_event.wait()
-
-    async def wait_closed(self) -> None:
-        await self._disconnected_event.wait()
-
-    def connection_made(self, transport: serial_asyncio.SerialTransport) -> None:
-        _LOGGER.debug("Connection made: %s", transport)
-
-        self._transport = transport
-        self._connected_event.set()
-
-    def connection_lost(self, exc: Exception | None) -> None:
-        _LOGGER.debug("Connection lost: %s", exc)
-
-        self._transport = None
-        self._connected_event.clear()
-        self._disconnected_event.set()
-
-    def send_data(self, data: bytes) -> None:
-        """Sends data over the connected transport."""
-        assert self._transport is not None
-        data = bytes(data)
-        _LOGGER.debug("Sending data %s", data)
-        self._transport.write(data)
-
-    def data_received(self, data: bytes) -> None:
-        _LOGGER.debug("Received data %s", data)
-        self._buffer += data
-
-    def close(self) -> None:
-        if self._transport is not None:
-            self._transport.close()
-            self._buffer.clear()
-            self._connected_event.clear()
 
 
 @contextlib.asynccontextmanager

@@ -6,9 +6,10 @@ import logging
 import typing
 
 import async_timeout
+from zigpy.serial import SerialProtocol
 import zigpy.types
 
-from .common import SerialProtocol, Version, crc16_kermit
+from .common import Version, crc16_kermit
 from .spinel_types import CommandID, HDLCSpecial, PropertyID, ResetReason
 
 _LOGGER = logging.getLogger(__name__)
@@ -104,6 +105,8 @@ class SpinelFrame:
 
 
 class SpinelProtocol(SerialProtocol):
+    _buffer: bytearray
+
     def __init__(self) -> None:
         super().__init__()
         self._transaction_id: int = 1

@@ -7,8 +7,9 @@ import re
 import typing
 
 import async_timeout
+from zigpy.serial import SerialProtocol
 
-from .common import PROBE_TIMEOUT, SerialProtocol, StateMachine, Version
+from .common import PROBE_TIMEOUT, StateMachine, Version
 from .xmodemcrc import send_xmodem128_crc
 
 _LOGGER = logging.getLogger(__name__)
