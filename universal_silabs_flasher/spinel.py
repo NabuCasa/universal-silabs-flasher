@@ -112,6 +112,11 @@ class SpinelProtocol(SerialProtocol):
         self._transaction_id: int = 1
         self._pending_frames: dict[int, asyncio.Future] = {}
 
+    def send_data(self, data: bytes) -> None:
+        assert self._transport is not None
+        _LOGGER.debug("Sending data %s", data)
+        self._transport.write(data)
+
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
 

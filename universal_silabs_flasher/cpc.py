@@ -282,6 +282,11 @@ class CPCProtocol(SerialProtocol):
 
         return Version(version_bytes.split(b"\x00", 1)[0].decode("ascii"))
 
+    def send_data(self, data: bytes) -> None:
+        assert self._transport is not None
+        _LOGGER.debug("Sending data %s", data)
+        self._transport.write(data)
+
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
 
