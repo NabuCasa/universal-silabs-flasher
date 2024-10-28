@@ -1,47 +1,32 @@
-import asyncio
 import contextlib
 
 import bellows.config
 import bellows.ezsp
 import bellows.types
+from bellows.zigbee.application import ControllerApplication
 import zigpy.config
-
-AFTER_DISCONNECT_DELAY = 0.1
 
 
 @contextlib.asynccontextmanager
 async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
     """Context manager to return a connected EZSP instance for a serial port."""
-    app_config = zigpy.config.CONFIG_SCHEMA(
-        {
-            zigpy.config.CONF_DEVICE: {
-                zigpy.config.CONF_DEVICE_PATH: port,
-                zigpy.config.CONF_DEVICE_BAUDRATE: baudrate,
-            },
-            bellows.config.CONF_EZSP_CONFIG: {
-                # Do not set any configuration on startup
-                "CONFIG_END_DEVICE_POLL_TIMEOUT": None,
-                "CONFIG_INDIRECT_TRANSMISSION_TIMEOUT": None,
-                "CONFIG_TC_REJOINS_USING_WELL_KNOWN_KEY_TIMEOUT_S": None,
-                "CONFIG_SECURITY_LEVEL": None,
-                "CONFIG_APPLICATION_ZDO_FLAGS": None,
-                "CONFIG_SUPPORTED_NETWORKS": None,
-                "CONFIG_PAN_ID_CONFLICT_REPORT_THRESHOLD": None,
-                "CONFIG_TRUST_CENTER_ADDRESS_CACHE_SIZE": None,
-                "CONFIG_SOURCE_ROUTE_TABLE_SIZE": None,
-                "CONFIG_MULTICAST_TABLE_SIZE": None,
-                "CONFIG_ADDRESS_TABLE_SIZE": None,
-                "CONFIG_PACKET_BUFFER_COUNT": None,
-                "CONFIG_STACK_PROFILE": None,
-            },
-            bellows.config.CONF_USE_THREAD: False,
-        }
+
+    ezsp = bellows.ezsp.EZSP(
+        # We use this roundabout way to construct the device schema to make sure that
+        # we are compatible with future changes to the zigpy device config schema.
+        ControllerApplication.SCHEMA(
+            {
+                zigpy.config.CONF_DEVICE: {
+                    zigpy.config.CONF_DEVICE_PATH: port,
+                    zigpy.config.CONF_DEVICE_BAUDRATE: baudrate,
+                }
+            }
+        )[zigpy.config.CONF_DEVICE]
     )
 
-    ezsp = await bellows.ezsp.EZSP.initialize(app_config)
+    await ezsp.connect(use_thread=False)
 
     try:
         yield ezsp
     finally:
-        ezsp.close()
-        await asyncio.sleep(AFTER_DISCONNECT_DELAY)
+        await ezsp.disconnect()
