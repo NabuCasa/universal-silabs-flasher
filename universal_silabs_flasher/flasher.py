@@ -163,9 +163,17 @@ class Flasher:
     async def probe_app_type(
         self,
         types: typing.Iterable[ApplicationType] | None = None,
+        try_first: tuple[ApplicationType, ...] = (),
     ) -> None:
         if types is None:
             types = self._probe_methods
+
+        # fmt: off
+        types = (
+              [m for m in types if m in try_first]
+            + [m for m in types if m not in try_first]
+        )
+        # fmt: on
 
         # Reset into bootloader
         if self._reset_target:
@@ -311,7 +319,9 @@ class Flasher:
     async def write_emberznet_eui64(
         self, new_ieee: zigpy.types.EUI64, force: bool = False
     ) -> bool:
-        await self.probe_app_type()
+        await self.probe_app_type(
+            try_first=[ApplicationType.GECKO_BOOTLOADER, ApplicationType.EZSP]
+        )
 
         if self.app_type != ApplicationType.EZSP:
             raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
