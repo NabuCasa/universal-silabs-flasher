@@ -214,6 +214,8 @@ class Flasher:
             except asyncio.TimeoutError:
                 continue
 
+            _LOGGER.debug("Probe result: %s", result)
+
             # Keep track of the bootloader version for later
             if probe_method == ApplicationType.GECKO_BOOTLOADER:
                 _LOGGER.info("Detected bootloader version %s", result.version)
