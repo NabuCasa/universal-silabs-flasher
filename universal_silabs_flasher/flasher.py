@@ -335,5 +335,6 @@ class Flasher:
                 return False
 
             await ezsp.write_custom_eui64(ieee=new_ieee, burn_into_userdata=force)
+            _LOGGER.info("Wrote new device IEEE: %s", new_ieee)
 
         return True
