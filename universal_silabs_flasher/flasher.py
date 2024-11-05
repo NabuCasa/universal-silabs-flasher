@@ -5,13 +5,18 @@ import dataclasses
 import logging
 import typing
 
-import async_timeout
 import bellows.config
 import bellows.ezsp
 import bellows.types
 from zigpy.serial import SerialProtocol
 
-from .common import PROBE_TIMEOUT, Version, connect_protocol, pad_to_multiple
+from .common import (
+    PROBE_TIMEOUT,
+    Version,
+    asyncio_timeout,
+    connect_protocol,
+    pad_to_multiple,
+)
 from .const import DEFAULT_BAUDRATES, GPIO_CONFIGS, ApplicationType, ResetTarget
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
@@ -244,11 +249,11 @@ class Flasher:
             pass
         elif self.app_type is ApplicationType.CPC:
             async with self._connect_cpc(self.app_baudrate) as cpc:
-                async with async_timeout.timeout(PROBE_TIMEOUT):
+                async with asyncio_timeout(PROBE_TIMEOUT):
                     await cpc.enter_bootloader()
         elif self.app_type is ApplicationType.SPINEL:
             async with self._connect_spinel(self.app_baudrate) as spinel:
-                async with async_timeout.timeout(PROBE_TIMEOUT):
+                async with asyncio_timeout(PROBE_TIMEOUT):
                     await spinel.enter_bootloader()
         elif self.app_type is ApplicationType.EZSP:
             async with self._connect_ezsp(self.app_baudrate) as ezsp:

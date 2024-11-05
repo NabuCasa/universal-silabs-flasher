@@ -5,11 +5,10 @@ import dataclasses
 import logging
 import typing
 
-import async_timeout
 from zigpy.serial import SerialProtocol
 import zigpy.types
 
-from .common import Version, crc16_kermit
+from .common import Version, asyncio_timeout, crc16_kermit
 from .spinel_types import CommandID, HDLCSpecial, PropertyID, ResetReason
 
 _LOGGER = logging.getLogger(__name__)
@@ -210,7 +209,7 @@ class SpinelProtocol(SerialProtocol):
                 self.send_data(HDLCLiteFrame(data=new_frame.serialize()).serialize())
 
                 try:
-                    async with async_timeout.timeout(timeout):
+                    async with asyncio_timeout(timeout):
                         return await asyncio.shield(future)
                 except asyncio.TimeoutError:
                     _LOGGER.debug(

@@ -6,10 +6,9 @@ import logging
 import re
 import typing
 
-import async_timeout
 from zigpy.serial import SerialProtocol
 
-from .common import PROBE_TIMEOUT, StateMachine, Version
+from .common import PROBE_TIMEOUT, StateMachine, Version, asyncio_timeout
 from .xmodemcrc import send_xmodem128_crc
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,7 +67,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
     async def probe(self) -> Version:
         """Attempt to communicate with the bootloader."""
-        async with async_timeout.timeout(PROBE_TIMEOUT):
+        async with asyncio_timeout(PROBE_TIMEOUT):
             return await self.ebl_info()
 
     async def ebl_info(self) -> Version:
@@ -93,7 +92,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self.send_data(GeckoBootloaderOption.RUN_FIRMWARE)
 
         try:
-            async with async_timeout.timeout(RUN_APPLICATION_DELAY):
+            async with asyncio_timeout(RUN_APPLICATION_DELAY):
                 await self._state_machine.wait_for_state(State.IN_MENU)
         except asyncio.TimeoutError:
             # The menu did not appear so the application must be running
@@ -134,7 +133,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
         # The menu is sometimes sent immediately after upload
         try:
-            async with async_timeout.timeout(MENU_AFTER_UPLOAD_TIMEOUT):
+            async with asyncio_timeout(MENU_AFTER_UPLOAD_TIMEOUT):
                 await self._state_machine.wait_for_state(State.IN_MENU)
         except asyncio.TimeoutError:
             # If not, trigger it manually

@@ -5,12 +5,11 @@ import dataclasses
 import logging
 import typing
 
-import async_timeout
 from zigpy.serial import SerialProtocol
 import zigpy.types
 
 from . import cpc_types
-from .common import BufferTooShort, Version, crc16_ccitt
+from .common import BufferTooShort, Version, asyncio_timeout, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -354,7 +353,7 @@ class CPCProtocol(SerialProtocol):
                 self.send_data(frame.serialize())
 
                 try:
-                    async with async_timeout.timeout(timeout):
+                    async with asyncio_timeout(timeout):
                         return await asyncio.shield(future)
                 except asyncio.TimeoutError:
                     _LOGGER.debug(

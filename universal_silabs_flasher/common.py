@@ -7,12 +7,17 @@ import dataclasses
 import functools
 import logging
 import re
+import sys
 import typing
 
-import async_timeout
 import click
 import crc
 import zigpy.serial
+
+if sys.version_info[:2] < (3, 11):
+    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
+else:
+    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 if typing.TYPE_CHECKING:
     from typing_extensions import Self
@@ -121,7 +126,7 @@ class StateMachine:
 async def connect_protocol(port, baudrate, factory):
     loop = asyncio.get_running_loop()
 
-    async with async_timeout.timeout(CONNECT_TIMEOUT):
+    async with asyncio_timeout(CONNECT_TIMEOUT):
         _, protocol = await zigpy.serial.create_serial_connection(
             loop=loop,
             protocol_factory=factory,

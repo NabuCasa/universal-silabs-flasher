@@ -12,15 +12,16 @@ authors = [
 ]
 readme = "README.md"
 license = {text = "GPL-3.0"}
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
+    "aiohttp",  # Explicit dependency until compatibility with async-timeout is resolved
     "click>=8.0.0",
     "zigpy>=0.70.0",
     "crc",
     "bellows>=0.42.0",
     'gpiod; platform_system=="Linux"',
     "coloredlogs",
-    "async_timeout",
+    'async-timeout; python_version<"3.11"',
     "typing_extensions",
     "pyserial-asyncio-fast",
 ]

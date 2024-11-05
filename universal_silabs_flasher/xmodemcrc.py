@@ -5,10 +5,9 @@ import dataclasses
 import logging
 import typing
 
-import async_timeout
 import zigpy.types
 
-from .common import crc16_ccitt
+from .common import asyncio_timeout, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,7 +65,7 @@ async def send_xmodem128_crc_data(
         await writer.drain()
 
         # And wait for a response
-        async with async_timeout.timeout(RECEIVE_TIMEOUT):
+        async with asyncio_timeout(RECEIVE_TIMEOUT):
             rsp_byte = await reader.readexactly(1)
 
         _LOGGER.debug("Got response: %r", rsp_byte)
