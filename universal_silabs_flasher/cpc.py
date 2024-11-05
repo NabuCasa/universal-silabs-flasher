@@ -297,10 +297,14 @@ class CPCProtocol(SerialProtocol):
             except BufferTooShort:
                 break
             except ValueError as e:
-                self._buffer = self._buffer[
-                    self._buffer.find(bytes([cpc_types.FLAG])) :
-                ]
                 _LOGGER.debug("Failed to parse buffer %r: %r", self._buffer, e)
+                flag = bytes([cpc_types.FLAG])
+
+                try:
+                    self._buffer = self._buffer[self._buffer.index(flag) :]
+                except ValueError:
+                    self._buffer.clear()
+                    break
             else:
                 self.frame_received(frame)
 
