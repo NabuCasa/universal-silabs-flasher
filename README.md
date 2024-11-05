@@ -74,3 +74,6 @@ $ universal-silabs-flasher \
 The IEEE address can also be specified without colons: `--ieee 003c84fffe92bb2c`.
 
 If the current device's IEEE address already matches the provided one, the command will not write it unnecessarily.
+Depending on firmware version, writing the IEEE address can be a **permanent** operation. If this is the case,
+you will need to upgrade the firmware on your adapter to a more recent release of EmberZNet or perform the one-time
+write with `--force`.
