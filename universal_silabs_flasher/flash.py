@@ -11,7 +11,6 @@ import re
 import typing
 import urllib.parse
 
-import bellows.types
 import click
 import coloredlogs
 import zigpy.ota.validators
@@ -248,12 +247,11 @@ async def probe(ctx: click.Context) -> None:
 @main.command()
 @click.pass_context
 @click.option("--ieee", required=True, type=zigpy.types.EUI64.convert)
+@click.option("--force", default=False, type=bool)
 @click_coroutine
-async def write_ieee(ctx: click.Context, ieee: zigpy.types.EUI64) -> None:
-    new_eui64 = bellows.types.EmberEUI64(ieee)
-
+async def write_ieee(ctx: click.Context, ieee: zigpy.types.EUI64, force: bool) -> None:
     try:
-        await ctx.obj["flasher"].write_emberznet_eui64(new_eui64)
+        await ctx.obj["flasher"].write_emberznet_eui64(ieee, force=force)
     except (ValueError, RuntimeError) as e:
         raise click.ClickException(str(e)) from e
 

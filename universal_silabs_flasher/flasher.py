@@ -9,6 +9,7 @@ import bellows.config
 import bellows.ezsp
 import bellows.types
 from zigpy.serial import SerialProtocol
+import zigpy.types
 
 from .common import (
     PROBE_TIMEOUT,
@@ -307,30 +308,22 @@ class Flasher:
                     continue
                 print(f"{config.name}={v[1]}")
 
-    async def write_emberznet_eui64(self, new_eui64: bellows.types.EUI64) -> bool:
+    async def write_emberznet_eui64(
+        self, new_ieee: zigpy.types.EUI64, force: bool = False
+    ) -> bool:
         await self.probe_app_type()
 
         if self.app_type != ApplicationType.EZSP:
             raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
 
         async with self._connect_ezsp(self.app_baudrate) as ezsp:
-            (current_eui64,) = await ezsp.getEui64()
-            _LOGGER.info("Current device IEEE: %s", current_eui64)
+            (current_ieee,) = await ezsp.getEui64()
+            _LOGGER.info("Current device IEEE: %s", current_ieee)
 
-            if current_eui64 == new_eui64:
+            if current_ieee == new_ieee:
                 _LOGGER.info("Device IEEE address already matches, not overwriting")
                 return False
 
-            if not await ezsp.can_write_custom_eui64():
-                raise ValueError(
-                    "IEEE address has already been written, it cannot be written again"
-                )
-
-            (status,) = await ezsp.setMfgToken(
-                bellows.types.EzspMfgTokenId.MFG_CUSTOM_EUI_64, new_eui64.serialize()
-            )
-
-            if status != bellows.types.EmberStatus.SUCCESS:
-                raise RuntimeError(f"Failed to write IEEE address: {status}")
+            await ezsp.write_custom_eui64(ieee=new_ieee, burn_into_userdata=force)
 
         return True
