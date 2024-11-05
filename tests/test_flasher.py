@@ -10,15 +10,21 @@ from universal_silabs_flasher.flasher import Flasher, ProbeResult
 async def test_write_emberznet_eui64():
     flasher = Flasher(device="/dev/ttyMOCK")
 
-    with patch.object(
-        flasher, "probe_gecko_bootloader", side_effect=asyncio.TimeoutError
-    ), patch.object(
-        flasher,
-        "probe_ezsp",
-        return_value=ProbeResult(
-            version=Version("7.4.4.0 build 0"), continue_probing=False, baudrate=115200
+    with (
+        patch.object(
+            flasher, "probe_gecko_bootloader", side_effect=asyncio.TimeoutError
         ),
-    ), patch.object(flasher, "_connect_ezsp") as mock_connect_ezsp:
+        patch.object(
+            flasher,
+            "probe_ezsp",
+            return_value=ProbeResult(
+                version=Version("7.4.4.0 build 0"),
+                continue_probing=False,
+                baudrate=115200,
+            ),
+        ),
+        patch.object(flasher, "_connect_ezsp") as mock_connect_ezsp,
+    ):
         ezsp = mock_connect_ezsp.return_value.__aenter__.return_value
 
         ezsp.getEui64.return_value = (t.EUI64.convert("00:11:22:33:44:55:66:77"),)
