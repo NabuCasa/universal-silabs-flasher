@@ -69,7 +69,7 @@ class RouterProtocol(SerialProtocol):
         while self._buffer:
             _LOGGER.debug("Parsing %s: %r", self._state_machine.state, self._buffer)
             if self._state_machine.state == State.STARTUP:
-                if b"\n>" not in self._buffer:
+                if b">" not in self._buffer:
                     return
 
                 self._buffer.clear()
