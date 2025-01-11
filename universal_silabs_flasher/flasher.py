@@ -8,11 +8,11 @@ import typing
 import bellows.config
 import bellows.ezsp
 import bellows.types
-from zigpy.serial import FlowControlSerialProtocol
 import zigpy.types
 
 from .common import (
     PROBE_TIMEOUT,
+    FlowControlSerialProtocol,
     Version,
     asyncio_timeout,
     connect_protocol,
