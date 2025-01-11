@@ -236,3 +236,33 @@ class Version:
             return f"{concatenated!r}"
 
         return f"{concatenated!r} ({comparable})"
+
+
+class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
+    def _set_flow_control(
+        self,
+        *,
+        rts: bool | None = None,
+        cts: bool | None = None,
+        dtr: bool | None = None,
+    ) -> None:
+        if rts is not None:
+            self.transport.serial.rts = rts
+
+        if cts is not None:
+            self.transport.serial.cts = cts
+
+        if dtr is not None:
+            self.transport.serial.dtr = dtr
+
+    async def set_flow_control(
+        self,
+        *,
+        rts: bool | None = None,
+        cts: bool | None = None,
+        dtr: bool | None = None,
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, lambda: self._set_flow_control(rts=rts, cts=cts, dtr=dtr)
+        )

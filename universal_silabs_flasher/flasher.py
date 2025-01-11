@@ -8,7 +8,7 @@ import typing
 import bellows.config
 import bellows.ezsp
 import bellows.types
-from zigpy.serial import SerialProtocol
+from zigpy.serial import FlowControlSerialProtocol
 import zigpy.types
 
 from .common import (
@@ -86,15 +86,14 @@ class Flasher:
 
     async def enter_serial_bootloader(self):
         baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
-        async with connect_protocol(self._device, baudrate, SerialProtocol) as sonoff:
-            serial = sonoff._transport.serial
-            serial.dtr = False
-            serial.rts = True
+        async with connect_protocol(
+            self._device, baudrate, FlowControlSerialProtocol
+        ) as sonoff:
+            await sonoff.set_flow_control(dtr=False, rts=True)
             await asyncio.sleep(0.1)
-            serial.dtr = True
-            serial.rts = False
+            await sonoff.set_flow_control(dtr=True, rts=False)
             await asyncio.sleep(0.5)
-            serial.dtr = False
+            await sonoff.set_flow_control(dtr=False, rts=False)
 
     def _connect_gecko_bootloader(self, baudrate: int):
         return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)
