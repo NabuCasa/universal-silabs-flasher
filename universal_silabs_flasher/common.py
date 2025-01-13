@@ -262,6 +262,10 @@ class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
         cts: bool | None = None,
         dtr: bool | None = None,
     ) -> None:
+        if hasattr(self.transport, "set_flow_control"):
+            await self.transport.set_flow_control(rts=rts, cts=cts, dtr=dtr)
+            return
+
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None, lambda: self._set_flow_control(rts=rts, cts=cts, dtr=dtr)
