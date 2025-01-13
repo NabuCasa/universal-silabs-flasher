@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import dataclasses
 import enum
 
 
@@ -52,32 +55,62 @@ class ResetTarget(enum.Enum):
     YELLOW = "yellow"
     IHOST = "ihost"
     SLZB07 = "slzb07"
-    SONOFF = "sonoff"
+    RTS_DTR = "rts_dtr"
 
 
+@dataclasses.dataclass
+class GpioPattern:
+    pins: dict[str | int, bool]
+    delay_after: float
+
+
+@dataclasses.dataclass
+class GpioResetConfig:
+    chip: str | None
+    chip_type: str | None
+    pattern: list[GpioPattern]
+
+
+# fmt: off
 GPIO_CONFIGS = {
-    ResetTarget.YELLOW: {
-        "chip": "/dev/gpiochip0",
-        "pin_states": {
-            24: [True, False, False, True],
-            25: [True, False, True, True],
-        },
-        "toggle_delay": 0.1,
-    },
-    ResetTarget.IHOST: {
-        "chip": "/dev/gpiochip1",
-        "pin_states": {
-            27: [True, False, False, True],
-            26: [True, False, True, True],
-        },
-        "toggle_delay": 0.1,
-    },
-    ResetTarget.SLZB07: {
-        "chip_name": "cp210x",
-        "pin_states": {
-            5: [True, False, False, True],
-            4: [True, False, True, True],
-        },
-        "toggle_delay": 0.1,
-    },
+    ResetTarget.YELLOW: GpioResetConfig(
+        chip="/dev/gpiochip0",
+        chip_type=None,
+        pattern=[
+            GpioPattern(pins={24: True,  25: True},  delay_after=0.1),
+            GpioPattern(pins={24: False, 25: False}, delay_after=0.1),
+            GpioPattern(pins={24: False, 25: True},  delay_after=0.1),
+            GpioPattern(pins={24: True,  25: True},  delay_after=0.0),
+        ],
+    ),
+    ResetTarget.IHOST: GpioResetConfig(
+        chip="/dev/gpiochip1",
+        chip_type=None,
+        pattern=[
+            GpioPattern(pins={26: True,  27: True},  delay_after=0.1),
+            GpioPattern(pins={26: False, 27: False}, delay_after=0.1),
+            GpioPattern(pins={26: True,  27: False}, delay_after=0.1),
+            GpioPattern(pins={26: True,  27: True},  delay_after=0.0),
+        ]
+    ),
+    ResetTarget.SLZB07: GpioResetConfig(
+        chip=None,
+        chip_type="cp210x",
+        pattern=[
+            GpioPattern(pins={4: True,  5: True},  delay_after=0.1),
+            GpioPattern(pins={4: False, 5: False}, delay_after=0.1),
+            GpioPattern(pins={4: True,  5: False}, delay_after=0.1),
+            GpioPattern(pins={4: True,  5: True},  delay_after=0.0),
+        ]
+    ),
+    ResetTarget.RTS_DTR: GpioResetConfig(
+        chip=None,
+        chip_type="uart",
+        pattern=[
+            GpioPattern(pins={"dtr": False, "rts": True},  delay_after=0.1),
+            GpioPattern(pins={"dtr": True,  "rts": False}, delay_after=0.5),
+            GpioPattern(pins={"dtr": False, "rts": False}, delay_after=0.0),
+        ]
+    ),
 }
+# fmt: on

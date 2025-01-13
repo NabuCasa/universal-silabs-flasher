@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from os import scandir
 import time
 import typing
+
+from .const import GpioPattern
+
+_LOGGER = logging.getLogger(__name__)
 
 try:
     import gpiod
@@ -14,20 +19,14 @@ except ImportError:
 
 if gpiod is None:
     # No gpiod library
-    def _send_gpio_pattern(
-        chip: str, pin_states: dict[int, list[bool]], toggle_delay: float
-    ) -> None:
+    def _send_gpio_pattern(chip: str, pattern: list[GpioPattern]) -> None:
         raise NotImplementedError("GPIO not supported on this platform")
 
 elif is_gpiod_v1:
     # gpiod <= 1.5.4
-    def _send_gpio_pattern(
-        chip: str, pin_states: dict[int, list[bool]], toggle_delay: float
-    ) -> None:
-        num_states = len(next(iter(pin_states.values())))
-
+    def _send_gpio_pattern(chip: str, pattern: list[GpioPattern]) -> None:
         chip = gpiod.chip(chip, gpiod.chip.OPEN_BY_PATH)
-        lines = chip.get_lines(pin_states.keys())
+        lines = chip.get_lines(pattern[0].pins.keys())
 
         config = gpiod.line_request()
         config.consumer = "universal-silabs-flasher"
@@ -35,12 +34,15 @@ elif is_gpiod_v1:
 
         try:
             # Open the pins and set their initial states
-            lines.request(config, [int(states[0]) for states in pin_states.values()])
+            _LOGGER.debug("Sending GPIO pattern %r", pattern[0])
+            lines.request(config, [int(v) for v in pattern[0].pins.values()])
+            time.sleep(pattern[0].delay_after)
 
             # Send all subsequent states
-            for i in range(1, num_states):
-                time.sleep(toggle_delay)
-                lines.set_values([int(states[i]) for states in pin_states.values()])
+            for p in pattern[1:]:
+                _LOGGER.debug("Sending GPIO pattern %r", p)
+                lines.set_values([int(v) for v in p.pins.values()])
+                time.sleep(p.delay_after)
         finally:
             # Clean up and ensure the GPIO pins are reset to inputs
             lines.set_direction_input()
@@ -48,11 +50,8 @@ elif is_gpiod_v1:
 
 else:
     # gpiod >= 2.0.2
-    def _send_gpio_pattern(
-        chip: str, pin_states: dict[int, list[bool]], toggle_delay: float
-    ) -> None:
-        # `gpiod` isn't available on Windows
-        num_states = len(next(iter(pin_states.values())))
+    def _send_gpio_pattern(chip: str, pattern: list[GpioPattern]) -> None:
+        _LOGGER.debug("Sending GPIO pattern %r", pattern[0])
 
         with gpiod.request_lines(
             path=chip,
@@ -61,27 +60,30 @@ else:
                 # Set initial states
                 pin: gpiod.LineSettings(
                     direction=gpiod.line.Direction.OUTPUT,
-                    output_value=gpiod.line.Value(states[0]),
+                    output_value=gpiod.line.Value(state),
                 )
-                for pin, states in pin_states.items()
+                for pin, state in pattern[0].pins.items()
             },
         ) as request:
+            time.sleep(pattern[0].delay_after)
+
             try:
                 # Send all subsequent states
-                for i in range(1, num_states):
-                    time.sleep(toggle_delay)
+                for p in pattern[1:]:
+                    _LOGGER.debug("Sending GPIO pattern %r", p)
                     request.set_values(
                         {
-                            pin: gpiod.line.Value(int(pin_states[pin][i]))
-                            for pin, states in pin_states.items()
+                            pin: gpiod.line.Value(int(state))
+                            for pin, state in p.pins.items()
                         }
                     )
+                    time.sleep(p.delay_after)
             finally:
                 # Clean up and ensure the GPIO pins are reset to inputs
                 request.reconfigure_lines(
                     {
                         pin: gpiod.LineSettings(direction=gpiod.line.Direction.INPUT)
-                        for pin, states in pin_states.items()
+                        for pin in pattern[0].pins.keys()
                     }
                 )
 
@@ -119,9 +121,7 @@ async def find_gpiochip_by_label(label: str) -> str:
     return result
 
 
-async def send_gpio_pattern(
-    chip: str, pin_states: dict[int, list[bool]], toggle_delay: float
-) -> None:
+async def send_gpio_pattern(chip: str, pattern: list[GpioPattern]) -> None:
     await asyncio.get_running_loop().run_in_executor(
-        None, _send_gpio_pattern, chip, pin_states, toggle_delay
+        None, _send_gpio_pattern, chip, pattern
     )

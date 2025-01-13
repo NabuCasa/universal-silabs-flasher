@@ -144,7 +144,7 @@ class SerialPort(click.ParamType):
 )
 @click.option(
     "--bootloader-reset",
-    type=click.Choice([t.value for t in ResetTarget]),
+    type=click.Choice([t.value for t in ResetTarget] + ["sonoff"]),
 )
 @click.pass_context
 def main(
@@ -188,6 +188,13 @@ def main(
         # Replicate the "Error: Missing option" traceback
         param = next(p for p in ctx.command.params if p.name == "device")
         raise click.MissingParameter(ctx=ctx, param=param)
+
+    if bootloader_reset == "sonoff":
+        _LOGGER.warning(
+            "The 'sonoff' reset target is deprecated."
+            " Use '--bootloader-reset rts_dtr' instead."
+        )
+        bootloader_reset = ResetTarget.RTS_DTR.value
 
     ctx.obj = {
         "verbosity": verbose,
@@ -339,7 +346,7 @@ async def flash(
         flasher._reset_target = ResetTarget.YELLOW
         _LOGGER.info(reset_msg, "--yellow-gpio-reset")
     elif sonoff_reset:
-        flasher._reset_target = ResetTarget.SONOFF
+        flasher._reset_target = ResetTarget.RTS_DTR
         _LOGGER.info(reset_msg, "--sonoff-reset")
 
     try:
