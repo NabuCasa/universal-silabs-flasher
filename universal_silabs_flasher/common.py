@@ -247,13 +247,13 @@ class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
         dtr: bool | None = None,
     ) -> None:
         if rts is not None:
-            self.transport.serial.rts = rts
+            self._transport.serial.rts = rts
 
         if cts is not None:
-            self.transport.serial.cts = cts
+            self._transport.serial.cts = cts
 
         if dtr is not None:
-            self.transport.serial.dtr = dtr
+            self._transport.serial.dtr = dtr
 
     async def set_signals(
         self,
@@ -262,8 +262,15 @@ class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
         cts: bool | None = None,
         dtr: bool | None = None,
     ) -> None:
-        if hasattr(self.transport, "set_signals"):
-            await self.transport.set_signals(rts=rts, cts=cts, dtr=dtr)
+        _LOGGER.debug(
+            "Setting UART signals: rts=%s, cts=%s, dtr=%s",
+            int(rts) if rts is not None else "-",
+            int(cts) if cts is not None else "-",
+            int(dtr) if dtr is not None else "-",
+        )
+
+        if hasattr(self._transport, "set_signals"):
+            await self._transport.set_signals(rts=rts, cts=cts, dtr=dtr)
             return
 
         loop = asyncio.get_running_loop()

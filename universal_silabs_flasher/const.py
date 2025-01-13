@@ -55,9 +55,6 @@ class ResetTarget(enum.Enum):
     SLZB07 = "slzb07"
     RTS_DTR = "rts_dtr"
 
-    # Deprecated alias for `RTS_DTR`
-    SONOFF = "sonoff"
-
 
 @dataclasses.dataclass
 class GpioPattern:
@@ -115,5 +112,3 @@ GPIO_CONFIGS = {
     ),
 }
 # fmt: on
-
-GPIO_CONFIGS[ResetTarget.SONOFF] = GPIO_CONFIGS[ResetTarget.RTS_DTR]
