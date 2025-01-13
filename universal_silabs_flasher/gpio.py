@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from os import scandir
 import time
 import typing
 
 from .const import GpioPattern
+
+_LOGGER = logging.getLogger(__name__)
 
 try:
     import gpiod
@@ -31,11 +34,13 @@ elif is_gpiod_v1:
 
         try:
             # Open the pins and set their initial states
+            _LOGGER.debug("Sending GPIO pattern %r", pattern[0])
             lines.request(config, [int(v) for v in pattern[0].pins.values()])
             time.sleep(pattern[0].delay_after)
 
             # Send all subsequent states
             for p in pattern[1:]:
+                _LOGGER.debug("Sending GPIO pattern %r", p)
                 lines.set_values([int(v) for v in p.pins.values()])
                 time.sleep(p.delay_after)
         finally:
@@ -46,7 +51,8 @@ elif is_gpiod_v1:
 else:
     # gpiod >= 2.0.2
     def _send_gpio_pattern(chip: str, pattern: list[GpioPattern]) -> None:
-        # `gpiod` isn't available on Windows
+        _LOGGER.debug("Sending GPIO pattern %r", pattern[0])
+
         with gpiod.request_lines(
             path=chip,
             consumer="universal-silabs-flasher",
@@ -64,6 +70,7 @@ else:
             try:
                 # Send all subsequent states
                 for p in pattern[1:]:
+                    _LOGGER.debug("Sending GPIO pattern %r", p)
                     request.set_values(
                         {
                             pin: gpiod.line.Value(int(state))
