@@ -144,7 +144,7 @@ class SerialPort(click.ParamType):
 )
 @click.option(
     "--bootloader-reset",
-    type=click.Choice([t.value for t in ResetTarget]),
+    type=click.Choice([t.value for t in ResetTarget if t != ResetTarget.SONOFF]),
 )
 @click.pass_context
 def main(
@@ -339,7 +339,7 @@ async def flash(
         flasher._reset_target = ResetTarget.YELLOW
         _LOGGER.info(reset_msg, "--yellow-gpio-reset")
     elif sonoff_reset:
-        flasher._reset_target = ResetTarget.SONOFF
+        flasher._reset_target = ResetTarget.RTS_DTR
         _LOGGER.info(reset_msg, "--sonoff-reset")
 
     try:
