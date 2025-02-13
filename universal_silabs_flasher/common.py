@@ -187,7 +187,9 @@ class Version:
     )
 
     def __init__(self, version: str) -> None:
+        self.orig_version = version
         self.components: list[VersionComponent] = []
+
         # 2.00.01
         # 7.2.2.0 build 190
         # 4.2.2
