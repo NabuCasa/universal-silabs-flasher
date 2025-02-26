@@ -105,6 +105,11 @@ class StateMachine:
         for future in self._futures_for_state[state]:
             future.set_result(None)
 
+    def cancel_all_futures(self, exc: BaseException) -> None:
+        for futures in self._futures_for_state.values():
+            for future in futures:
+                future.set_exception(exc)
+
     async def wait_for_state(self, state: str, timeout: float = 30.0) -> None:
         """Waits for a state. Returns immediately if the state is active."""
         assert state in self._states

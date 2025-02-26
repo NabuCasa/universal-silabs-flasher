@@ -65,6 +65,12 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self._version: str | None = None
         self._upload_status: str | None = None
 
+    def connection_lost(self, exc: Exception | None) -> None:
+        super().connection_lost(exc)
+        self._state_machine.cancel_all_futures(
+            exc or RuntimeError("Connection has been lost")
+        )
+
     async def probe(self) -> Version:
         """Attempt to communicate with the bootloader."""
         async with asyncio_timeout(PROBE_TIMEOUT):
