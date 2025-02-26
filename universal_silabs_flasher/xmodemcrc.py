@@ -158,6 +158,11 @@ async def send_xmodem128_crc(
         # Reset the old protocol
         transport.set_protocol(old_protocol)
 
+        # Propagate the exception to our original protocol, in case the connection was
+        # closed
+        if reader.exception() is not None:
+            old_protocol.connection_lost(reader.exception())
+
         # Send our reader's buffer to the old protocol
         data = bytes(reader._buffer)
 
