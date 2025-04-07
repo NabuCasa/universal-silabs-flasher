@@ -279,6 +279,7 @@ async def write_ieee(ctx: click.Context, ieee: zigpy.types.EUI64, force: bool) -
 @click.option("--allow-cross-flashing", is_flag=True, default=False, show_default=True)
 @click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
 @click.option("--sonoff-reset", is_flag=True, default=False, show_default=True)
+@click.option("--ezsp-factory-reset", is_flag=True, default=False, show_default=True)
 @click.pass_context
 @click_coroutine
 async def flash(
@@ -290,6 +291,7 @@ async def flash(
     allow_cross_flashing: bool,
     yellow_gpio_reset: bool,
     sonoff_reset: bool,
+    ezsp_factory_reset: bool,
 ) -> None:
     flasher = ctx.obj["flasher"]
 
@@ -444,3 +446,7 @@ async def flash(
                 "Firmware image was rejected by the device. Ensure this is the correct"
                 " image for this device."
             )
+
+    if ezsp_factory_reset:
+        _LOGGER.info("Factory resetting the stick")
+        await flasher.emberznet_factory_reset()

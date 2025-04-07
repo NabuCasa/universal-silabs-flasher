@@ -30,3 +30,29 @@ async def connect_ezsp(port: str, baudrate: int = 115200) -> bellows.ezsp.EZSP:
         yield ezsp
     finally:
         await ezsp.disconnect()
+
+
+@contextlib.asynccontextmanager
+async def connect_ezsp_application(
+    port: str, baudrate: int = 115200
+) -> bellows.zigbee.application.ControllerApplication:
+    """Context manager to return a connected EZSP instance for a serial port."""
+
+    app = bellows.zigbee.application.ControllerApplication(
+        # We use this roundabout way to construct the device schema to make sure that
+        # we are compatible with future changes to the zigpy device config schema.
+        {
+            bellows.config.CONF_USE_THREAD: False,
+            zigpy.config.CONF_DEVICE: {
+                zigpy.config.CONF_DEVICE_PATH: port,
+                zigpy.config.CONF_DEVICE_BAUDRATE: baudrate,
+            },
+        }
+    )
+
+    await app.connect()
+
+    try:
+        yield app
+    finally:
+        await app.disconnect()

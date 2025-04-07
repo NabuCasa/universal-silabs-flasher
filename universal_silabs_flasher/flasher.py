@@ -20,7 +20,7 @@ from .common import (
 )
 from .const import DEFAULT_BAUDRATES, GPIO_CONFIGS, ApplicationType, ResetTarget
 from .cpc import CPCProtocol
-from .emberznet import connect_ezsp
+from .emberznet import connect_ezsp, connect_ezsp_application
 from .firmware import FirmwareImage
 from .gecko_bootloader import GeckoBootloaderProtocol, NoFirmwareError
 from .gpio import find_gpiochip_by_label, send_gpio_pattern
@@ -104,6 +104,9 @@ class Flasher:
 
     def _connect_ezsp(self, baudrate: int):
         return connect_ezsp(self._device, baudrate)
+
+    def _connect_ezsp_app(self, baudrate: int):
+        return connect_ezsp_application(self._device, baudrate)
 
     def _connect_router(self, baudrate: int):
         return connect_protocol(self._device, baudrate, RouterProtocol)
@@ -360,3 +363,7 @@ class Flasher:
             _LOGGER.info("Wrote new device IEEE: %s", new_ieee)
 
         return True
+
+    async def emberznet_factory_reset(self) -> None:
+        async with self._connect_ezsp_app(self.app_baudrate) as app:
+            await app.reset_network_info()
