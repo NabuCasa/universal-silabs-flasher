@@ -39,8 +39,6 @@ async def connect_ezsp_application(
     """Context manager to return a connected EZSP instance for a serial port."""
 
     app = bellows.zigbee.application.ControllerApplication(
-        # We use this roundabout way to construct the device schema to make sure that
-        # we are compatible with future changes to the zigpy device config schema.
         {
             bellows.config.CONF_USE_THREAD: False,
             zigpy.config.CONF_DEVICE: {
