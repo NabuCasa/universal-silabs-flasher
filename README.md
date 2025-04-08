@@ -13,16 +13,16 @@ Usage: universal-silabs-flasher [OPTIONS] COMMAND [ARGS]...
 
 Options:
   -v, --verbose
-  --device PATH_OR_URL           [required]
-  --bootloader-baudrate NUMBERS  [default: 115200]
-  --cpc-baudrate NUMBERS         [default: 460800, 115200, 230400]
-  --ezsp-baudrate NUMBERS        [default: 115200]
+  --device PATH_OR_URL
+  --bootloader-baudrate NUMBERS   [default: 115200]
+  --cpc-baudrate NUMBERS          [default: 460800, 115200, 230400]
+  --ezsp-baudrate NUMBERS         [default: 115200]
   --router-baudrate NUMBERS       [default: 115200]
   --spinel-baudrate NUMBERS       [default: 460800]
   --probe-method TEXT             [default: bootloader, cpc, ezsp, spinel,
                                   router]
-  --bootloader-reset [yellow|ihost|slzb07|sonoff]
-  --help                         Show this message and exit.
+  --bootloader-reset [yellow|ihost|slzb07|rts_dtr|sonoff]
+  --help                          Show this message and exit.
 
 Commands:
   dump-gbl-metadata
@@ -63,19 +63,13 @@ $ universal-silabs-flasher \
 ```
 
 
-## Writing IEEE address
-Ensure a target device running EmberZNet firmware has the correct node IEEE address:
+## Resetting EZSP after flashing
+Factory reset a Zigbee adapter after upgrading the Zigbee firmware:
 
 ```bash
 $ universal-silabs-flasher \
     --device /dev/cu.SLAB_USBtoUART \
-    write-ieee \
-    --ieee 00:3c:84:ff:fe:92:bb:2c
+    flash \
+    --firmware NabuCasa_SkyConnect_EZSP_v7.1.3.0_ncp-uart-hw_115200.gbl \
+    --ezsp-factory-reset
 ```
-
-The IEEE address can also be specified without colons: `--ieee 003c84fffe92bb2c`.
-
-If the current device's IEEE address already matches the provided one, the command will not write it unnecessarily.
-Depending on firmware version, writing the IEEE address can be a **permanent** operation. If this is the case,
-you will need to upgrade the firmware on your adapter to a more recent release of EmberZNet or perform the one-time
-write with `--force`.
