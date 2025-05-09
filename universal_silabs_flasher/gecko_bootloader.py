@@ -30,6 +30,7 @@ MENU_REGEX = re.compile(
     rb"1\. upload (?:gbl|ebl)\r\n"
     rb"2\. run\r\n"
     rb"3\. ebl info\r\n"
+    rb"(\d+\. .*?\r\n)*"  # All other options are ignored but we still expect a menu
     rb"BL > "
 )
 
