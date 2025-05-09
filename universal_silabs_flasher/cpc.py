@@ -300,10 +300,12 @@ class CPCProtocol(SerialProtocol):
                 flag = bytes([cpc_types.FLAG])
 
                 try:
-                    self._buffer = self._buffer[self._buffer.index(flag) :]
+                    flag_index = self._buffer.index(flag, 1)
                 except ValueError:
                     self._buffer.clear()
                     break
+                else:
+                    self._buffer = self._buffer[flag_index:]
             else:
                 self.frame_received(frame)
 
