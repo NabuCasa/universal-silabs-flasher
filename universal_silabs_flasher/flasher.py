@@ -31,6 +31,7 @@ from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 _LOGGER = logging.getLogger(__name__)
 
 EZSP_BOOTLOADER_LAUNCH_DELAY = 5
+BAUDRATE_BOOTLOADER_TRIGGER_PATTERN = (150, 300, 600)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -70,6 +71,17 @@ class Flasher:
 
     async def enter_bootloader_reset(self, target: ResetTarget) -> None:
         _LOGGER.info(f"Triggering {target.value} bootloader")
+
+        if target == ResetTarget.BAUDRATE:
+            for baudrate in BAUDRATE_BOOTLOADER_TRIGGER_PATTERN:
+                async with connect_protocol(
+                    self._device, baudrate, FlowControlSerialProtocol
+                ) as uart:
+                    await asyncio.sleep(0.1)
+
+            await asyncio.sleep(0.5)
+
+            return
 
         config = GPIO_CONFIGS[target]
         chip = config.chip

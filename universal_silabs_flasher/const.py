@@ -56,6 +56,7 @@ class ResetTarget(enum.Enum):
     IHOST = "ihost"
     SLZB07 = "slzb07"
     RTS_DTR = "rts_dtr"
+    BAUDRATE = "baudrate"
 
 
 @dataclasses.dataclass
