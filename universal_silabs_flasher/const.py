@@ -45,7 +45,7 @@ FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
 DEFAULT_BAUDRATES = {
     ApplicationType.GECKO_BOOTLOADER: [115200],
     ApplicationType.CPC: [460800, 115200, 230400],
-    ApplicationType.EZSP: [115200],
+    ApplicationType.EZSP: [115200, 460800],
     ApplicationType.SPINEL: [460800],
     ApplicationType.ROUTER: [115200],
 }
