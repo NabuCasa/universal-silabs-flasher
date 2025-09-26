@@ -73,7 +73,7 @@ class Flasher:
     async def trigger_bootloader(self, target: ResetTarget) -> None:
         _LOGGER.info(f"Triggering {target.value} bootloader")
 
-        if target == ResetTarget.BAUDRATE_COMMAND:
+        if target == ResetTarget.BAUDRATE:
             # Baudrate command mode uses a pattern of baudrates to enter a command mode:
             # open the serial port with 150 baud, 300 baud, and 600 baud, writing AT
             # commands to enter the bootloader.

@@ -56,7 +56,7 @@ class ResetTarget(enum.Enum):
     IHOST = "ihost"
     SLZB07 = "slzb07"
     RTS_DTR = "rts_dtr"
-    BAUDRATE_COMMAND = "baudrate_command"
+    BAUDRATE = "baudrate"
 
 
 @dataclasses.dataclass
@@ -113,6 +113,6 @@ GPIO_CONFIGS = {
             GpioPattern(pins={"dtr": False, "rts": False}, delay_after=0.0),
         ]
     ),
-    # ResetTarget.BAUDRATE_COMMAND is handled separately
+    # ResetTarget.BAUDRATE is handled separately
 }
 # fmt: on
