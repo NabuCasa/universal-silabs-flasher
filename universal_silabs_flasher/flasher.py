@@ -31,7 +31,6 @@ from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 _LOGGER = logging.getLogger(__name__)
 
 EZSP_BOOTLOADER_LAUNCH_DELAY = 5
-BAUDRATE_BOOTLOADER_TRIGGER_PATTERN = (150, 300, 600)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -72,12 +71,26 @@ class Flasher:
     async def enter_bootloader_reset(self, target: ResetTarget) -> None:
         _LOGGER.info(f"Triggering {target.value} bootloader")
 
-        if target == ResetTarget.BAUDRATE:
-            for baudrate in BAUDRATE_BOOTLOADER_TRIGGER_PATTERN:
-                async with connect_protocol(
-                    self._device, baudrate, FlowControlSerialProtocol
-                ) as uart:
-                    await asyncio.sleep(0.1)
+        if target == ResetTarget.BAUDRATE_COMMAND:
+            # Baudrate command mode uses a pattern of baudrates to enter a command mode:
+            # open the serial port with 150 baud, 300 baud, and 600 baud, writing AT
+            # commands to enter the bootloader.
+            async with connect_protocol(
+                self._device, 150, FlowControlSerialProtocol
+            ) as uart:
+                await asyncio.sleep(0.1)
+
+            async with connect_protocol(
+                self._device, 300, FlowControlSerialProtocol
+            ) as uart:
+                await asyncio.sleep(0.1)
+
+            async with connect_protocol(
+                self._device, 600, FlowControlSerialProtocol
+            ) as uart:
+                await asyncio.sleep(0.1)
+
+                uart._transport.write(b"BZ")
 
             await asyncio.sleep(0.5)
 
