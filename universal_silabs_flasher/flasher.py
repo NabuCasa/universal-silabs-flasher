@@ -64,11 +64,13 @@ class Flasher:
         self.app_baudrate: int | None = None
         self.bootloader_baudrate: int | None = None
 
-        self._reset_target: ResetTarget | None = (
-            ResetTarget(bootloader_reset) if bootloader_reset else None
-        )
+        self._reset_targets: list[ResetTarget] = []
 
-    async def enter_bootloader_reset(self, target: ResetTarget) -> None:
+        # Allow for multiple reset methods to be chained
+        for target in (bootloader_reset or "").split("+"):
+            self._reset_targets.append(ResetTarget(target))
+
+    async def trigger_bootloader(self, target: ResetTarget) -> None:
         _LOGGER.info(f"Triggering {target.value} bootloader")
 
         if target == ResetTarget.BAUDRATE_COMMAND:
@@ -200,6 +202,10 @@ class Flasher:
             continue_probing=False,
         )
 
+    async def trigger_bootloader_reset(self) -> None:
+        for target in self._reset_targets:
+            await self.trigger_bootloader(target)
+
     async def probe_app_type(
         self,
         types: typing.Iterable[ApplicationType] | None = None,
@@ -215,16 +221,15 @@ class Flasher:
         )
         # fmt: on
 
-        # Reset into bootloader
-        if self._reset_target:
-            await self.enter_bootloader_reset(self._reset_target)
+        # Reset into bootloader, if possible
+        await self.trigger_bootloader_reset()
 
         bootloader_probe = None
 
         # Only run firmware from the bootloader if we have bootloader reset and
         # other probe methods
         only_probe_bootloader = types == [ApplicationType.GECKO_BOOTLOADER]
-        run_firmware = self._reset_target and not only_probe_bootloader
+        run_firmware = self._reset_targets and not only_probe_bootloader
         probe_funcs = {
             ApplicationType.GECKO_BOOTLOADER: (
                 lambda baudrate: self.probe_gecko_bootloader(
@@ -271,10 +276,10 @@ class Flasher:
             self.app_baudrate = result.baudrate
             break
         else:
-            if bootloader_probe and self._reset_target:
+            if bootloader_probe and self._reset_targets:
                 # We have no valid application image but can still re-enter the
-                # bootloader
-                await self.enter_bootloader_reset(self._reset_target)
+                # bootloader whenever we want
+                await self.trigger_bootloader_reset()
 
                 self.app_type = ApplicationType.GECKO_BOOTLOADER
                 self.app_version = bootloader_probe.version
