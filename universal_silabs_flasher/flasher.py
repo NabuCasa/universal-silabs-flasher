@@ -67,8 +67,9 @@ class Flasher:
         self._reset_targets: list[ResetTarget] = []
 
         # Allow for multiple reset methods to be chained
-        for target in (bootloader_reset or "").split("+"):
-            self._reset_targets.append(ResetTarget(target))
+        if bootloader_reset:
+            for target in bootloader_reset.split("+"):
+                self._reset_targets.append(ResetTarget(target))
 
     async def trigger_bootloader(self, target: ResetTarget) -> None:
         _LOGGER.info(f"Triggering {target.value} bootloader")
