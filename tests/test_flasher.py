@@ -3,8 +3,9 @@ from unittest.mock import MagicMock, call, patch
 
 import zigpy.types as t
 
-from universal_silabs_flasher.common import Version
+from universal_silabs_flasher.common import FlowControlSerialProtocol, Version
 from universal_silabs_flasher.flasher import Flasher, ProbeResult
+from universal_silabs_flasher.gecko_bootloader import GeckoBootloaderProtocol
 
 
 async def test_write_emberznet_eui64():
@@ -50,14 +51,22 @@ async def test_baudrate_reset_pattern():
         await flasher.trigger_bootloader_reset()
 
     assert mock_connect_protocol.mock_calls == [
-        call("/dev/ttyMOCK", 150, mock_connect_protocol.call_args.args[2]),
+        # Connect with 150 baud
+        call("/dev/ttyMOCK", 150, FlowControlSerialProtocol),
         call().__aenter__(),
         call().__aexit__(None, None, None),
-        call("/dev/ttyMOCK", 300, mock_connect_protocol.call_args.args[2]),
+        # Connect with 300 baud
+        call("/dev/ttyMOCK", 300, FlowControlSerialProtocol),
         call().__aenter__(),
         call().__aexit__(None, None, None),
-        call("/dev/ttyMOCK", 600, mock_connect_protocol.call_args.args[2]),
+        # Connect with 600 baud
+        call("/dev/ttyMOCK", 600, FlowControlSerialProtocol),
         call().__aenter__(),
         call().__aenter__()._transport.write(b"BZ"),
+        call().__aexit__(None, None, None),
+        # Probe
+        call("/dev/ttyMOCK", 115200, GeckoBootloaderProtocol),
+        call().__aenter__(),
+        call().__aenter__().probe(),
         call().__aexit__(None, None, None),
     ]
