@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, call, patch
 import zigpy.types as t
 
 from universal_silabs_flasher.common import FlowControlSerialProtocol, Version
+from universal_silabs_flasher.const import ResetTarget
 from universal_silabs_flasher.flasher import Flasher, ProbeResult
 from universal_silabs_flasher.gecko_bootloader import GeckoBootloaderProtocol
 
@@ -69,4 +70,103 @@ async def test_baudrate_reset_pattern():
         call().__aenter__(),
         call().__aenter__().probe(),
         call().__aexit__(None, None, None),
+    ]
+
+
+async def test_trigger_bootloader_reset_first_probe_succeeds():
+    flasher = Flasher(
+        device="/dev/ttyMOCK",
+        bootloader_reset=(ResetTarget.RTS_DTR, ResetTarget.BAUDRATE),
+    )
+
+    with (
+        patch.object(flasher, "trigger_bootloader") as mock_trigger,
+        patch.object(
+            flasher,
+            "probe_gecko_bootloader",
+            return_value=ProbeResult(
+                version=Version("1.0.0"),
+                continue_probing=False,
+                baudrate=115200,
+            ),
+        ) as mock_probe,
+    ):
+        result = await flasher.trigger_bootloader_reset()
+
+    assert result is not None
+    assert result.version == Version("1.0.0")
+    assert result.baudrate == 115200
+
+    # Only first reset target should be attempted
+    assert mock_trigger.mock_calls == [call(ResetTarget.RTS_DTR)]
+    # Only one probe attempt for the first reset target
+    assert mock_probe.mock_calls == [call(run_firmware=False, baudrate=115200)]
+
+
+async def test_trigger_bootloader_reset_second_probe_succeeds():
+    flasher = Flasher(
+        device="/dev/ttyMOCK",
+        bootloader_reset=(ResetTarget.RTS_DTR, ResetTarget.BAUDRATE),
+    )
+
+    with (
+        patch.object(flasher, "trigger_bootloader") as mock_trigger,
+        patch.object(
+            flasher,
+            "probe_gecko_bootloader",
+            side_effect=[
+                asyncio.TimeoutError,  # First reset target fails
+                ProbeResult(  # Second reset target succeeds
+                    version=Version("1.0.0"),
+                    continue_probing=False,
+                    baudrate=115200,
+                ),
+            ],
+        ) as mock_probe,
+    ):
+        result = await flasher.trigger_bootloader_reset()
+
+    assert result is not None
+    assert result.version == Version("1.0.0")
+    assert result.baudrate == 115200
+
+    # Both reset targets should be attempted
+    assert mock_trigger.mock_calls == [
+        call(ResetTarget.RTS_DTR),
+        call(ResetTarget.BAUDRATE),
+    ]
+    # Two probe attempts - one for each reset target
+    assert mock_probe.mock_calls == [
+        call(run_firmware=False, baudrate=115200),
+        call(run_firmware=False, baudrate=115200),
+    ]
+
+
+async def test_trigger_bootloader_reset_all_probes_fail():
+    flasher = Flasher(
+        device="/dev/ttyMOCK",
+        bootloader_reset=(ResetTarget.RTS_DTR, ResetTarget.BAUDRATE),
+    )
+
+    with (
+        patch.object(flasher, "trigger_bootloader") as mock_trigger,
+        patch.object(
+            flasher,
+            "probe_gecko_bootloader",
+            side_effect=asyncio.TimeoutError,  # All probes fail
+        ) as mock_probe,
+    ):
+        result = await flasher.trigger_bootloader_reset()
+
+    assert result is None
+
+    # Both reset targets should be attempted
+    assert mock_trigger.mock_calls == [
+        call(ResetTarget.RTS_DTR),
+        call(ResetTarget.BAUDRATE),
+    ]
+    # Two probe attempts - one for each reset target
+    assert mock_probe.mock_calls == [
+        call(run_firmware=False, baudrate=115200),
+        call(run_firmware=False, baudrate=115200),
     ]
