@@ -63,6 +63,33 @@ def click_enum_validator_factory(
     return validator_callback
 
 
+class EnumWithSeparator(click.ParamType):
+    """Click validator that accepts enum values separated by plus signs."""
+
+    name = "enum_with_separator"
+
+    def __init__(self, enum_cls: type[enum.Enum], separator: str = ",") -> None:
+        self._enum_cls = enum_cls
+        self._separator = separator
+
+    def convert(self, value: str, param: click.Parameter, ctx: click.Context) -> list:
+        values = value.split(self._separator)
+        enums = []
+
+        for v in values:
+            try:
+                enums.append(self._enum_cls(v))
+            except ValueError:
+                expected = [m.value for m in self._enum_cls]
+                self.fail(
+                    f"{v!r} is invalid, must be one of: {', '.join(expected)}",
+                    param,
+                    ctx,
+                )
+
+        return enums
+
+
 class SerialPort(click.ParamType):
     """Click validator that accepts serial ports."""
 
@@ -144,7 +171,13 @@ class SerialPort(click.ParamType):
 )
 @click.option(
     "--bootloader-reset",
-    type=click.Choice([t.value for t in ResetTarget] + ["sonoff"]),
+    default=[],
+    type=EnumWithSeparator(ResetTarget),
+    help=(
+        f"Reset methods to attempt when triggering bootloader mode. Multiple methods"
+        f" can be chained by separating them with a comma. Valid values: "
+        f" {', '.join([m.value for m in ResetTarget])}"
+    ),
 )
 @click.pass_context
 def main(
@@ -158,7 +191,7 @@ def main(
     router_baudrate: list[int],
     spinel_baudrate: list[int],
     probe_method: list[ApplicationType],
-    bootloader_reset: str | None,
+    bootloader_reset: list[ResetTarget],
 ) -> None:
     coloredlogs.install(
         fmt=(
@@ -189,13 +222,6 @@ def main(
         param = next(p for p in ctx.command.params if p.name == "device")
         raise click.MissingParameter(ctx=ctx, param=param)
 
-    if bootloader_reset == "sonoff":
-        _LOGGER.warning(
-            "The 'sonoff' reset target is deprecated."
-            " Use '--bootloader-reset rts_dtr' instead."
-        )
-        bootloader_reset = ResetTarget.RTS_DTR.value
-
     ctx.obj = {
         "verbosity": verbose,
         "flasher": Flasher(
@@ -208,7 +234,7 @@ def main(
                 ApplicationType.SPINEL: spinel_baudrate,
             },
             probe_methods=probe_method,
-            bootloader_reset=bootloader_reset,
+            bootloader_reset=tuple(bootloader_reset),
         ),
     }
 

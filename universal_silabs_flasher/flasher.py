@@ -53,7 +53,7 @@ class Flasher:
             ApplicationType.SPINEL,
         ),
         device: str,
-        bootloader_reset: str | None = None,
+        bootloader_reset: str | tuple[ResetTarget, ...] = (),
     ):
         self._baudrates = baudrates
         self._probe_methods = probe_methods
@@ -64,16 +64,14 @@ class Flasher:
         self.app_baudrate: int | None = None
         self.bootloader_baudrate: int | None = None
 
-        self._reset_targets: list[ResetTarget] = []
+        if isinstance(bootloader_reset, str):
+            bootloader_reset = (ResetTarget(bootloader_reset),)
 
-        # Allow for multiple reset methods to be chained
-        if bootloader_reset:
-            for target in bootloader_reset.split("+"):
-                self._reset_targets.append(ResetTarget(target))
+        self._reset_targets: list[ResetTarget] = [
+            ResetTarget(target) for target in bootloader_reset if target
+        ]
 
     async def trigger_bootloader(self, target: ResetTarget) -> None:
-        _LOGGER.info(f"Triggering {target.value} bootloader")
-
         if target == ResetTarget.BAUDRATE:
             # Baudrate command mode uses a pattern of baudrates to enter a command mode:
             # open the serial port with 150 baud, 300 baud, and 600 baud, writing AT
@@ -203,9 +201,27 @@ class Flasher:
             continue_probing=False,
         )
 
-    async def trigger_bootloader_reset(self) -> None:
+    async def trigger_bootloader_reset(self) -> ProbeResult | None:
+        """Reset into the bootloader by trying the probing methods, one by one."""
+
         for target in self._reset_targets:
+            _LOGGER.info(f"Triggering {target.value} bootloader")
             await self.trigger_bootloader(target)
+
+            for baudrate in self._baudrates[ApplicationType.GECKO_BOOTLOADER]:
+                try:
+                    probe_result = await self.probe_gecko_bootloader(
+                        run_firmware=False, baudrate=baudrate
+                    )
+                except asyncio.TimeoutError:
+                    continue
+                else:
+                    _LOGGER.info(
+                        f"Successfully entered bootloader using {target.value} reset"
+                    )
+                    return probe_result
+
+        return None
 
     async def probe_app_type(
         self,
@@ -222,11 +238,6 @@ class Flasher:
         )
         # fmt: on
 
-        # Reset into bootloader, if possible
-        await self.trigger_bootloader_reset()
-
-        bootloader_probe = None
-
         # Only run firmware from the bootloader if we have bootloader reset and
         # other probe methods
         only_probe_bootloader = types == [ApplicationType.GECKO_BOOTLOADER]
@@ -242,6 +253,9 @@ class Flasher:
             ApplicationType.SPINEL: self.probe_spinel,
             ApplicationType.ROUTER: self.probe_router,
         }
+
+        # Reset into bootloader, if possible
+        bootloader_probe = await self.trigger_bootloader_reset()
 
         for probe_method, baudrate in (
             (m, b) for m in types for b in self._baudrates[m]

@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, call, patch
 
 import zigpy.types as t
 
@@ -36,4 +36,28 @@ async def test_write_emberznet_eui64():
 
     assert ezsp.write_custom_eui64.mock_calls == [
         call(ieee=t.EUI64.convert("11:22:33:44:55:66:77:88"), burn_into_userdata=True)
+    ]
+
+
+async def test_baudrate_reset_pattern():
+    flasher = Flasher(device="/dev/ttyMOCK", bootloader_reset="baudrate")
+
+    with patch(
+        "universal_silabs_flasher.flasher.connect_protocol"
+    ) as mock_connect_protocol:
+        mock_uart = mock_connect_protocol.return_value.__aenter__.return_value
+        mock_uart._transport.write = MagicMock()
+        await flasher.trigger_bootloader_reset()
+
+    assert mock_connect_protocol.mock_calls == [
+        call("/dev/ttyMOCK", 150, mock_connect_protocol.call_args.args[2]),
+        call().__aenter__(),
+        call().__aexit__(None, None, None),
+        call("/dev/ttyMOCK", 300, mock_connect_protocol.call_args.args[2]),
+        call().__aenter__(),
+        call().__aexit__(None, None, None),
+        call("/dev/ttyMOCK", 600, mock_connect_protocol.call_args.args[2]),
+        call().__aenter__(),
+        call().__aenter__()._transport.write(b"BZ"),
+        call().__aexit__(None, None, None),
     ]
