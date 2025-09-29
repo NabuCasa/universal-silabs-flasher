@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, call, patch
 import zigpy.types as t
 
 from universal_silabs_flasher.common import FlowControlSerialProtocol, Version
-from universal_silabs_flasher.const import ResetTarget
+from universal_silabs_flasher.const import ApplicationType, ResetTarget
 from universal_silabs_flasher.flasher import Flasher, ProbeResult
 from universal_silabs_flasher.gecko_bootloader import GeckoBootloaderProtocol
 
@@ -170,3 +170,37 @@ async def test_trigger_bootloader_reset_all_probes_fail():
         call(run_firmware=False, baudrate=115200),
         call(run_firmware=False, baudrate=115200),
     ]
+
+
+async def test_probe_app_type_fallback_to_bootloader() -> None:
+    flasher = Flasher(device="/dev/ttyMOCK", bootloader_reset=(ResetTarget.RTS_DTR,))
+
+    bootloader_result = ProbeResult(
+        version=Version("1.0.0"),
+        continue_probing=False,
+        baudrate=115200,
+    )
+
+    with (
+        patch.object(
+            flasher, "trigger_bootloader_reset", return_value=bootloader_result
+        ) as mock_trigger_reset,
+        patch.object(
+            flasher, "probe_gecko_bootloader", side_effect=asyncio.TimeoutError
+        ),
+        patch.object(flasher, "probe_cpc", side_effect=asyncio.TimeoutError),
+        patch.object(flasher, "probe_ezsp", side_effect=asyncio.TimeoutError),
+        patch.object(flasher, "probe_router", side_effect=asyncio.TimeoutError),
+        patch.object(flasher, "probe_spinel", side_effect=asyncio.TimeoutError),
+    ):
+        await flasher.probe_app_type()
+
+    # Should fallback to bootloader when no valid application found
+    assert flasher.app_type == ApplicationType.GECKO_BOOTLOADER
+    assert flasher.app_version == Version("1.0.0")
+    assert flasher.app_baudrate == 115200
+    assert flasher.bootloader_baudrate == 115200
+
+    # trigger_bootloader_reset should be called twice - once at start and once
+    # for fallback
+    assert mock_trigger_reset.call_count == 2
