@@ -68,7 +68,7 @@ $ universal-silabs-flasher \
 ```
 
 ### Sonoff ZBDongle-E
-The Sonoff dongles use the RTS/DTR bootloader reset method/
+The Sonoff dongles use the RTS/DTR bootloader reset method:
 
 ```bash
 $ universal-silabs-flasher \
