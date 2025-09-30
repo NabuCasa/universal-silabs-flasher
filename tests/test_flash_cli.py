@@ -3,46 +3,42 @@
 from unittest.mock import AsyncMock, patch
 
 import click
-from click.testing import CliRunner, Result
+import click.core
+from click.testing import CliRunner
 import pytest
 
 from universal_silabs_flasher.const import ApplicationType, ResetTarget
 from universal_silabs_flasher.flash import main
 
 
-class CtxResult(Result):
-    """Result object that also captures the Click context."""
-
-    def __init__(self, *args, ctx=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.ctx = ctx
-
-
 class CtxCliRunner(CliRunner):
-    """CliRunner that captures the Click context in the result."""
+    """CliRunner that captures the Click context in the result.
+
+    This uses Click's make_context hook to capture the context during command
+    execution, making it immune to changes in Click's callback mechanism.
+    """
 
     def invoke(self, cli, *args, **kwargs):
-        captured_ctx = {}
-        original_callback = cli.callback
+        captured = None
+        original_make_context = click.core.Command.make_context
 
-        def patched_callback(**cb_kwargs):
-            ctx = click.get_current_context()
-            captured_ctx["ctx"] = ctx
-            return original_callback(**cb_kwargs)
+        def make_context_and_capture(
+            cmd_self, info_name, cmd_args, parent=None, **extra
+        ):
+            nonlocal captured
 
-        with patch.object(cli, "callback", patched_callback):
+            ctx = original_make_context(cmd_self, info_name, cmd_args, parent, **extra)
+            if parent is None:
+                captured = ctx
+
+            return ctx
+
+        with patch.object(click.core.Command, "make_context", make_context_and_capture):
             result = super().invoke(cli, *args, **kwargs)
 
-        return CtxResult(
-            runner=result.runner,
-            stdout_bytes=result.stdout_bytes,
-            stderr_bytes=result.stderr_bytes,
-            return_value=result.return_value,
-            exit_code=result.exit_code,
-            exception=result.exception,
-            exc_info=result.exc_info,
-            ctx=captured_ctx.get("ctx"),
-        )
+        result.ctx = captured
+
+        return result
 
 
 @pytest.fixture
