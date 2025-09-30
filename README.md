@@ -13,16 +13,21 @@ Usage: universal-silabs-flasher [OPTIONS] COMMAND [ARGS]...
 
 Options:
   -v, --verbose
-  --device PATH_OR_URL           [required]
-  --bootloader-baudrate NUMBERS  [default: 115200]
-  --cpc-baudrate NUMBERS         [default: 460800, 115200, 230400]
-  --ezsp-baudrate NUMBERS        [default: 115200]
+  --device PATH_OR_URL
+  --bootloader-baudrate NUMBERS   [default: 115200]
+  --cpc-baudrate NUMBERS          [default: 460800, 115200, 230400]
+  --ezsp-baudrate NUMBERS         [default: 115200, 460800]
   --router-baudrate NUMBERS       [default: 115200]
   --spinel-baudrate NUMBERS       [default: 460800]
   --probe-method TEXT             [default: bootloader, cpc, ezsp, spinel,
                                   router]
-  --bootloader-reset [yellow|ihost|slzb07|sonoff]
-  --help                         Show this message and exit.
+  --bootloader-reset ENUM_WITH_SEPARATOR
+                                  Reset methods to attempt when triggering
+                                  bootloader mode. Multiple methods can be
+                                  chained by separating them with a comma.
+                                  Valid values:  yellow, ihost, slzb07,
+                                  rts_dtr, baudrate
+  --help                          Show this message and exit.
 
 Commands:
   dump-gbl-metadata
