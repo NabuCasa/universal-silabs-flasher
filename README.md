@@ -13,16 +13,21 @@ Usage: universal-silabs-flasher [OPTIONS] COMMAND [ARGS]...
 
 Options:
   -v, --verbose
-  --device PATH_OR_URL           [required]
-  --bootloader-baudrate NUMBERS  [default: 115200]
-  --cpc-baudrate NUMBERS         [default: 460800, 115200, 230400]
-  --ezsp-baudrate NUMBERS        [default: 115200]
+  --device PATH_OR_URL
+  --bootloader-baudrate NUMBERS   [default: 115200]
+  --cpc-baudrate NUMBERS          [default: 460800, 115200, 230400]
+  --ezsp-baudrate NUMBERS         [default: 115200, 460800]
   --router-baudrate NUMBERS       [default: 115200]
   --spinel-baudrate NUMBERS       [default: 460800]
   --probe-method TEXT             [default: bootloader, cpc, ezsp, spinel,
                                   router]
-  --bootloader-reset [yellow|ihost|slzb07|sonoff]
-  --help                         Show this message and exit.
+  --bootloader-reset ENUM_WITH_SEPARATOR
+                                  Reset methods to attempt when triggering
+                                  bootloader mode. Multiple methods can be
+                                  chained by separating them with a comma.
+                                  Valid values:  yellow, ihost, slzb07,
+                                  rts_dtr, baudrate
+  --help                          Show this message and exit.
 
 Commands:
   dump-gbl-metadata
@@ -47,9 +52,9 @@ The Yellow's bootloader can always be activated with the `--bootloader-reset yel
 ```bash
 $ universal-silabs-flasher \
     --device /dev/ttyAMA1 \
-    --bootloader-reset yellow
+    --bootloader-reset yellow \
     flash \
-    --firmware NabuCasa_RCP_v4.1.3_rcp-uart-hw-802154_230400.gbl \
+    --firmware NabuCasa_RCP_v4.1.3_rcp-uart-hw-802154_230400.gbl
 ```
 
 ### SkyConnect
@@ -60,6 +65,17 @@ $ universal-silabs-flasher \
     --device /dev/cu.SLAB_USBtoUART \
     flash \
     --firmware NabuCasa_SkyConnect_EZSP_v7.1.3.0_ncp-uart-hw_115200.gbl
+```
+
+### Sonoff ZBDongle-E
+The Sonoff dongles use the RTS/DTR bootloader reset method:
+
+```bash
+$ universal-silabs-flasher \
+    --device /dev/ttyUSB0 \
+    --bootloader-reset rts_dtr \
+    flash \
+    --firmware ncp-uart-hw-v7.4.5.0-zbdonglee-115200.gbl
 ```
 
 
