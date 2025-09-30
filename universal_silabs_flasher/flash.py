@@ -374,10 +374,10 @@ async def flash(
         "instead, see --help for details."
     )
     if yellow_gpio_reset:
-        flasher._reset_target = ResetTarget.YELLOW
+        flasher._reset_targets = [ResetTarget.YELLOW]
         _LOGGER.info(reset_msg, "--yellow-gpio-reset")
     elif sonoff_reset:
-        flasher._reset_target = ResetTarget.RTS_DTR
+        flasher._reset_targets = [ResetTarget.RTS_DTR]
         _LOGGER.info(reset_msg, "--sonoff-reset")
 
     try:

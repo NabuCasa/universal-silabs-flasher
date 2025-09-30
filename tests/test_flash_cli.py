@@ -555,3 +555,44 @@ def test_flash_command_flags(mock_connections, args):
     result = runner.invoke(main, args, catch_exceptions=False)
 
     assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "args,expected_reset_target",
+    [
+        (
+            [
+                "--device",
+                "/dev/ttyUSB0",
+                "flash",
+                "--firmware",
+                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
+                "--force",
+                "--yellow-gpio-reset",
+            ],
+            [ResetTarget.YELLOW],
+        ),
+        (
+            [
+                "--device",
+                "/dev/ttyUSB0",
+                "flash",
+                "--firmware",
+                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
+                "--force",
+                "--sonoff-reset",
+            ],
+            [ResetTarget.RTS_DTR],
+        ),
+    ],
+)
+def test_deprecated_reset_flags(mock_connections, args, expected_reset_target):
+    """Test deprecated reset flags set reset targets correctly."""
+    runner = CtxCliRunner()
+    result = runner.invoke(main, args, catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert result.ctx is not None
+
+    flasher = result.ctx.obj["flasher"]
+    assert flasher._reset_targets == expected_reset_target
