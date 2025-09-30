@@ -12,11 +12,7 @@ from universal_silabs_flasher.flash import main
 
 
 class CtxCliRunner(CliRunner):
-    """CliRunner that captures the Click context in the result.
-
-    This uses Click's make_context hook to capture the context during command
-    execution, making it immune to changes in Click's callback mechanism.
-    """
+    """CliRunner that captures the Click context in the result."""
 
     def invoke(self, cli, *args, **kwargs):
         captured = None
