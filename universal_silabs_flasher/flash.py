@@ -72,7 +72,12 @@ class EnumWithSeparator(click.ParamType):
         self._enum_cls = enum_cls
         self._separator = separator
 
-    def convert(self, value: str, param: click.Parameter, ctx: click.Context) -> list:
+    def convert(
+        self, value: str | list[enum.Enum], param: click.Parameter, ctx: click.Context
+    ) -> list[enum.Enum]:
+        if isinstance(value, list):
+            return value
+
         values = value.split(self._separator)
         enums = []
 
@@ -369,10 +374,10 @@ async def flash(
         "instead, see --help for details."
     )
     if yellow_gpio_reset:
-        flasher._reset_target = ResetTarget.YELLOW
+        flasher._reset_targets = [ResetTarget.YELLOW]
         _LOGGER.info(reset_msg, "--yellow-gpio-reset")
     elif sonoff_reset:
-        flasher._reset_target = ResetTarget.RTS_DTR
+        flasher._reset_targets = [ResetTarget.RTS_DTR]
         _LOGGER.info(reset_msg, "--sonoff-reset")
 
     try:
