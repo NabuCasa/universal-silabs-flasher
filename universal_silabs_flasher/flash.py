@@ -72,7 +72,12 @@ class EnumWithSeparator(click.ParamType):
         self._enum_cls = enum_cls
         self._separator = separator
 
-    def convert(self, value: str, param: click.Parameter, ctx: click.Context) -> list:
+    def convert(
+        self, value: str | list[enum.Enum], param: click.Parameter, ctx: click.Context
+    ) -> list[enum.Enum]:
+        if isinstance(value, list):
+            return value
+
         values = value.split(self._separator)
         enums = []
 
