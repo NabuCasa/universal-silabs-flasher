@@ -42,7 +42,7 @@ async def test_write_emberznet_eui64():
 
 
 async def test_baudrate_reset_pattern():
-    flasher = Flasher(device="/dev/ttyMOCK", bootloader_reset=ResetTarget.BAUDRATE)
+    flasher = Flasher(device="/dev/ttyMOCK", bootloader_reset=(ResetTarget.BAUDRATE,))
 
     with patch(
         "universal_silabs_flasher.flasher.connect_protocol"
