@@ -201,7 +201,9 @@ class Flasher:
             continue_probing=False,
         )
 
-    async def trigger_bootloader_reset(self) -> ProbeResult | None:
+    async def trigger_bootloader_reset(
+        self, *, run_firmware: bool = False
+    ) -> ProbeResult | None:
         """Reset into the bootloader by trying the probing methods, one by one."""
 
         for target in self._reset_targets:
@@ -211,7 +213,7 @@ class Flasher:
             for baudrate in self._baudrates[ApplicationType.GECKO_BOOTLOADER]:
                 try:
                     probe_result = await self.probe_gecko_bootloader(
-                        run_firmware=False, baudrate=baudrate
+                        run_firmware=run_firmware, baudrate=baudrate
                     )
                 except asyncio.TimeoutError:
                     continue
@@ -254,8 +256,9 @@ class Flasher:
             ApplicationType.ROUTER: self.probe_router,
         }
 
-        # Reset into bootloader, if possible
-        bootloader_probe = await self.trigger_bootloader_reset()
+        # Reset into bootloader, if possible. Run the firmware so that we can probe the
+        # running application afterwards.
+        bootloader_probe = await self.trigger_bootloader_reset(run_firmware=True)
 
         for probe_method, baudrate in (
             (m, b) for m in types for b in self._baudrates[m]
@@ -294,7 +297,7 @@ class Flasher:
             if bootloader_probe and self._reset_targets:
                 # We have no valid application image but can still re-enter the
                 # bootloader whenever we want
-                await self.trigger_bootloader_reset()
+                await self.trigger_bootloader_reset(run_firmware=False)
 
                 self.app_type = ApplicationType.GECKO_BOOTLOADER
                 self.app_version = bootloader_probe.version
