@@ -18,7 +18,14 @@ from .common import (
     connect_protocol,
     pad_to_multiple,
 )
-from .const import DEFAULT_BAUDRATES, GPIO_CONFIGS, ApplicationType, ResetTarget
+from .const import (
+    DEFAULT_BAUDRATES,
+    RESET_CONFIGS,
+    ApplicationType,
+    BaudrateResetConfig,
+    GpioResetConfig,
+    ResetTarget,
+)
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .firmware import FirmwareImage
@@ -72,55 +79,48 @@ class Flasher:
         ]
 
     async def trigger_bootloader(self, target: ResetTarget) -> None:
-        if target == ResetTarget.BAUDRATE:
-            # Baudrate command mode uses a pattern of baudrates to enter a command mode:
-            # open the serial port with 150 baud, 300 baud, and 600 baud, writing AT
-            # commands to enter the bootloader.
-            async with connect_protocol(
-                self._device, 150, FlowControlSerialProtocol
-            ) as uart:
-                await asyncio.sleep(0.1)
+        config = RESET_CONFIGS[target]
 
-            async with connect_protocol(
-                self._device, 300, FlowControlSerialProtocol
-            ) as uart:
-                await asyncio.sleep(0.1)
+        if isinstance(config, BaudrateResetConfig):
+            # Baudrate command mode uses a pattern of baudrates to enter a command mode
+            for baudrate in config.baudrates:
+                async with connect_protocol(
+                    self._device, baudrate, FlowControlSerialProtocol
+                ) as uart:
+                    await asyncio.sleep(config.delay_after_each)
 
-            async with connect_protocol(
-                self._device, 600, FlowControlSerialProtocol
-            ) as uart:
-                await asyncio.sleep(0.1)
+                    # Write command on the last baudrate if specified
+                    if baudrate == config.baudrates[-1] and config.command:
+                        uart._transport.write(config.command)
 
-                uart._transport.write(b"BZ")
+            await asyncio.sleep(config.delay_after_final)
+        elif isinstance(config, GpioResetConfig):
+            chip = config.chip
 
-            await asyncio.sleep(0.5)
+            if config.chip_type == "cp210x":
+                _LOGGER.warning(
+                    "When using %s bootloader reset ensure no other CP2102 USB serial"
+                    " devices are connected.",
+                    target.value,
+                )
 
-            return
+                chip = await find_gpiochip_by_label(config.chip_type)
 
-        config = GPIO_CONFIGS[target]
-        chip = config.chip
+            if config.chip_type == "uart":
+                # The baudrate isn't really necessary, since we're just using flow
+                # control pins
+                baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
 
-        if config.chip_type == "cp210x":
-            _LOGGER.warning(
-                "When using %s bootloader reset ensure no other CP2102 USB serial"
-                " devices are connected.",
-                target.value,
-            )
-
-            chip = await find_gpiochip_by_label(config.chip_type)
-
-        if config.chip_type == "uart":
-            # The baudrate isn't really necessary, since we're using flow control pins
-            baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
-
-            async with connect_protocol(
-                self._device, baudrate, FlowControlSerialProtocol
-            ) as uart:
-                for pattern in config.pattern:
-                    await uart.set_signals(**pattern.pins)
-                    await asyncio.sleep(pattern.delay_after)
+                async with connect_protocol(
+                    self._device, baudrate, FlowControlSerialProtocol
+                ) as uart:
+                    for pattern in config.pattern:
+                        await uart.set_signals(**pattern.pins)
+                        await asyncio.sleep(pattern.delay_after)
+            else:
+                await send_gpio_pattern(chip, config.pattern)
         else:
-            await send_gpio_pattern(chip, config.pattern)
+            raise TypeError(f"Invalid reset configuration for {target!r}")
 
     def _connect_gecko_bootloader(self, baudrate: int):
         return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)

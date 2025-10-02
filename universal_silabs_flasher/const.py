@@ -72,8 +72,16 @@ class GpioResetConfig:
     pattern: list[GpioPattern]
 
 
+@dataclasses.dataclass
+class BaudrateResetConfig:
+    baudrates: list[int]
+    delay_after_each: float
+    delay_after_final: float
+    command: bytes | None = None
+
+
 # fmt: off
-GPIO_CONFIGS = {
+RESET_CONFIGS = {
     ResetTarget.YELLOW: GpioResetConfig(
         chip="/dev/gpiochip0",
         chip_type=None,
@@ -113,6 +121,11 @@ GPIO_CONFIGS = {
             GpioPattern(pins={"dtr": False, "rts": False}, delay_after=0.0),
         ]
     ),
-    # ResetTarget.BAUDRATE is handled separately
+    ResetTarget.BAUDRATE: BaudrateResetConfig(
+        baudrates=[150, 300, 1200],
+        delay_after_each=0.1,
+        delay_after_final=0.5,
+        command=b"BZ",
+    ),
 }
 # fmt: on
