@@ -42,7 +42,7 @@ async def test_write_emberznet_eui64():
 
 
 async def test_baudrate_reset_pattern():
-    flasher = Flasher(device="/dev/ttyMOCK", bootloader_reset="baudrate")
+    flasher = Flasher(device="/dev/ttyMOCK", bootloader_reset=ResetTarget.BAUDRATE)
 
     with patch(
         "universal_silabs_flasher.flasher.connect_protocol"
@@ -60,8 +60,8 @@ async def test_baudrate_reset_pattern():
         call("/dev/ttyMOCK", 300, FlowControlSerialProtocol),
         call().__aenter__(),
         call().__aexit__(None, None, None),
-        # Connect with 600 baud
-        call("/dev/ttyMOCK", 600, FlowControlSerialProtocol),
+        # Connect with 1200 baud
+        call("/dev/ttyMOCK", 1200, FlowControlSerialProtocol),
         call().__aenter__(),
         call().__aenter__()._transport.write(b"BZ"),
         call().__aexit__(None, None, None),
