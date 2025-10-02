@@ -54,10 +54,10 @@ class Flasher:
         baudrates: dict[ApplicationType, list[int]] = DEFAULT_BAUDRATES,
         probe_methods: tuple[ApplicationType, ...] = (
             ApplicationType.GECKO_BOOTLOADER,
-            ApplicationType.CPC,
             ApplicationType.EZSP,
-            ApplicationType.ROUTER,
             ApplicationType.SPINEL,
+            ApplicationType.CPC,
+            ApplicationType.ROUTER,
         ),
         device: str,
         bootloader_reset: str | tuple[ResetTarget, ...] = (),
