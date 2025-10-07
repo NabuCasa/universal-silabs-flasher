@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import pathlib
+import sys
 
 import pytest
 
@@ -14,6 +15,12 @@ from universal_silabs_flasher.gecko_bootloader import (
     ReceiverCancelled,
     XModemPacketType,
 )
+
+if sys.version_info[:2] < (3, 11):
+    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
+else:
+    from asyncio import timeout as asyncio_timeout  # pragma: no cover
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +38,9 @@ class PairedTransport(asyncio.Transport):
     """A pair of transports that are connected to each other."""
 
     def __init__(
-        self, other_protocol: asyncio.Protocol, loop: asyncio.AbstractEventLoop
+        self,
+        other_protocol: asyncio.Protocol,
+        loop: asyncio.AbstractEventLoop,
     ) -> None:
         super().__init__()
         self._other_protocol = other_protocol
@@ -108,13 +117,15 @@ class Conversation(asyncio.Protocol):
         timeout: float = 1.0,
     ) -> None:
         """Expect a command, preceded by a newline."""
-        data = await asyncio.wait_for(self._reader.read(len(command) + 1), timeout)
+        async with asyncio_timeout(timeout):
+            data = await self._reader.read(len(command) + 1)
         assert data.endswith(command)
 
     async def expect_packet(self, number: int, timeout: float = 2.0) -> bytes:
         """Read and validate a full XMODEM packet, returning its payload."""
         # 3 bytes header, 128 bytes payload, 2 bytes CRC
-        data = await asyncio.wait_for(self._reader.read(133), timeout)
+        async with asyncio_timeout(timeout):
+            data = await self._reader.read(133)
 
         assert data[0] == XModemPacketType.SOH
         assert data[1] == number
@@ -127,7 +138,8 @@ class Conversation(asyncio.Protocol):
         return payload
 
     async def expect_eot(self, timeout: float = 1.0) -> None:
-        data = await asyncio.wait_for(self._reader.read(1), timeout)
+        async with asyncio_timeout(timeout):
+            data = await self._reader.read(1)
         assert data == bytes([XModemPacketType.EOT])
 
 
@@ -174,7 +186,8 @@ async def test_xmodem_happy_path() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    await asyncio.wait_for(upload_task, timeout=1)
+    async with asyncio_timeout(1):
+        await upload_task
 
     assert received_firmware == FIRMWARE
 
@@ -220,7 +233,8 @@ async def test_xmodem_with_retries() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    await asyncio.wait_for(upload_task, timeout=1)
+    async with asyncio_timeout(1):
+        await upload_task
 
     assert received_firmware == FIRMWARE
 
@@ -265,7 +279,8 @@ async def test_xmodem_timeout() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    await asyncio.wait_for(upload_task, timeout=1)
+    async with asyncio_timeout(1):
+        await upload_task
 
     assert received_firmware == FIRMWARE
 
@@ -289,7 +304,8 @@ async def test_xmodem_cancellation() -> None:
     await conversation.send_can()
 
     with pytest.raises(ReceiverCancelled):
-        await asyncio.wait_for(upload_task, timeout=1)
+        async with asyncio_timeout(1):
+            await upload_task
 
 
 async def test_xmodem_too_many_retries() -> None:
@@ -312,7 +328,8 @@ async def test_xmodem_too_many_retries() -> None:
         await conversation.send_nak()
 
     with pytest.raises(ValueError):
-        await asyncio.wait_for(upload_task, timeout=1)
+        async with asyncio_timeout(1):
+            await upload_task
 
 
 async def test_xmodem_multiple_c_bytes() -> None:
@@ -344,6 +361,7 @@ async def test_xmodem_multiple_c_bytes() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    await asyncio.wait_for(upload_task, timeout=1)
+    async with asyncio_timeout(1):
+        await upload_task
 
     assert received_firmware == FIRMWARE
