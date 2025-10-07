@@ -93,6 +93,8 @@ class GeckoBootloaderOption(bytes, enum.Enum):
 
 
 class GeckoBootloaderProtocol(SerialProtocol):
+    _buffer: bytearray
+
     def __init__(self) -> None:
         super().__init__()
         self._state_machine = StateMachine(
@@ -101,6 +103,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         )
         self._version: str | None = None
         self._upload_status: str | None = None
+        self.loop: asyncio.AbstractEventLoop | None = None
 
         # XMODEM state
         self._xmodem_firmware: bytes | None = None
@@ -113,6 +116,10 @@ class GeckoBootloaderProtocol(SerialProtocol):
         ) = None
         self._xmodem_completion_future: asyncio.Future[None] | None = None
         self._xmodem_timeout_handle: asyncio.TimerHandle | None = None
+
+    def connection_made(self, transport: asyncio.Transport) -> None:
+        super().connection_made(transport)
+        self.loop = asyncio.get_running_loop()
 
     def connection_lost(self, exc: Exception | None) -> None:
         super().connection_lost(exc)
@@ -201,6 +208,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
             self.send_data(bytes([XModemPacketType.EOT]))
         else:
             _LOGGER.debug("Sending chunk %d", self._xmodem_chunk_index)
+            assert self._xmodem_firmware is not None
             packet = XmodemCRCPacket(
                 number=(self._xmodem_chunk_index + 1) & 0xFF,
                 payload=self._xmodem_firmware[
@@ -210,6 +218,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
             )
             self.send_data(packet.serialize())
 
+        assert self.loop is not None
         self._xmodem_timeout_handle = self.loop.call_later(
             XMODEM_RECEIVE_TIMEOUT, self._xmodem_timeout_cb
         )
@@ -238,6 +247,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self._xmodem_retries = 0
         self._xmodem_max_retries = max_failures
         self._xmodem_progress_callback = progress_callback
+        assert self.loop is not None
         self._xmodem_completion_future = self.loop.create_future()
 
         if self._xmodem_progress_callback is not None:
@@ -253,7 +263,6 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self._xmodem_firmware = None
         self._xmodem_completion_future = None
 
-        self._state_machine.state = State.WAITING_UPLOAD_DONE
         await self._state_machine.wait_for_state(State.UPLOAD_DONE)
         self._state_machine.state = State.WAITING_FOR_MENU
 
@@ -314,7 +323,8 @@ class GeckoBootloaderProtocol(SerialProtocol):
                             and not self._xmodem_completion_future.done()
                         ):
                             self._xmodem_completion_future.set_result(None)
-                        return
+                        self._state_machine.state = State.WAITING_UPLOAD_DONE
+                        continue
 
                     offset = (self._xmodem_chunk_index + 1) * XMODEM_BLOCK_SIZE
                     if self._xmodem_progress_callback is not None:
