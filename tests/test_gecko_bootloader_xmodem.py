@@ -313,3 +313,37 @@ async def test_xmodem_too_many_retries() -> None:
 
     with pytest.raises(ValueError):
         await asyncio.wait_for(upload_task, timeout=1)
+
+
+async def test_xmodem_multiple_c_bytes() -> None:
+    """Test that the client handles multiple `C` bytes from the bootloader."""
+    client, conversation = await create_test_pair()
+    received_firmware = bytearray()
+
+    # Start the upload and script the conversation
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # The client automatically queries for info, so reply with a menu
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    # Send multiple `C` bytes
+    await conversation.send(b"CCC")
+
+    for i in range(len(FIRMWARE) // XMODEM_BLOCK_SIZE):
+        payload = await conversation.expect_packet(number=(i + 1) & 0xFF)
+        received_firmware.extend(payload)
+        await conversation.send_ack()
+
+    await conversation.expect_eot()
+    await conversation.send_ack()
+    await conversation.send_upload_complete()
+
+    # Final menu prompt
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    await asyncio.wait_for(upload_task, timeout=1)
+
+    assert received_firmware == FIRMWARE
