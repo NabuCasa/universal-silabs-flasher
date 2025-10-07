@@ -41,17 +41,27 @@ class PairedTransport(asyncio.Transport):
         self,
         other_protocol: asyncio.Protocol,
         loop: asyncio.AbstractEventLoop,
+        chunk_size: int | None = None,
     ) -> None:
         super().__init__()
         self._other_protocol = other_protocol
         self._loop = loop
         self._closing = False
+        self._chunk_size = chunk_size
 
     def write(self, data: bytes) -> None:
         _LOGGER.debug(
             "Writing to %s: %r", self._other_protocol.__class__.__name__, data
         )
-        self._loop.call_soon(self._other_protocol.data_received, data)
+
+        if self._chunk_size is None:
+            # Send all at once (default behavior)
+            self._loop.call_soon(self._other_protocol.data_received, data)
+        else:
+            # Send in chunks of specified size
+            for i in range(0, len(data), self._chunk_size):
+                chunk = data[i : i + self._chunk_size]
+                self._loop.call_soon(self._other_protocol.data_received, chunk)
 
     def is_closing(self) -> bool:
         return self._closing
@@ -143,14 +153,16 @@ class Conversation(asyncio.Protocol):
         assert data == bytes([XModemPacketType.EOT])
 
 
-async def create_test_pair() -> tuple[GeckoBootloaderProtocol, Conversation]:
+async def create_test_pair(
+    chunk_size: int | None = None,
+) -> tuple[GeckoBootloaderProtocol, Conversation]:
     """Creates a connected pair of a client protocol and a conversation helper."""
     loop = asyncio.get_running_loop()
     client = GeckoBootloaderProtocol()
     conversation = Conversation(loop)
 
-    client_transport = PairedTransport(conversation, loop)
-    server_transport = PairedTransport(client, loop)
+    client_transport = PairedTransport(conversation, loop, chunk_size=chunk_size)
+    server_transport = PairedTransport(client, loop, chunk_size=chunk_size)
 
     client.connection_made(client_transport)
     conversation.connection_made(server_transport)
@@ -516,6 +528,42 @@ async def test_xmodem_task_cancellation() -> None:
 async def test_xmodem_reverts_to_line_parsing() -> None:
     """Test that the client reverts to line-based parsing after an upload."""
     client, conversation = await create_test_pair()
+    received_firmware = bytearray()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # Full transfer
+    for i in range(len(FIRMWARE) // XMODEM_BLOCK_SIZE):
+        payload = await conversation.expect_packet(number=(i + 1) & 0xFF)
+        received_firmware.extend(payload)
+        await conversation.send_ack()
+
+    await conversation.expect_eot()
+    await conversation.send_ack()
+
+    # Send the upload complete and menu messages back-to-back
+    await conversation.send_upload_complete()
+    await conversation.send_menu()
+
+    # The upload task should complete successfully
+    async with asyncio_timeout(1):
+        await upload_task
+
+    assert received_firmware == FIRMWARE
+    assert client._state_machine.state == "in_menu"
+
+
+async def test_xmodem_reverts_to_line_parsing_byte_by_byte() -> None:
+    """Test line-based parsing after upload with byte-by-byte delivery."""
+    client, conversation = await create_test_pair(chunk_size=1)
     received_firmware = bytearray()
 
     upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
