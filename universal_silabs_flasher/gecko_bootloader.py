@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import enum
 import logging
 import re
 import typing
 
 from zigpy.serial import SerialProtocol
+import zigpy.types
 
-from .common import PROBE_TIMEOUT, StateMachine, Version, asyncio_timeout
-from .xmodemcrc import send_xmodem128_crc
+from .common import PROBE_TIMEOUT, StateMachine, Version, asyncio_timeout, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,8 +23,43 @@ class NoFirmwareError(Exception):
     pass
 
 
+class ReceiverCancelled(UploadError):
+    """Receiver cancelled the transmission with a `CAN` status."""
+
+
 MENU_AFTER_UPLOAD_TIMEOUT = 0.5
 RUN_APPLICATION_DELAY = 0.1
+XMODEM_BLOCK_SIZE = 128
+XMODEM_RECEIVE_TIMEOUT = 2
+
+
+class XModemPacketType(zigpy.types.enum8):
+    """XModem packet type byte."""
+
+    SOH = 0x01  # Start of Header
+    EOT = 0x04  # End of Transmission
+    CAN = 0x18  # Cancel
+    ETB = 0x17  # End of Transmission Block
+    ACK = 0x06  # Acknowledge
+    NAK = 0x15  # Not Acknowledge
+
+
+@dataclasses.dataclass(frozen=True)
+class XmodemCRCPacket:
+    """XModem CRC packet implementing the zigpy `serialize` API."""
+
+    number: zigpy.types.uint8_t
+    payload: bytes
+
+    def serialize(self) -> bytes:
+        """Serialize the packet, computing header and payload checksums."""
+        assert len(self.payload) == XMODEM_BLOCK_SIZE
+        return (
+            bytes([XModemPacketType.SOH, self.number, 0xFF - self.number])
+            + self.payload
+            + crc16_ccitt(self.payload).to_bytes(2, "big")
+        )
+
 
 MENU_REGEX = re.compile(
     rb"\r\n(?P<type>Gecko|\w+ Serial) Bootloader v(?P<version>.*?)\r\n"
@@ -45,7 +81,7 @@ class State(str, enum.Enum):
     WAITING_FOR_MENU = "waiting_for_menu"
     IN_MENU = "in_menu"
     WAITING_XMODEM_READY = "waiting_xmodem_ready"
-    XMODEM_READY = "xmodem_ready"
+    XMODEM_UPLOADING = "xmodem_uploading"
     WAITING_UPLOAD_DONE = "waiting_upload_done"
     UPLOAD_DONE = "upload_done"
 
@@ -66,11 +102,31 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self._version: str | None = None
         self._upload_status: str | None = None
 
+        # XMODEM state
+        self._xmodem_firmware: bytes | None = None
+        self._xmodem_chunk_index: int = 0
+        self._xmodem_total_chunks: int = 0
+        self._xmodem_retries: int = 0
+        self._xmodem_max_retries: int = 0
+        self._xmodem_progress_callback: (
+            typing.Callable[[int, int], typing.Any] | None
+        ) = None
+        self._xmodem_completion_future: asyncio.Future[None] | None = None
+        self._xmodem_timeout_handle: asyncio.TimerHandle | None = None
+
     def connection_lost(self, exc: Exception | None) -> None:
         super().connection_lost(exc)
         self._state_machine.cancel_all_futures(
             exc or RuntimeError("Connection has been lost")
         )
+
+        if self._xmodem_completion_future and not self._xmodem_completion_future.done():
+            self._xmodem_completion_future.set_exception(
+                exc or RuntimeError("Connection has been lost")
+            )
+
+        if self._xmodem_timeout_handle:
+            self._xmodem_timeout_handle.cancel()
 
     async def probe(self) -> Version:
         """Attempt to communicate with the bootloader."""
@@ -107,6 +163,57 @@ class GeckoBootloaderProtocol(SerialProtocol):
         else:
             raise NoFirmwareError("No firmware exists on the device")
 
+    def _xmodem_timeout_cb(self) -> None:
+        """XMODEM receive timeout."""
+        self._xmodem_timeout_handle = None
+        _LOGGER.debug("XMODEM receive timeout")
+        self._xmodem_retry_chunk()
+
+    def _xmodem_retry_chunk(self) -> None:
+        """Retry sending the current XMODEM chunk."""
+        if self._xmodem_retries >= self._xmodem_max_retries:
+            self._xmodem_abort(
+                ValueError(f"Received {self._xmodem_max_retries} consecutive failures")
+            )
+            return
+
+        self._xmodem_retries += 1
+        _LOGGER.debug(
+            "Retrying chunk %d (attempt %d)",
+            self._xmodem_chunk_index,
+            self._xmodem_retries,
+        )
+        self._xmodem_send_chunk_or_eot()
+
+    def _xmodem_abort(self, exc: Exception) -> None:
+        """Abort XMODEM transfer."""
+        if self._xmodem_completion_future and not self._xmodem_completion_future.done():
+            self._xmodem_completion_future.set_exception(exc)
+
+        if self._xmodem_timeout_handle:
+            self._xmodem_timeout_handle.cancel()
+            self._xmodem_timeout_handle = None
+
+    def _xmodem_send_chunk_or_eot(self) -> None:
+        """Send the current XMODEM chunk or EOT if done."""
+        if self._xmodem_chunk_index >= self._xmodem_total_chunks:
+            _LOGGER.debug("Sending EOT")
+            self.send_data(bytes([XModemPacketType.EOT]))
+        else:
+            _LOGGER.debug("Sending chunk %d", self._xmodem_chunk_index)
+            packet = XmodemCRCPacket(
+                number=(self._xmodem_chunk_index + 1) & 0xFF,
+                payload=self._xmodem_firmware[
+                    XMODEM_BLOCK_SIZE * self._xmodem_chunk_index : XMODEM_BLOCK_SIZE
+                    * (self._xmodem_chunk_index + 1)
+                ],
+            )
+            self.send_data(packet.serialize())
+
+        self._xmodem_timeout_handle = self.loop.call_later(
+            XMODEM_RECEIVE_TIMEOUT, self._xmodem_timeout_cb
+        )
+
     async def upload_firmware(
         self,
         firmware: bytes,
@@ -122,19 +229,31 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self.send_data(GeckoBootloaderOption.UPLOAD_FIRMWARE)
 
         # Wait for the XMODEM `C` byte
-        await self._state_machine.wait_for_state(State.XMODEM_READY)
+        await self._state_machine.wait_for_state(State.XMODEM_UPLOADING)
 
-        # Swap protocols and transfer the data
-        self._upload_status = None
+        # Set up XMODEM state
+        self._xmodem_firmware = firmware
+        self._xmodem_chunk_index = 0
+        self._xmodem_total_chunks = len(firmware) // XMODEM_BLOCK_SIZE
+        self._xmodem_retries = 0
+        self._xmodem_max_retries = max_failures
+        self._xmodem_progress_callback = progress_callback
+        self._xmodem_completion_future = self.loop.create_future()
+
+        if self._xmodem_progress_callback is not None:
+            self._xmodem_progress_callback(0, len(self._xmodem_firmware))
+
+        # Start the transfer
+        self._xmodem_send_chunk_or_eot()
+
+        # Wait for transfer to complete
+        await self._xmodem_completion_future
+
+        # Clean up XMODEM state
+        self._xmodem_firmware = None
+        self._xmodem_completion_future = None
+
         self._state_machine.state = State.WAITING_UPLOAD_DONE
-
-        await send_xmodem128_crc(
-            firmware,
-            transport=self._transport,
-            max_failures=max_failures,
-            progress_callback=progress_callback,
-        )
-
         await self._state_machine.wait_for_state(State.UPLOAD_DONE)
         self._state_machine.state = State.WAITING_FOR_MENU
 
@@ -175,7 +294,52 @@ class GeckoBootloaderProtocol(SerialProtocol):
                     break
 
                 self._buffer.clear()
-                self._state_machine.state = State.XMODEM_READY
+                self._state_machine.state = State.XMODEM_UPLOADING
+            elif self._state_machine.state == State.XMODEM_UPLOADING:
+                if not self._buffer:
+                    return
+
+                # Cancel timeout
+                if self._xmodem_timeout_handle:
+                    self._xmodem_timeout_handle.cancel()
+                    self._xmodem_timeout_handle = None
+
+                response, self._buffer = self._buffer[0], self._buffer[1:]
+
+                if response == XModemPacketType.ACK:
+                    if self._xmodem_chunk_index >= self._xmodem_total_chunks:
+                        # EOT was ACKed
+                        if (
+                            self._xmodem_completion_future
+                            and not self._xmodem_completion_future.done()
+                        ):
+                            self._xmodem_completion_future.set_result(None)
+                        return
+
+                    offset = (self._xmodem_chunk_index + 1) * XMODEM_BLOCK_SIZE
+                    if self._xmodem_progress_callback is not None:
+                        self._xmodem_progress_callback(
+                            offset, len(self._xmodem_firmware)
+                        )
+
+                    _LOGGER.debug(
+                        "Firmware upload progress: %0.2f%%",
+                        100 * offset / len(self._xmodem_firmware),
+                    )
+
+                    self._xmodem_chunk_index += 1
+                    self._xmodem_retries = 0
+                    self._xmodem_send_chunk_or_eot()
+                elif response == XModemPacketType.NAK:
+                    _LOGGER.debug("Got a NAK, retrying")
+                    self._xmodem_retry_chunk()
+                elif response == XModemPacketType.CAN:
+                    self._xmodem_abort(ReceiverCancelled())
+                else:
+                    _LOGGER.warning("Invalid XMODEM response: %r", response)
+                    # Treat as a failure and retry
+                    self._xmodem_retry_chunk()
+
             elif self._state_machine.state == State.WAITING_UPLOAD_DONE:
                 match = UPLOAD_STATUS_REGEX.search(self._buffer)
 

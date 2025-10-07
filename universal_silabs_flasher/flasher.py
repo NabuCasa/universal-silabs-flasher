@@ -29,11 +29,14 @@ from .const import (
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
 from .firmware import FirmwareImage
-from .gecko_bootloader import GeckoBootloaderProtocol, NoFirmwareError
+from .gecko_bootloader import (
+    XMODEM_BLOCK_SIZE,
+    GeckoBootloaderProtocol,
+    NoFirmwareError,
+)
 from .gpio import find_gpiochip_by_label, send_gpio_pattern
 from .router import RouterProtocol
 from .spinel import SpinelProtocol
-from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE
 
 _LOGGER = logging.getLogger(__name__)
 

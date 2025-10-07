@@ -25,7 +25,7 @@ from .const import (
 )
 from .firmware import FirmwareImageType, parse_firmware_image
 from .flasher import Flasher
-from .xmodemcrc import BLOCK_SIZE as XMODEM_BLOCK_SIZE, ReceiverCancelled
+from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 _LOGGER = logging.getLogger(__name__)
 LOG_LEVELS = ["INFO", "DEBUG"]
