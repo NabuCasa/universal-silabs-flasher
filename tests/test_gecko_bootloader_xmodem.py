@@ -511,3 +511,39 @@ async def test_xmodem_task_cancellation() -> None:
 
     with pytest.raises(asyncio.CancelledError):
         await upload_task
+
+
+async def test_xmodem_reverts_to_line_parsing() -> None:
+    """Test that the client reverts to line-based parsing after an upload."""
+    client, conversation = await create_test_pair()
+    received_firmware = bytearray()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # Full transfer
+    for i in range(len(FIRMWARE) // XMODEM_BLOCK_SIZE):
+        payload = await conversation.expect_packet(number=(i + 1) & 0xFF)
+        received_firmware.extend(payload)
+        await conversation.send_ack()
+
+    await conversation.expect_eot()
+    await conversation.send_ack()
+
+    # Send the upload complete and menu messages back-to-back
+    await conversation.send_upload_complete()
+    await conversation.send_menu()
+
+    # The upload task should complete successfully
+    async with asyncio_timeout(1):
+        await upload_task
+
+    assert received_firmware == FIRMWARE
+    assert client._state_machine.state == "in_menu"

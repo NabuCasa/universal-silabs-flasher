@@ -263,10 +263,9 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self._xmodem_firmware = None
         self._xmodem_completion_future = None
 
-        await self._state_machine.wait_for_state(State.UPLOAD_DONE)
-        self._state_machine.state = State.WAITING_FOR_MENU
-
-        # The menu is sometimes sent immediately after upload
+        # After XMODEM completes, data_received processes the upload status message
+        # and transitions: UPLOAD_DONE -> WAITING_FOR_MENU -> IN_MENU.
+        # (if menu is buffered). The menu is sometimes sent immediately after upload.
         try:
             async with asyncio_timeout(MENU_AFTER_UPLOAD_TIMEOUT):
                 await self._state_machine.wait_for_state(State.IN_MENU)
@@ -345,28 +344,30 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
         while self._buffer:
             _LOGGER.debug("Parsing %s: %r", self._state_machine.state, self._buffer)
-            if self._state_machine.state == State.WAITING_FOR_MENU:
+            current_state = self._state_machine.state
+
+            if current_state == State.WAITING_FOR_MENU:
                 match = MENU_REGEX.search(self._buffer)
 
                 if match is None:
-                    return
+                    break
 
                 self._version = match.group("version").decode("ascii")
                 _LOGGER.debug("Detected version string %r", self._version)
 
                 self._buffer.clear()
                 self._state_machine.state = State.IN_MENU
-            elif self._state_machine.state == State.WAITING_XMODEM_READY:
+            elif current_state == State.WAITING_XMODEM_READY:
                 if not self._buffer.endswith(b"C"):
                     break
 
                 self._buffer.clear()
                 self._state_machine.state = State.XMODEM_UPLOADING
-            elif self._state_machine.state == State.WAITING_UPLOAD_DONE:
+            elif current_state == State.WAITING_UPLOAD_DONE:
                 match = UPLOAD_STATUS_REGEX.search(self._buffer)
 
                 if match is None:
-                    return
+                    break
 
                 status = match.group("status").decode("ascii")
 
@@ -379,6 +380,13 @@ class GeckoBootloaderProtocol(SerialProtocol):
                 self._state_machine.state = State.UPLOAD_DONE
 
                 _LOGGER.debug("Upload status: %s", self._upload_status)
-            else:
-                # Ignore data otherwise
-                break
+            elif current_state == State.UPLOAD_DONE:
+                # Transition to waiting for menu and continue processing buffer
+                self._state_machine.state = State.WAITING_FOR_MENU
+
+            # If the state changed, re-evaluate the loop with the new state
+            if self._state_machine.state != current_state:
+                continue
+
+            # Otherwise, we need more data
+            break
