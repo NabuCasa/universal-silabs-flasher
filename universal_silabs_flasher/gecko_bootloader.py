@@ -287,10 +287,15 @@ class GeckoBootloaderProtocol(SerialProtocol):
         if not self._buffer:
             return
 
-        # Cancel timeout
-        if self._xmodem_timeout_handle:
-            self._xmodem_timeout_handle.cancel()
-            self._xmodem_timeout_handle = None
+        # If we are not waiting for a response, this is spurious data
+        if self._xmodem_timeout_handle is None:
+            _LOGGER.debug("Ignoring spurious XMODEM data: %r", self._buffer)
+            self._buffer.clear()
+            return
+
+        # We are waiting for a response, so cancel the timeout
+        self._xmodem_timeout_handle.cancel()
+        self._xmodem_timeout_handle = None
 
         response, self._buffer = self._buffer[0], self._buffer[1:]
         self._buffer.clear()  # Clear any trailing garbage
