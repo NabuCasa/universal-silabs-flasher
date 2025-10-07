@@ -282,8 +282,61 @@ class GeckoBootloaderProtocol(SerialProtocol):
         _LOGGER.debug("Sending data %s", data)
         self._transport.write(data)
 
+    def _handle_xmodem_response(self) -> None:
+        """Handle a single byte response from the receiver."""
+        if not self._buffer:
+            return
+
+        # Cancel timeout
+        if self._xmodem_timeout_handle:
+            self._xmodem_timeout_handle.cancel()
+            self._xmodem_timeout_handle = None
+
+        response, self._buffer = self._buffer[0], self._buffer[1:]
+        self._buffer.clear()  # Clear any trailing garbage
+
+        if response == XModemPacketType.ACK:
+            if self._xmodem_chunk_index >= self._xmodem_total_chunks:
+                # EOT was ACKed
+                if (
+                    self._xmodem_completion_future
+                    and not self._xmodem_completion_future.done()
+                ):
+                    self._xmodem_completion_future.set_result(None)
+                self._state_machine.state = State.WAITING_UPLOAD_DONE
+                # Process the rest of the buffer for the upload complete message
+                self.data_received(b"")
+                return
+
+            assert self._xmodem_firmware is not None
+            offset = (self._xmodem_chunk_index + 1) * XMODEM_BLOCK_SIZE
+            if self._xmodem_progress_callback is not None:
+                self._xmodem_progress_callback(offset, len(self._xmodem_firmware))
+
+            _LOGGER.debug(
+                "Firmware upload progress: %0.2f%%",
+                100 * offset / len(self._xmodem_firmware),
+            )
+
+            self._xmodem_chunk_index += 1
+            self._xmodem_retries = 0
+            self._xmodem_send_chunk_or_eot()
+        elif response == XModemPacketType.NAK:
+            _LOGGER.debug("Got a NAK, retrying")
+            self._xmodem_retry_chunk()
+        elif response == XModemPacketType.CAN:
+            self._xmodem_abort(ReceiverCancelled())
+        else:
+            _LOGGER.warning("Invalid XMODEM response: %r", response)
+            # Treat as a failure and retry
+            self._xmodem_retry_chunk()
+
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
+
+        if self._state_machine.state == State.XMODEM_UPLOADING:
+            self._handle_xmodem_response()
+            return
 
         while self._buffer:
             _LOGGER.debug("Parsing %s: %r", self._state_machine.state, self._buffer)
@@ -304,52 +357,6 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
                 self._buffer.clear()
                 self._state_machine.state = State.XMODEM_UPLOADING
-            elif self._state_machine.state == State.XMODEM_UPLOADING:
-                if not self._buffer:
-                    return
-
-                # Cancel timeout
-                if self._xmodem_timeout_handle:
-                    self._xmodem_timeout_handle.cancel()
-                    self._xmodem_timeout_handle = None
-
-                response, self._buffer = self._buffer[0], self._buffer[1:]
-
-                if response == XModemPacketType.ACK:
-                    if self._xmodem_chunk_index >= self._xmodem_total_chunks:
-                        # EOT was ACKed
-                        if (
-                            self._xmodem_completion_future
-                            and not self._xmodem_completion_future.done()
-                        ):
-                            self._xmodem_completion_future.set_result(None)
-                        self._state_machine.state = State.WAITING_UPLOAD_DONE
-                        continue
-
-                    offset = (self._xmodem_chunk_index + 1) * XMODEM_BLOCK_SIZE
-                    if self._xmodem_progress_callback is not None:
-                        self._xmodem_progress_callback(
-                            offset, len(self._xmodem_firmware)
-                        )
-
-                    _LOGGER.debug(
-                        "Firmware upload progress: %0.2f%%",
-                        100 * offset / len(self._xmodem_firmware),
-                    )
-
-                    self._xmodem_chunk_index += 1
-                    self._xmodem_retries = 0
-                    self._xmodem_send_chunk_or_eot()
-                elif response == XModemPacketType.NAK:
-                    _LOGGER.debug("Got a NAK, retrying")
-                    self._xmodem_retry_chunk()
-                elif response == XModemPacketType.CAN:
-                    self._xmodem_abort(ReceiverCancelled())
-                else:
-                    _LOGGER.warning("Invalid XMODEM response: %r", response)
-                    # Treat as a failure and retry
-                    self._xmodem_retry_chunk()
-
             elif self._state_machine.state == State.WAITING_UPLOAD_DONE:
                 match = UPLOAD_STATUS_REGEX.search(self._buffer)
 

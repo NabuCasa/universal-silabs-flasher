@@ -332,6 +332,92 @@ async def test_xmodem_too_many_retries() -> None:
             await upload_task
 
 
+async def test_xmodem_delayed_ack() -> None:
+    """Test an XMODEM transfer with a delayed ACK."""
+    client, conversation = await create_test_pair()
+    received_firmware = bytearray()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # First packet gets a delayed ACK
+    payload = await conversation.expect_packet(number=1)
+    received_firmware.extend(payload)
+    await asyncio.sleep(1)
+    await conversation.send_ack()
+
+    # The rest are OK
+    for i in range(1, len(FIRMWARE) // XMODEM_BLOCK_SIZE):
+        payload = await conversation.expect_packet(number=(i + 1) & 0xFF)
+        received_firmware.extend(payload)
+        await conversation.send_ack()
+
+    await conversation.expect_eot()
+    await conversation.send_ack()
+    await conversation.send_upload_complete()
+
+    # Final menu prompt
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    async with asyncio_timeout(2):
+        await upload_task
+
+    assert received_firmware == FIRMWARE
+
+
+async def test_xmodem_ack_with_garbage() -> None:
+    """Test that the client handles an ACK followed by garbage."""
+    client, conversation = await create_test_pair()
+    received_firmware = bytearray()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # First packet is OK
+    payload = await conversation.expect_packet(number=1)
+    received_firmware.extend(payload)
+    await conversation.send_ack()
+
+    # Second packet gets an ACK with garbage
+    payload = await conversation.expect_packet(number=2)
+    received_firmware.extend(payload)
+    await conversation.send(b"\x06JUNK")
+
+    # The rest are OK
+    for i in range(2, len(FIRMWARE) // XMODEM_BLOCK_SIZE):
+        payload = await conversation.expect_packet(number=(i + 1) & 0xFF)
+        received_firmware.extend(payload)
+        await conversation.send_ack()
+
+    await conversation.expect_eot()
+    await conversation.send_ack()
+    await conversation.send_upload_complete()
+
+    # Final menu prompt
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    async with asyncio_timeout(1):
+        await upload_task
+
+    assert received_firmware == FIRMWARE
+
+
 async def test_xmodem_multiple_c_bytes() -> None:
     """Test that the client handles multiple `C` bytes from the bootloader."""
     client, conversation = await create_test_pair()
