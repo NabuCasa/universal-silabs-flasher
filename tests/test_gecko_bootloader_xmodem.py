@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import pathlib
 
 import pytest
 
-from universal_silabs_flasher.common import crc16_ccitt
+from universal_silabs_flasher.common import crc16_ccitt, pad_to_multiple
 from universal_silabs_flasher.gecko_bootloader import (
     XMODEM_BLOCK_SIZE,
     GeckoBootloaderOption,
@@ -16,7 +17,14 @@ from universal_silabs_flasher.gecko_bootloader import (
 
 _LOGGER = logging.getLogger(__name__)
 
-FIRMWARE = b"\xaa" * 128 * 8
+FIRMWARE = pad_to_multiple(
+    (
+        pathlib.Path(__file__).parent / "firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl"
+    ).read_bytes(),
+    XMODEM_BLOCK_SIZE,
+    b"\xff",
+)
+assert len(FIRMWARE) % XMODEM_BLOCK_SIZE == 0
 
 
 class PairedTransport(asyncio.Transport):
