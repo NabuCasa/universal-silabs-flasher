@@ -416,9 +416,8 @@ async def test_xmodem_too_many_retries() -> None:
 
 
 async def test_xmodem_ack_with_garbage() -> None:
-    """Test that the client handles an ACK followed by garbage."""
+    """Test that the client handles invalid XMODEM responses."""
     client, conversation = await create_test_pair()
-    received_firmware = bytearray()
 
     upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
 
@@ -431,17 +430,16 @@ async def test_xmodem_ack_with_garbage() -> None:
     await conversation.send(b"C")
 
     # First packet is OK
-    payload = await conversation.expect_packet(number=1)
-    received_firmware.extend(payload)
+    await conversation.expect_packet(number=1)
     await conversation.send_ack()
 
-    # Second packet gets an ACK with garbage
-    payload = await conversation.expect_packet(number=2)
-    received_firmware.extend(payload)
-    await conversation.send(b"\x06JUNK")
+    # Send invalid responses (not ACK, NAK, or CAN) - should retry and eventually fail
+    for i in range(4):
+        await conversation.expect_packet(number=2)
+        await conversation.send(b"\xff")  # Invalid response
 
-    # The upload fails
-    with pytest.raises(UploadError):
+    # The upload fails due to too many retries
+    with pytest.raises(UploadError, match="Received 3 consecutive failures"):
         await upload_task
 
 
@@ -637,6 +635,68 @@ async def test_xmodem_can_during_transfer() -> None:
         await upload_task
 
 
+async def test_xmodem_empty_buffer_during_transfer() -> None:
+    """Test that empty data during XMODEM transfer is handled gracefully."""
+    client, conversation = await create_test_pair()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # First packet is OK
+    await conversation.expect_packet(number=1)
+    # Send empty data (should be ignored due to empty buffer check)
+    await conversation.send(b"")
+    # Then send ACK
+    await conversation.send_ack()
+
+    # Continue with rest of transfer
+    for i in range(1, len(FIRMWARE) // XMODEM_BLOCK_SIZE):
+        await conversation.expect_packet(number=(i + 1) & 0xFF)
+        await conversation.send_ack()
+
+    await conversation.expect_eot()
+    await conversation.send_ack()
+    await conversation.send_upload_complete()
+    await conversation.send_menu()
+
+    async with asyncio_timeout(1):
+        await upload_task
+
+
+async def test_xmodem_abort_with_pending_timeout() -> None:
+    """Test that abort properly cancels pending timeout."""
+    client, conversation = await create_test_pair()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # First packet - send it but don't respond yet
+    await conversation.expect_packet(number=1)
+
+    # At this point, a timeout is pending. Manually trigger abort.
+    # This exercises the timeout cancellation in _xmodem_abort()
+    error = UploadError("Manual abort test")
+    client._xmodem_abort(error)
+
+    # The upload should fail with our error
+    with pytest.raises(UploadError, match="Manual abort test"):
+        await upload_task
+
+
 async def test_xmodem_reverts_to_line_parsing() -> None:
     """Test that the client reverts to line-based parsing after an upload."""
     client, conversation = await create_test_pair()
@@ -743,4 +803,53 @@ async def test_xmodem_reverts_to_line_parsing_with_write_aggregation() -> None:
         await upload_task
 
     assert received_firmware == FIRMWARE
+    assert client._state_machine.state == "in_menu"
+
+
+async def test_parser_needs_more_data() -> None:
+    """Test that parser correctly waits when it needs more data."""
+    client, conversation = await create_test_pair()
+
+    # Start the ebl_info query
+    info_task = asyncio.create_task(client.ebl_info())
+
+    # Expect the command
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+
+    # Send partial menu data that won't match the regex yet
+    partial_menu = b"\r\nGecko Bootloader v1.12.1\r\n1. upload"
+    await conversation.send(partial_menu)
+
+    # Give the parser a moment to process
+    await asyncio.sleep(0.1)
+
+    # The state should still be WAITING_FOR_MENU since we don't have a complete menu
+    assert client._state_machine.state == "waiting_for_menu"
+
+    # Now send the rest of the menu
+    rest_of_menu = b" gbl\r\n2. run\r\n3. ebl info\r\nBL > "
+    await conversation.send(rest_of_menu)
+
+    # The info task should complete
+    async with asyncio_timeout(1):
+        await info_task
+
+
+async def test_spurious_data_in_menu() -> None:
+    """Test that spurious data while in IN_MENU state is ignored."""
+    client, conversation = await create_test_pair()
+
+    # Get into IN_MENU state
+    info_task = asyncio.create_task(client.ebl_info())
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+    await info_task
+
+    # Now we're in IN_MENU state. Send some spurious data.
+    await conversation.send(b"xyz")
+
+    # Give the parser a moment to process
+    await asyncio.sleep(0.1)
+
+    # Should still be in IN_MENU, just ignoring the spurious data
     assert client._state_machine.state == "in_menu"
