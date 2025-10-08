@@ -24,14 +24,15 @@ else:
 
 _LOGGER = logging.getLogger(__name__)
 
-FIRMWARE = pad_to_multiple(
+FULL_FIRMWARE = pad_to_multiple(
     (
         pathlib.Path(__file__).parent / "firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl"
     ).read_bytes(),
     XMODEM_BLOCK_SIZE,
     b"\xff",
 )
-assert len(FIRMWARE) % XMODEM_BLOCK_SIZE == 0
+
+FIRMWARE = FULL_FIRMWARE[: 100 * XMODEM_BLOCK_SIZE]
 
 
 class PairedTransport(asyncio.Transport):
@@ -42,26 +43,68 @@ class PairedTransport(asyncio.Transport):
         other_protocol: asyncio.Protocol,
         loop: asyncio.AbstractEventLoop,
         chunk_size: int | None = None,
+        aggregate_write_timeout: float | None = None,
     ) -> None:
         super().__init__()
         self._other_protocol = other_protocol
         self._loop = loop
         self._closing = False
         self._chunk_size = chunk_size
+        self._aggregate_write_timeout = aggregate_write_timeout
+        self._aggregate_buffer = bytearray()
+        self._aggregate_timer_handle: asyncio.TimerHandle | None = None
 
-    def write(self, data: bytes) -> None:
+    def _flush_aggregate_buffer(self) -> None:
+        """Flush the aggregated write buffer."""
+        self._aggregate_timer_handle = None
+
+        if not self._aggregate_buffer:
+            return
+
+        data = bytes(self._aggregate_buffer)
+        self._aggregate_buffer.clear()
+
         _LOGGER.debug(
-            "Writing to %s: %r", self._other_protocol.__class__.__name__, data
+            "Flushing aggregated data to %s: %r",
+            self._other_protocol.__class__.__name__,
+            data,
         )
 
         if self._chunk_size is None:
-            # Send all at once (default behavior)
+            # Send all at once
             self._loop.call_soon(self._other_protocol.data_received, data)
         else:
             # Send in chunks of specified size
             for i in range(0, len(data), self._chunk_size):
                 chunk = data[i : i + self._chunk_size]
                 self._loop.call_soon(self._other_protocol.data_received, chunk)
+
+    def write(self, data: bytes) -> None:
+        _LOGGER.debug(
+            "Writing to %s: %r", self._other_protocol.__class__.__name__, data
+        )
+
+        if self._aggregate_write_timeout is None:
+            # No aggregation, send immediately
+            if self._chunk_size is None:
+                # Send all at once (default behavior)
+                self._loop.call_soon(self._other_protocol.data_received, data)
+            else:
+                # Send in chunks of specified size
+                for i in range(0, len(data), self._chunk_size):
+                    chunk = data[i : i + self._chunk_size]
+                    self._loop.call_soon(self._other_protocol.data_received, chunk)
+        else:
+            # Aggregate writes within timeout window
+            self._aggregate_buffer.extend(data)
+
+            # Cancel existing timer and schedule a new one
+            if self._aggregate_timer_handle is not None:
+                self._aggregate_timer_handle.cancel()
+
+            self._aggregate_timer_handle = self._loop.call_later(
+                self._aggregate_write_timeout, self._flush_aggregate_buffer
+            )
 
     def is_closing(self) -> bool:
         return self._closing
@@ -70,6 +113,15 @@ class PairedTransport(asyncio.Transport):
         if self._closing:
             return
         self._closing = True
+
+        # Flush any pending aggregated data
+        if self._aggregate_timer_handle is not None:
+            self._aggregate_timer_handle.cancel()
+            self._aggregate_timer_handle = None
+
+        if self._aggregate_buffer:
+            self._flush_aggregate_buffer()
+
         _LOGGER.debug(
             "Closing transport for %s", self._other_protocol.__class__.__name__
         )
@@ -155,14 +207,25 @@ class Conversation(asyncio.Protocol):
 
 async def create_test_pair(
     chunk_size: int | None = None,
+    aggregate_write_timeout: float | None = None,
 ) -> tuple[GeckoBootloaderProtocol, Conversation]:
     """Creates a connected pair of a client protocol and a conversation helper."""
     loop = asyncio.get_running_loop()
     client = GeckoBootloaderProtocol()
     conversation = Conversation(loop)
 
-    client_transport = PairedTransport(conversation, loop, chunk_size=chunk_size)
-    server_transport = PairedTransport(client, loop, chunk_size=chunk_size)
+    client_transport = PairedTransport(
+        conversation,
+        loop,
+        chunk_size=chunk_size,
+        aggregate_write_timeout=aggregate_write_timeout,
+    )
+    server_transport = PairedTransport(
+        client,
+        loop,
+        chunk_size=chunk_size,
+        aggregate_write_timeout=aggregate_write_timeout,
+    )
 
     client.connection_made(client_transport)
     conversation.connection_made(server_transport)
@@ -176,7 +239,7 @@ async def test_xmodem_happy_path() -> None:
     received_firmware = bytearray()
 
     # Start the upload and script the conversation
-    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+    upload_task = asyncio.create_task(client.upload_firmware(FULL_FIRMWARE))
 
     # The client automatically queries for info, so reply with a menu
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
@@ -185,7 +248,7 @@ async def test_xmodem_happy_path() -> None:
     await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
     await conversation.send(b"C")
 
-    for i in range(len(FIRMWARE) // XMODEM_BLOCK_SIZE):
+    for i in range(len(FULL_FIRMWARE) // XMODEM_BLOCK_SIZE):
         payload = await conversation.expect_packet(number=(i + 1) & 0xFF)
         received_firmware.extend(payload)
         await conversation.send_ack()
@@ -201,7 +264,7 @@ async def test_xmodem_happy_path() -> None:
     async with asyncio_timeout(1):
         await upload_task
 
-    assert received_firmware == FIRMWARE
+    assert received_firmware == FULL_FIRMWARE
 
 
 async def test_xmodem_with_retries() -> None:
@@ -586,6 +649,43 @@ async def test_xmodem_reverts_to_line_parsing_byte_by_byte() -> None:
     await conversation.send_ack()
 
     # Send the upload complete and menu messages back-to-back
+    await conversation.send_upload_complete()
+    await conversation.send_menu()
+
+    # The upload task should complete successfully
+    async with asyncio_timeout(1):
+        await upload_task
+
+    assert received_firmware == FIRMWARE
+    assert client._state_machine.state == "in_menu"
+
+
+async def test_xmodem_reverts_to_line_parsing_with_write_aggregation() -> None:
+    """Test line-based parsing after upload with write aggregation."""
+    client, conversation = await create_test_pair(aggregate_write_timeout=0.05)
+    received_firmware = bytearray()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # Full transfer
+    for i in range(len(FIRMWARE) // XMODEM_BLOCK_SIZE):
+        payload = await conversation.expect_packet(number=(i + 1) & 0xFF)
+        received_firmware.extend(payload)
+        await conversation.send_ack()
+
+    await conversation.expect_eot()
+    await conversation.send_ack()
+
+    # Send the upload complete and menu messages back-to-back
+    # With write aggregation, these should be buffered and delivered together
     await conversation.send_upload_complete()
     await conversation.send_menu()
 
