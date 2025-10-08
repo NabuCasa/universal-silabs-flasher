@@ -4,6 +4,7 @@ import asyncio
 import logging
 import pathlib
 import sys
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -238,9 +239,12 @@ async def test_xmodem_happy_path() -> None:
     """Test a successful XMODEM transfer."""
     client, conversation = await create_test_pair()
     received_firmware = bytearray()
+    progress_callback = MagicMock()
 
     # Start the upload and script the conversation
-    upload_task = asyncio.create_task(client.upload_firmware(FULL_FIRMWARE))
+    upload_task = asyncio.create_task(
+        client.upload_firmware(FULL_FIRMWARE, progress_callback=progress_callback)
+    )
 
     # The client automatically queries for info, so reply with a menu
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
@@ -266,6 +270,10 @@ async def test_xmodem_happy_path() -> None:
         await upload_task
 
     assert received_firmware == FULL_FIRMWARE
+    assert progress_callback.mock_calls == [
+        call(i * XMODEM_BLOCK_SIZE, len(FULL_FIRMWARE))
+        for i in range(1 + len(FULL_FIRMWARE) // XMODEM_BLOCK_SIZE)
+    ]
 
 
 async def test_xmodem_with_retries() -> None:
@@ -570,6 +578,62 @@ async def test_xmodem_task_cancellation() -> None:
     upload_task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
+        await upload_task
+
+
+async def test_xmodem_connection_lost() -> None:
+    """Test that the client handles connection loss during XMODEM transfer."""
+    client, conversation = await create_test_pair()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # First packet is OK
+    await conversation.expect_packet(number=1)
+    await conversation.send_ack()
+
+    # Second packet is sent, but connection is lost before response
+    await conversation.expect_packet(number=2)
+
+    # Simulate connection loss (disconnect) by calling connection_lost directly
+    client.connection_lost(None)
+
+    # The upload should fail with connection lost error
+    with pytest.raises(RuntimeError, match="Connection has been lost"):
+        await upload_task
+
+
+async def test_xmodem_can_during_transfer() -> None:
+    """Test that the client handles CAN (cancel) byte during transfer."""
+    client, conversation = await create_test_pair()
+
+    upload_task = asyncio.create_task(client.upload_firmware(FIRMWARE))
+
+    # Initial info query
+    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
+    await conversation.send_menu()
+
+    # Upload command
+    await conversation.expect_command(GeckoBootloaderOption.UPLOAD_FIRMWARE)
+    await conversation.send(b"C")
+
+    # First packet is OK
+    await conversation.expect_packet(number=1)
+    await conversation.send_ack()
+
+    # Second packet gets a CAN response
+    await conversation.expect_packet(number=2)
+    await conversation.send(bytes([XModemPacketType.CAN]))
+
+    # The upload should fail with ReceiverCancelled
+    with pytest.raises(ReceiverCancelled):
         await upload_task
 
 
