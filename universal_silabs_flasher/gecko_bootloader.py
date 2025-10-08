@@ -180,7 +180,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
         """Retry sending the current XMODEM chunk."""
         if self._xmodem_retries >= self._xmodem_max_retries:
             self._xmodem_abort(
-                ValueError(f"Received {self._xmodem_max_retries} consecutive failures")
+                UploadError(f"Received {self._xmodem_max_retries} consecutive failures")
             )
             return
 
@@ -296,12 +296,12 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self._xmodem_timeout_handle.cancel()
         self._xmodem_timeout_handle = None
 
-        response, self._buffer = self._buffer[0], self._buffer[1:]
-        self._buffer.clear()  # Clear any trailing garbage
+        response = self._buffer[0]
+        self._buffer = self._buffer[1:]
 
         if response == XModemPacketType.ACK:
             if self._xmodem_chunk_index >= self._xmodem_total_chunks:
-                # EOT was ACKed
+                # EOT was ACKed - keep buffer intact as upload complete/menu may follow
                 if (
                     self._xmodem_completion_future
                     and not self._xmodem_completion_future.done()

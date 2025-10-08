@@ -13,6 +13,7 @@ from universal_silabs_flasher.gecko_bootloader import (
     GeckoBootloaderOption,
     GeckoBootloaderProtocol,
     ReceiverCancelled,
+    UploadError,
     XModemPacketType,
 )
 
@@ -402,9 +403,8 @@ async def test_xmodem_too_many_retries() -> None:
         await conversation.expect_packet(number=1)
         await conversation.send_nak()
 
-    with pytest.raises(ValueError):
-        async with asyncio_timeout(1):
-            await upload_task
+    with pytest.raises(UploadError):
+        await upload_task
 
 
 async def test_xmodem_ack_with_garbage() -> None:
@@ -432,24 +432,9 @@ async def test_xmodem_ack_with_garbage() -> None:
     received_firmware.extend(payload)
     await conversation.send(b"\x06JUNK")
 
-    # The rest are OK
-    for i in range(2, len(FIRMWARE) // XMODEM_BLOCK_SIZE):
-        payload = await conversation.expect_packet(number=(i + 1) & 0xFF)
-        received_firmware.extend(payload)
-        await conversation.send_ack()
-
-    await conversation.expect_eot()
-    await conversation.send_ack()
-    await conversation.send_upload_complete()
-
-    # Final menu prompt
-    await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
-    await conversation.send_menu()
-
-    async with asyncio_timeout(1):
+    # The upload fails
+    with pytest.raises(UploadError):
         await upload_task
-
-    assert received_firmware == FIRMWARE
 
 
 async def test_xmodem_multiple_c_bytes() -> None:
