@@ -27,7 +27,7 @@ class ReceiverCancelled(UploadError):
     """Receiver cancelled the transmission with a `CAN` status."""
 
 
-MENU_AFTER_UPLOAD_TIMEOUT = 0.5
+MENU_AFTER_UPLOAD_TIMEOUT = 1.0
 RUN_APPLICATION_DELAY = 2.0
 XMODEM_BLOCK_SIZE = 128
 XMODEM_RECEIVE_TIMEOUT = 2
