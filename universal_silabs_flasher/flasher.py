@@ -263,6 +263,9 @@ class Flasher:
         # running application afterwards.
         bootloader_probe = await self.trigger_bootloader_reset(run_firmware=True)
 
+        if bootloader_probe is not None:
+            self.bootloader_baudrate = bootloader_probe.baudrate
+
         for probe_method, baudrate in (
             (m, b) for m in types for b in self._baudrates[m]
         ):
