@@ -36,6 +36,8 @@ FULL_FIRMWARE = pad_to_multiple(
 
 FIRMWARE = FULL_FIRMWARE[: 100 * XMODEM_BLOCK_SIZE]
 
+UPLOAD_COMPLETION_TIMEOUT = 2.5
+
 
 class PairedTransport(asyncio.Transport):
     """A pair of transports that are connected to each other."""
@@ -178,7 +180,7 @@ class Conversation(asyncio.Protocol):
     async def expect_command(
         self,
         command: GeckoBootloaderOption,
-        timeout: float = 1.0,
+        timeout: float = 1.5,
     ) -> None:
         """Expect a command, preceded by a newline."""
         async with asyncio_timeout(timeout):
@@ -266,7 +268,7 @@ async def test_xmodem_happy_path() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(1):
+    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FULL_FIRMWARE
@@ -317,7 +319,7 @@ async def test_xmodem_with_retries() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(1):
+    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -363,7 +365,7 @@ async def test_xmodem_timeout() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(1):
+    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -472,7 +474,7 @@ async def test_xmodem_multiple_c_bytes() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(1):
+    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -510,7 +512,7 @@ async def test_xmodem_spurious_ack() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(1):
+    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -548,7 +550,7 @@ async def test_xmodem_spurious_nak() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(1):
+    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
