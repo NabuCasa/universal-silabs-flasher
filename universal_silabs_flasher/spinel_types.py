@@ -218,3 +218,43 @@ class HDLCSpecial(enum.IntEnum):
     XON = 0x11
     XOFF = 0x13
     VENDOR = 0xF8
+
+
+class Status(zigpy.types.enum8):
+    OK = 0  # Operation has completed successfully.
+    FAILURE = 1  # Operation has failed for some undefined reason.
+    UNIMPLEMENTED = 2  # Given operation has not been implemented.
+    INVALID_ARGUMENT = 3  # An argument to the operation is invalid.
+    INVALID_STATE = 4  # This operation is invalid for the current device state.
+    INVALID_COMMAND = 5  # This command is not recognized.
+    INVALID_INTERFACE = 6  # This interface is not supported.
+    INTERNAL_ERROR = 7  # An internal runtime error has occurred.
+    SECURITY_ERROR = 8  # A security/authentication error has occurred.
+    PARSE_ERROR = 9  # A error has occurred while parsing the command.
+    IN_PROGRESS = 10  # This operation is in progress.
+    NOMEM = 11  # Operation prevented due to memory pressure.
+    BUSY = 12  # The device is currently performing a mutually exclusive operation
+    PROP_NOT_FOUND = 13  # The given property is not recognized.
+    DROPPED = 14  # A/The packet was dropped.
+    EMPTY = 15  # The result of the operation is empty.
+    CMD_TOO_BIG = 16  # The command was too large to fit in the internal buffer.
+    NO_ACK = 17  # The packet was not acknowledged.
+    CCA_FAILURE = 18  # The packet was not sent due to a CCA failure.
+    ALREADY = 19  # The operation is already in progress.
+    ITEM_NOT_FOUND = 20  # The given item could not be found.
+    INVALID_COMMAND_FOR_PROP = (
+        21  # The given command cannot be performed on this property.
+    )
+    UNKNOWN_NEIGHBOR = 22  # The neighbor is unknown.
+    NOT_CAPABLE = 23  # The target is not capable of handling requested operation.
+    RESPONSE_TIMEOUT = 24  # No response received from remote node
+
+    RESET_POWER_ON = 112
+    RESET_EXTERNAL = 113
+    RESET_SOFTWARE = 114
+    RESET_FAULT = 115
+    RESET_CRASH = 116
+    RESET_ASSERT = 117
+    RESET_OTHER = 118
+    RESET_UNKNOWN = 119
+    RESET_WATCHDOG = 120

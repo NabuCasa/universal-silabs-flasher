@@ -11,9 +11,18 @@ from zigpy.serial import SerialProtocol
 import zigpy.types
 
 from .common import Version, asyncio_timeout, crc16_kermit
-from .spinel_types import CommandID, HDLCSpecial, PackedUInt21, PropertyID, ResetReason
+from .spinel_types import (
+    CommandID,
+    HDLCSpecial,
+    PackedUInt21,
+    PropertyID,
+    ResetReason,
+    Status,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+RESET_TIMEOUT = 2
 
 
 @dataclasses.dataclass(frozen=True)
@@ -296,6 +305,8 @@ class SpinelProtocol(SerialProtocol):
                 return
 
     async def probe(self) -> Version:
+        await self.reset(ResetReason.STACK)
+
         rsp = await self.send_command(
             CommandID.PROP_VALUE_GET,
             PropertyID.NCP_VERSION.serialize(),
@@ -313,8 +324,23 @@ class SpinelProtocol(SerialProtocol):
         return Version(short_version)
 
     async def enter_bootloader(self) -> None:
+        await self.reset(ResetReason.BOOTLOADER)
+
+    async def reset(self, reset_type: ResetReason) -> None:
         await self.send_command(
             CommandID.RESET,
-            ResetReason.BOOTLOADER.serialize(),
+            reset_type.serialize(),
             wait_response=False,
         )
+
+        if reset_type == ResetReason.BOOTLOADER:
+            return
+
+        try:
+            async with asyncio_timeout(RESET_TIMEOUT):
+                await self.wait_for_property(
+                    PropertyID.LAST_STATUS, Status.RESET_POWER_ON.serialize()
+                )
+        except asyncio.TimeoutError:
+            # OTBR itself uses this logic, we match it
+            _LOGGER.warning("Device did not respond to reset, continuing")
