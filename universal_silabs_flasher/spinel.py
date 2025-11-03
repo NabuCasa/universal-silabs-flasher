@@ -124,15 +124,17 @@ class SpinelProtocol(SerialProtocol):
     def data_received(self, data: bytes) -> None:
         super().data_received(data)
 
-        self._buffer = self._buffer.lstrip(bytes([HDLCSpecial.FLAG]))
-
-        if bytes([HDLCSpecial.FLAG]) not in self._buffer:
-            return
-
         while self._buffer:
-            # Flag bytes can come before and after any packet, any number of times
-            chunk, _, self._buffer = self._buffer.partition(bytes([HDLCSpecial.FLAG]))
+            chunk, flag, self._buffer = self._buffer.partition(
+                bytes([HDLCSpecial.FLAG])
+            )
 
+            # If the flag isn't found, we're done
+            if not flag:
+                self._buffer = chunk
+                break
+
+            # Sometimes the flag can be repeated multiple times
             if not chunk:
                 continue
 
