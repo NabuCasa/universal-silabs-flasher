@@ -5,7 +5,7 @@ from collections import defaultdict
 import dataclasses
 import logging
 import typing
-from typing import callable
+from typing import Callable
 
 from zigpy.serial import SerialProtocol
 import zigpy.types
@@ -122,7 +122,7 @@ class SpinelProtocol(SerialProtocol):
         super().__init__()
         self._transaction_id: int = 1
         self._pending_frames: dict[int, asyncio.Future] = {}
-        self._property_listeners: defaultdict[PropertyID, list[callable]] = defaultdict(
+        self._property_listeners: defaultdict[PropertyID, list[Callable]] = defaultdict(
             list
         )
 
@@ -277,12 +277,12 @@ class SpinelProtocol(SerialProtocol):
         return await self.send_frame(frame, **kwargs)
 
     def add_property_listener(
-        self, property_id: PropertyID, callback: callable[[bytes], None]
+        self, property_id: PropertyID, callback: Callable[[bytes], None]
     ) -> None:
         self._property_listeners[property_id].append(callback)
 
     def remove_property_listener(
-        self, property_id: PropertyID, callback: callable[[bytes], None]
+        self, property_id: PropertyID, callback: Callable[[bytes], None]
     ) -> None:
         self._property_listeners[property_id].remove(callback)
 
