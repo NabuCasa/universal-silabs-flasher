@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 import dataclasses
 import logging
 import typing
+from typing import callable
 
 from zigpy.serial import SerialProtocol
 import zigpy.types
 
 from .common import Version, asyncio_timeout, crc16_kermit
-from .spinel_types import CommandID, HDLCSpecial, PropertyID, ResetReason
+from .spinel_types import CommandID, HDLCSpecial, PackedUInt21, PropertyID, ResetReason
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +112,9 @@ class SpinelProtocol(SerialProtocol):
         super().__init__()
         self._transaction_id: int = 1
         self._pending_frames: dict[int, asyncio.Future] = {}
+        self._property_listeners: defaultdict[PropertyID, list[callable]] = defaultdict(
+            list
+        )
 
     def send_data(self, data: bytes) -> None:
         assert self._transport is not None
@@ -154,6 +159,21 @@ class SpinelProtocol(SerialProtocol):
 
         if frame.header.transaction_id in self._pending_frames:
             self._pending_frames[frame.header.transaction_id].set_result(frame)
+
+        if frame.command_id == CommandID.PROP_VALUE_IS:
+            prop_id, data = PackedUInt21.deserialize(frame.data)
+            prop_id = PropertyID(prop_id)
+
+            for listener in self._property_listeners[prop_id]:
+                try:
+                    listener(data)
+                except Exception:
+                    _LOGGER.warning(
+                        "Error calling property listener for %r: %r",
+                        prop_id,
+                        listener,
+                        exc_info=True,
+                    )
 
     @typing.overload
     async def send_frame(
@@ -243,6 +263,35 @@ class SpinelProtocol(SerialProtocol):
         )
 
         return await self.send_frame(frame, **kwargs)
+
+    def add_property_listener(
+        self, property_id: PropertyID, callback: callable[[bytes], None]
+    ) -> None:
+        self._property_listeners[property_id].append(callback)
+
+    def remove_property_listener(
+        self, property_id: PropertyID, callback: callable[[bytes], None]
+    ) -> None:
+        self._property_listeners[property_id].remove(callback)
+
+    async def iter_property_changes(
+        self, property_id: PropertyID
+    ) -> typing.AsyncIterator:
+        queue: asyncio.Queue[bytes] = asyncio.Queue()
+
+        try:
+            self.add_property_listener(property_id, queue.put_nowait)
+
+            while True:
+                item = await queue.get()
+                yield item
+        finally:
+            self.remove_property_listener(property_id, queue.put_nowait)
+
+    async def wait_for_property(self, property_id: PropertyID, value: bytes) -> None:
+        async for changed_value in self.iter_property_changes(property_id):
+            if changed_value == value:
+                return
 
     async def probe(self) -> Version:
         rsp = await self.send_command(
