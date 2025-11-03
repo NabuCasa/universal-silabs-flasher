@@ -22,6 +22,7 @@ from .spinel_types import (
 
 _LOGGER = logging.getLogger(__name__)
 
+COMMAND_TIMEOUT = 2
 RESET_TIMEOUT = 2
 
 
@@ -213,8 +214,8 @@ class SpinelProtocol(SerialProtocol):
         frame: SpinelFrame,
         *,
         wait_response: bool = True,
-        retries: int = 3,
-        timeout: float = 1,
+        retries: int = 2,
+        timeout: float = COMMAND_TIMEOUT,
         retry_delay: float = 0.1,
     ) -> SpinelFrame | None:
         # A transaction ID of `0` is special: we only use 1-15
