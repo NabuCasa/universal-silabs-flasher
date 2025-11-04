@@ -333,6 +333,13 @@ class Flasher:
         )
 
     async def enter_bootloader(self) -> None:
+        # If we can enter the bootloader externally, do it
+        bootloader_probe = await self.trigger_bootloader_reset()
+        if bootloader_probe is not None:
+            self.bootloader_baudrate = bootloader_probe.baudrate
+            return
+
+        # Otherwise, probe the application type and enter the bootloader from there
         if self.app_type is None:
             await self.probe_app_type()
 
