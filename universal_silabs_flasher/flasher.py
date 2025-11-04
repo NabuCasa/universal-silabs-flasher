@@ -274,6 +274,11 @@ class Flasher:
         if bootloader_probe is not None:
             self.bootloader_baudrate = bootloader_probe.baudrate
 
+            if not bootloader_probe.continue_probing:
+                # If the bootloader can be entered but fails to launch an application
+                # there is no point probing further, it'll just waste time
+                probe_methods = []
+
         for probe_method, baudrate in probe_methods:
             # Don't probe the bootloader twice
             if (
@@ -305,19 +310,19 @@ class Flasher:
             self.app_version = result.version
             self.app_baudrate = result.baudrate
             break
-        else:
-            if bootloader_probe and self._reset_targets:
-                # We have no valid application image but can still re-enter the
-                # bootloader whenever we want
-                await self.trigger_bootloader_reset(run_firmware=False)
 
-                self.app_type = ApplicationType.GECKO_BOOTLOADER
-                self.app_version = bootloader_probe.version
-                self.app_baudrate = bootloader_probe.baudrate
-                self.bootloader_baudrate = bootloader_probe.baudrate
-                _LOGGER.warning("Bootloader did not launch a valid application")
-            else:
-                raise RuntimeError("Failed to probe running application type")
+        if bootloader_probe and self._reset_targets:
+            # We have no valid application image but can still re-enter the
+            # bootloader whenever we want
+            await self.trigger_bootloader_reset(run_firmware=False)
+
+            self.app_type = ApplicationType.GECKO_BOOTLOADER
+            self.app_version = bootloader_probe.version
+            self.app_baudrate = bootloader_probe.baudrate
+            self.bootloader_baudrate = bootloader_probe.baudrate
+            _LOGGER.warning("Bootloader did not launch a valid application")
+        else:
+            raise RuntimeError("Failed to probe running application type")
 
         _LOGGER.info(
             "Detected %s, version %s at %s baudrate (bootloader baudrate %s)",
