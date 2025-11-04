@@ -311,18 +311,19 @@ class Flasher:
             self.app_baudrate = result.baudrate
             break
 
-        if bootloader_probe and self._reset_targets:
-            # We have no valid application image but can still re-enter the
-            # bootloader whenever we want
-            await self.trigger_bootloader_reset(run_firmware=False)
+        if self.app_type is None:
+            if bootloader_probe and self._reset_targets:
+                # We have no valid application image but can still re-enter the
+                # bootloader whenever we want
+                await self.trigger_bootloader_reset(run_firmware=False)
 
-            self.app_type = ApplicationType.GECKO_BOOTLOADER
-            self.app_version = bootloader_probe.version
-            self.app_baudrate = bootloader_probe.baudrate
-            self.bootloader_baudrate = bootloader_probe.baudrate
-            _LOGGER.warning("Bootloader did not launch a valid application")
-        else:
-            raise RuntimeError("Failed to probe running application type")
+                self.app_type = ApplicationType.GECKO_BOOTLOADER
+                self.app_version = bootloader_probe.version
+                self.app_baudrate = bootloader_probe.baudrate
+                self.bootloader_baudrate = bootloader_probe.baudrate
+                _LOGGER.warning("Bootloader did not launch a valid application")
+            else:
+                raise RuntimeError("Failed to probe running application type")
 
         _LOGGER.info(
             "Detected %s, version %s at %s baudrate (bootloader baudrate %s)",
