@@ -227,18 +227,25 @@ def main(
         param = next(p for p in ctx.command.params if p.name == "device")
         raise click.MissingParameter(ctx=ctx, param=param)
 
+    baudrates = {
+        ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
+        ApplicationType.CPC: cpc_baudrate,
+        ApplicationType.EZSP: ezsp_baudrate,
+        ApplicationType.ROUTER: router_baudrate,
+        ApplicationType.SPINEL: spinel_baudrate,
+    }
+
+    probe_methods = []
+
+    for method in probe_method:
+        for baudrate in baudrates[method]:
+            probe_methods.append((method, baudrate))
+
     ctx.obj = {
         "verbosity": verbose,
         "flasher": Flasher(
             device=device,
-            baudrates={
-                ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
-                ApplicationType.CPC: cpc_baudrate,
-                ApplicationType.EZSP: ezsp_baudrate,
-                ApplicationType.ROUTER: router_baudrate,
-                ApplicationType.SPINEL: spinel_baudrate,
-            },
-            probe_methods=probe_method,
+            probe_methods=probe_methods,
             bootloader_reset=tuple(bootloader_reset),
         ),
     }
@@ -348,26 +355,13 @@ async def flash(
     if metadata is not None and metadata.fw_type is not None:
         app_type = FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type]
 
-        # Probe with the firmware's app type first
-        if (
-            ctx.parent.get_parameter_source("probe_method")
-            == click.core.ParameterSource.DEFAULT
-        ):
-            _LOGGER.debug("Probing app type %s first", app_type)
-            flasher._probe_methods = put_first(
-                flasher._probe_methods, [ApplicationType.GECKO_BOOTLOADER, app_type]
-            )
+        _LOGGER.debug(
+            "Probing app type %s at %s baud first", app_type, metadata.baudrate
+        )
+        flasher._probe_methods = put_first(
+            flasher._probe_methods, [(app_type, metadata.baudrate)]
+        )
 
-        # Probe with the firmware's baudrate first
-        if (
-            metadata.baudrate is not None
-            and ctx.parent.get_parameter_source(f"{app_type.value}_baudrate")
-            == click.core.ParameterSource.DEFAULT
-        ):
-            _LOGGER.debug("Probing with %s baudrate first", metadata.baudrate)
-            flasher._baudrates[app_type] = put_first(
-                flasher._baudrates[app_type], [metadata.baudrate]
-            )
     # Maintain backward compatibility with the deprecated reset flags
     reset_msg = (
         "The '%s' flag is deprecated. Use '--bootloader-reset' "

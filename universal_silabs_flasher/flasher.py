@@ -19,7 +19,7 @@ from .common import (
     pad_to_multiple,
 )
 from .const import (
-    DEFAULT_BAUDRATES,
+    DEFAULT_PROBE_METHODS,
     RESET_CONFIGS,
     ApplicationType,
     BaudrateResetConfig,
@@ -54,18 +54,12 @@ class Flasher:
     def __init__(
         self,
         *,
-        baudrates: dict[ApplicationType, list[int]] = DEFAULT_BAUDRATES,
-        probe_methods: tuple[ApplicationType, ...] = (
-            ApplicationType.GECKO_BOOTLOADER,
-            ApplicationType.EZSP,
-            ApplicationType.SPINEL,
-            ApplicationType.CPC,
-            ApplicationType.ROUTER,
-        ),
+        probe_methods: typing.Sequence[
+            tuple[ApplicationType, int]
+        ] = DEFAULT_PROBE_METHODS,
         device: str,
         bootloader_reset: str | tuple[ResetTarget, ...] = (),
     ):
-        self._baudrates = baudrates
         self._probe_methods = probe_methods
         self._device = device
 
@@ -110,12 +104,9 @@ class Flasher:
                 chip = await find_gpiochip_by_label(config.chip_type)
 
             if config.chip_type == "uart":
-                # The baudrate isn't really necessary, since we're just using flow
-                # control pins
-                baudrate = self._baudrates[ApplicationType.GECKO_BOOTLOADER][0]
-
+                # The baudrate isn't necessary, since we're just using flow control pins
                 async with connect_protocol(
-                    self._device, baudrate, FlowControlSerialProtocol
+                    self._device, 115200, FlowControlSerialProtocol
                 ) as uart:
                     for pattern in config.pattern:
                         await uart.set_signals(**pattern.pins)
@@ -209,44 +200,61 @@ class Flasher:
     ) -> ProbeResult | None:
         """Reset into the bootloader by trying the probing methods, one by one."""
 
+        # If we have no way to enter the bootloader, don't try
+        if not self._reset_targets:
+            return None
+
+        # We don't really care which method works, just try them all at once
         for target in self._reset_targets:
             _LOGGER.info(f"Triggering {target.value} bootloader")
             await self.trigger_bootloader(target)
 
-            for baudrate in self._baudrates[ApplicationType.GECKO_BOOTLOADER]:
-                try:
-                    probe_result = await self.probe_gecko_bootloader(
-                        run_firmware=run_firmware, baudrate=baudrate
-                    )
-                except asyncio.TimeoutError:
-                    continue
-                else:
-                    _LOGGER.info(
-                        f"Successfully entered bootloader using {target.value} reset"
-                    )
-                    return probe_result
+        # Try probing the bootloader at all known baudrates
+        bootloader_baudrates = [
+            baudrate
+            for method, baudrate in self._probe_methods
+            if method == ApplicationType.GECKO_BOOTLOADER
+        ] or [
+            baudrate
+            for method, baudrate in DEFAULT_PROBE_METHODS
+            if method == ApplicationType.GECKO_BOOTLOADER
+        ]
 
+        for baudrate in bootloader_baudrates:
+            try:
+                probe_result = await self.probe_gecko_bootloader(
+                    run_firmware=run_firmware, baudrate=baudrate
+                )
+            except asyncio.TimeoutError:
+                continue
+            else:
+                _LOGGER.debug("Successfully triggered bootloader")
+                return probe_result
+
+        _LOGGER.debug("Failed to trigger bootloader")
         return None
 
     async def probe_app_type(
         self,
-        types: typing.Iterable[ApplicationType] | None = None,
-        try_first: tuple[ApplicationType, ...] = (),
+        only: typing.Sequence[ApplicationType] | None = None,
     ) -> None:
-        if types is None:
-            types = self._probe_methods
-
-        # fmt: off
-        types = (
-              [m for m in types if m in try_first]
-            + [m for m in types if m not in try_first]
-        )
-        # fmt: on
+        if only is None:
+            probe_methods = self._probe_methods
+        else:
+            probe_methods = [
+                (method, baudrate)
+                for method, baudrate in self._probe_methods
+                if method in only
+            ]
 
         # Only run firmware from the bootloader if we have bootloader reset and
         # other probe methods
-        only_probe_bootloader = types == [ApplicationType.GECKO_BOOTLOADER]
+        only_probe_bootloader = all(
+            m == ApplicationType.GECKO_BOOTLOADER for m, _ in probe_methods
+        )
+
         run_firmware = self._reset_targets and not only_probe_bootloader
+
         probe_funcs = {
             ApplicationType.GECKO_BOOTLOADER: (
                 lambda baudrate: self.probe_gecko_bootloader(
@@ -266,9 +274,7 @@ class Flasher:
         if bootloader_probe is not None:
             self.bootloader_baudrate = bootloader_probe.baudrate
 
-        for probe_method, baudrate in (
-            (m, b) for m in types for b in self._baudrates[m]
-        ):
+        for probe_method, baudrate in probe_methods:
             # Don't probe the bootloader twice
             if (
                 probe_method == ApplicationType.GECKO_BOOTLOADER
@@ -359,9 +365,9 @@ class Flasher:
         else:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
 
-        # Probe the bootloader baudrate
+        # Probe the bootloader baudrate if not already known
         if self.bootloader_baudrate is None:
-            await self.probe_app_type(types=[ApplicationType.GECKO_BOOTLOADER])
+            await self.probe_app_type(only=[ApplicationType.GECKO_BOOTLOADER])
 
     async def flash_firmware(
         self,
@@ -395,9 +401,7 @@ class Flasher:
     async def write_emberznet_eui64(
         self, new_ieee: zigpy.types.EUI64, force: bool = False
     ) -> bool:
-        await self.probe_app_type(
-            try_first=[ApplicationType.GECKO_BOOTLOADER, ApplicationType.EZSP]
-        )
+        await self.probe_app_type()
 
         if self.app_type != ApplicationType.EZSP:
             raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
