@@ -344,4 +344,4 @@ class SpinelProtocol(SerialProtocol):
                 )
         except asyncio.TimeoutError:
             # OTBR itself uses this logic, we match it
-            _LOGGER.warning("Device did not respond to reset, continuing")
+            _LOGGER.debug("Device did not respond to reset, continuing")
