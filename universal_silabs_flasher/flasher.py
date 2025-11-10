@@ -59,14 +59,19 @@ class Flasher:
         ] = DEFAULT_PROBE_METHODS,
         device: str,
         bootloader_reset: str | tuple[ResetTarget, ...] = (),
+        # To restore flasher "state", we can pass these to the constructor
+        app_type: ApplicationType | None = None,
+        app_version: Version | None = None,
+        app_baudrate: int | None = None,
+        bootloader_baudrate: int | None = None,
     ):
         self._probe_methods = probe_methods
         self._device = device
 
-        self.app_type: ApplicationType | None = None
-        self.app_version: Version | None = None
-        self.app_baudrate: int | None = None
-        self.bootloader_baudrate: int | None = None
+        self.app_type = app_type
+        self.app_version = app_version
+        self.app_baudrate = app_baudrate
+        self.bootloader_baudrate = bootloader_baudrate
 
         if isinstance(bootloader_reset, str):
             bootloader_reset = (ResetTarget(bootloader_reset),)
