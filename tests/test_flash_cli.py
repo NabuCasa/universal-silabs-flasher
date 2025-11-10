@@ -7,7 +7,11 @@ import click.core
 from click.testing import CliRunner
 import pytest
 
-from universal_silabs_flasher.const import ApplicationType, ResetTarget
+from universal_silabs_flasher.const import (
+    DEFAULT_PROBE_METHODS,
+    ApplicationType,
+    ResetTarget,
+)
 from universal_silabs_flasher.flash import main
 
 
@@ -77,7 +81,7 @@ def mock_connections():
 
 
 @pytest.mark.parametrize(
-    "args,expected_device,expected_baudrate_overrides,expected_probe_methods,expected_reset",
+    "args,expected_device,expected_probe_methods,expected_reset",
     [
         # Basic flash command (uses defaults)
         (
@@ -89,14 +93,7 @@ def mock_connections():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "/dev/ttyUSB0",
-            {},
-            [
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.CPC,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.ROUTER,
-            ],
+            DEFAULT_PROBE_METHODS,
             [],
         ),
         # With verbose flags (uses defaults)
@@ -110,17 +107,10 @@ def mock_connections():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "/dev/ttyUSB1",
-            {},
-            [
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.CPC,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.ROUTER,
-            ],
+            DEFAULT_PROBE_METHODS,
             [],
         ),
-        # With custom bootloader baudrate
+        # With custom bootloader baudrate (deprecated flag)
         (
             [
                 "--device",
@@ -132,17 +122,19 @@ def mock_connections():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "/dev/ttyUSB0",
-            {ApplicationType.GECKO_BOOTLOADER: [115200]},
             [
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.CPC,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.ROUTER,
+                (ApplicationType.GECKO_BOOTLOADER, 115200),
+                (ApplicationType.CPC, 460800),
+                (ApplicationType.CPC, 115200),
+                (ApplicationType.CPC, 230400),
+                (ApplicationType.EZSP, 115200),
+                (ApplicationType.EZSP, 460800),
+                (ApplicationType.ROUTER, 115200),
+                (ApplicationType.SPINEL, 460800),
             ],
             [],
         ),
-        # With multiple custom baudrates
+        # With multiple custom baudrates (deprecated flags)
         (
             [
                 "--device",
@@ -156,20 +148,19 @@ def mock_connections():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "/dev/ttyUSB0",
-            {
-                ApplicationType.GECKO_BOOTLOADER: [115200, 230400],
-                ApplicationType.EZSP: [115200],
-            },
             [
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.CPC,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.ROUTER,
+                (ApplicationType.GECKO_BOOTLOADER, 115200),
+                (ApplicationType.GECKO_BOOTLOADER, 230400),
+                (ApplicationType.CPC, 460800),
+                (ApplicationType.CPC, 115200),
+                (ApplicationType.CPC, 230400),
+                (ApplicationType.EZSP, 115200),
+                (ApplicationType.ROUTER, 115200),
+                (ApplicationType.SPINEL, 460800),
             ],
             [],
         ),
-        # With custom probe methods
+        # With custom probe methods (deprecated flag)
         (
             [
                 "--device",
@@ -183,8 +174,13 @@ def mock_connections():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "/dev/ttyUSB0",
-            {},
-            [ApplicationType.EZSP, ApplicationType.CPC],
+            [
+                (ApplicationType.EZSP, 115200),
+                (ApplicationType.EZSP, 460800),
+                (ApplicationType.CPC, 460800),
+                (ApplicationType.CPC, 115200),
+                (ApplicationType.CPC, 230400),
+            ],
             [],
         ),
         # With single bootloader reset method
@@ -199,14 +195,7 @@ def mock_connections():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "/dev/ttyUSB0",
-            {},
-            [
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.CPC,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.ROUTER,
-            ],
+            DEFAULT_PROBE_METHODS,
             [ResetTarget.RTS_DTR],
         ),
         # With multiple bootloader reset methods (chained)
@@ -221,14 +210,7 @@ def mock_connections():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "/dev/ttyUSB0",
-            {},
-            [
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.CPC,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.ROUTER,
-            ],
+            DEFAULT_PROBE_METHODS,
             [ResetTarget.RTS_DTR, ResetTarget.BAUDRATE],
         ),
         # With socket device
@@ -241,14 +223,7 @@ def mock_connections():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "socket://192.168.1.100:1234",
-            {},
-            [
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.CPC,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.ROUTER,
-            ],
+            DEFAULT_PROBE_METHODS,
             [],
         ),
     ],
@@ -257,7 +232,6 @@ def test_flash_command_argument_parsing(
     mock_connections,
     args,
     expected_device,
-    expected_baudrate_overrides,
     expected_probe_methods,
     expected_reset,
 ):
@@ -270,11 +244,6 @@ def test_flash_command_argument_parsing(
 
     flasher = result.ctx.obj["flasher"]
     assert flasher._device == expected_device
-
-    # Check baudrate overrides
-    for app_type, baudrates in expected_baudrate_overrides.items():
-        assert flasher._baudrates[app_type] == baudrates
-
     assert set(flasher._probe_methods) == set(expected_probe_methods)
     assert flasher._reset_targets == expected_reset
 
@@ -418,7 +387,7 @@ def test_dump_gbl_metadata_command():
             ["--device", "/dev/ttyUSB0", "write-ieee"],
             "Missing option",
         ),
-        # Deprecated --baudrate flag
+        # Removed --baudrate flag
         (
             [
                 "--device",
@@ -429,7 +398,7 @@ def test_dump_gbl_metadata_command():
                 "--firmware",
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
-            "deprecated",
+            "no such option",
         ),
     ],
 )

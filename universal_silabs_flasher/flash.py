@@ -199,14 +199,13 @@ class SerialPort(click.ParamType):
     show_default=True,
     type=ClickProbeMethods(),
     default=",".join(
-        f"{method.name.lower()}:{baudrate}"
-        for method, baudrate in DEFAULT_PROBE_METHODS
+        f"{method.value}:{baudrate}" for method, baudrate in DEFAULT_PROBE_METHODS
     ),
     help=(
         "Comma-separated list of application type and baudrate pairs to use when"
         " probing the device. Each pair should be in the format"
         " '<application_type>:<baudrate>'. Valid application types: "
-        f"{', '.join([m.name.lower() for m in ApplicationType])}. Example: "
+        f"{', '.join([m.value for m in ApplicationType])}. Example: "
         "'ezsp:115200,ezsp:460800,spinel:460800'"
     ),
 )
