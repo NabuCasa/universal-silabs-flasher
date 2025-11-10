@@ -19,6 +19,7 @@ import zigpy.types
 from .common import CommaSeparatedNumbers, put_first
 from .const import (
     DEFAULT_BAUDRATES,
+    DEFAULT_PROBE_METHODS,
     FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
     ApplicationType,
     ResetTarget,
@@ -95,6 +96,63 @@ class EnumWithSeparator(click.ParamType):
         return enums
 
 
+class ClickProbeMethods(click.ParamType):
+    """Click validator that accepts probe methods in the format
+    '<application_type>:<baudrate>,<application_type>:<baudrate>,...'
+    """
+
+    name = "probe_methods"
+
+    def convert(
+        self,
+        value: str | list[tuple[ApplicationType, int]],
+        param: click.Parameter,
+        ctx: click.Context,
+    ) -> list[tuple[ApplicationType, int]]:
+        if isinstance(value, list):
+            return value
+
+        methods = value.split(",")
+        result = []
+
+        for method in methods:
+            parts = method.split(":")
+
+            if len(parts) != 2:
+                self.fail(
+                    f"invalid probe method {method!r}, must be in the format"
+                    f" '<application_type>:<baudrate>'",
+                    param,
+                    ctx,
+                )
+
+            app_type_str, baudrate_str = parts
+
+            try:
+                app_type = ApplicationType(app_type_str)
+            except ValueError:
+                expected = [m.value for m in ApplicationType]
+                self.fail(
+                    f"invalid application type {app_type_str!r}, must be one of: "
+                    f"{', '.join(expected)}",
+                    param,
+                    ctx,
+                )
+
+            try:
+                baudrate = int(baudrate_str)
+            except ValueError:
+                self.fail(
+                    f"invalid baudrate {baudrate_str!r}, must be an integer",
+                    param,
+                    ctx,
+                )
+
+            result.append((app_type, baudrate))
+
+        return result
+
+
 class SerialPort(click.ParamType):
     """Click validator that accepts serial ports."""
 
@@ -136,43 +194,21 @@ class SerialPort(click.ParamType):
 @click.group()
 @click.option("-v", "--verbose", count=True)
 @click.option("--device", type=SerialPort())
-@click.option("--baudrate", hidden=True)
 @click.option(
-    "--bootloader-baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
-    type=CommaSeparatedNumbers(),
+    "--probe-methods",
     show_default=True,
-)
-@click.option(
-    "--cpc-baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-)
-@click.option(
-    "--ezsp-baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.EZSP],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-)
-@click.option(
-    "--router-baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.ROUTER],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-)
-@click.option(
-    "--spinel-baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.SPINEL],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-)
-@click.option(
-    "--probe-method",
-    multiple=True,
-    default=[m.value for m in ApplicationType],
-    callback=click_enum_validator_factory(ApplicationType),
-    show_default=True,
+    type=ClickProbeMethods(),
+    default=",".join(
+        f"{method.name.lower()}:{baudrate}"
+        for method, baudrate in DEFAULT_PROBE_METHODS
+    ),
+    help=(
+        "Comma-separated list of application type and baudrate pairs to use when"
+        " probing the device. Each pair should be in the format"
+        " '<application_type>:<baudrate>'. Valid application types: "
+        f"{', '.join([m.name.lower() for m in ApplicationType])}. Example: "
+        "'ezsp:115200,ezsp:460800,spinel:460800'"
+    ),
 )
 @click.option(
     "--bootloader-reset",
@@ -184,19 +220,76 @@ class SerialPort(click.ParamType):
         f" {', '.join([m.value for m in ResetTarget])}"
     ),
 )
+# Begin deprecated flags
+@click.option(
+    "--bootloader-baudrate",
+    "deprecated_bootloader_baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
+    type=CommaSeparatedNumbers(),
+    show_default=True,
+    hidden=True,
+    deprecated=True,
+)
+@click.option(
+    "--cpc-baudrate",
+    "deprecated_cpc_baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
+    type=CommaSeparatedNumbers(),
+    show_default=True,
+    hidden=True,
+    deprecated=True,
+)
+@click.option(
+    "--ezsp-baudrate",
+    "deprecated_ezsp_baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.EZSP],
+    type=CommaSeparatedNumbers(),
+    show_default=True,
+    hidden=True,
+    deprecated=True,
+)
+@click.option(
+    "--router-baudrate",
+    "deprecated_router_baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.ROUTER],
+    type=CommaSeparatedNumbers(),
+    show_default=True,
+    hidden=True,
+    deprecated=True,
+)
+@click.option(
+    "--spinel-baudrate",
+    "deprecated_spinel_baudrate",
+    default=DEFAULT_BAUDRATES[ApplicationType.SPINEL],
+    type=CommaSeparatedNumbers(),
+    show_default=True,
+    hidden=True,
+    deprecated=True,
+)
+@click.option(
+    "--probe-method",
+    "deprecated_probe_methods",
+    multiple=True,
+    default=[m.value for m in ApplicationType],
+    callback=click_enum_validator_factory(ApplicationType),
+    show_default=True,
+    hidden=True,
+    deprecated=True,
+)
+# End deprecated flags
 @click.pass_context
 def main(
     ctx: click.Context,
     verbose: bool,
     device: str,
-    baudrate: int | None,
-    bootloader_baudrate: list[int],
-    cpc_baudrate: list[int],
-    ezsp_baudrate: list[int],
-    router_baudrate: list[int],
-    spinel_baudrate: list[int],
-    probe_method: list[ApplicationType],
+    probe_methods: list[tuple[ApplicationType, int]],
     bootloader_reset: list[ResetTarget],
+    deprecated_bootloader_baudrate: list[int],
+    deprecated_cpc_baudrate: list[int],
+    deprecated_ezsp_baudrate: list[int],
+    deprecated_router_baudrate: list[int],
+    deprecated_spinel_baudrate: list[int],
+    deprecated_probe_methods: list[ApplicationType],
 ) -> None:
     coloredlogs.install(
         fmt=(
@@ -207,14 +300,6 @@ def main(
         ),
         level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)],
     )
-
-    # Override all application baudrates if a specific value is provided
-    if ctx.get_parameter_source("baudrate") != click.core.ParameterSource.DEFAULT:
-        raise click.ClickException(
-            "The `--baudrate` flag is deprecated. Remove it to rely on auto baudrate"
-            " probing, or replace it with an application-specific baudrate flag"
-            " (see `--help`)"
-        )
 
     # To maintain some backwards compatibility, make `--device` required only when we
     # are actually invoking a command that interacts with a device
@@ -227,19 +312,39 @@ def main(
         param = next(p for p in ctx.command.params if p.name == "device")
         raise click.MissingParameter(ctx=ctx, param=param)
 
-    baudrates = {
-        ApplicationType.GECKO_BOOTLOADER: bootloader_baudrate,
-        ApplicationType.CPC: cpc_baudrate,
-        ApplicationType.EZSP: ezsp_baudrate,
-        ApplicationType.ROUTER: router_baudrate,
-        ApplicationType.SPINEL: spinel_baudrate,
-    }
+    # Finally, deprecated baudrate baudrate flags should be converted
+    if any(
+        ctx.get_parameter_source(param) != click.core.ParameterSource.DEFAULT
+        for param in (
+            "deprecated_bootloader_baudrate",
+            "deprecated_cpc_baudrate",
+            "deprecated_ezsp_baudrate",
+            "deprecated_router_baudrate",
+            "deprecated_spinel_baudrate",
+            "deprecated_probe_methods",
+        )
+    ):
+        if (
+            ctx.get_parameter_source("probe_methods")
+            != click.core.ParameterSource.DEFAULT
+        ):
+            raise click.ClickException(
+                "`--probe-methods` cannot be used with deprecated baudrate flags"
+            )
 
-    probe_methods = []
+        baudrates = {
+            ApplicationType.GECKO_BOOTLOADER: deprecated_bootloader_baudrate,
+            ApplicationType.CPC: deprecated_cpc_baudrate,
+            ApplicationType.EZSP: deprecated_ezsp_baudrate,
+            ApplicationType.ROUTER: deprecated_router_baudrate,
+            ApplicationType.SPINEL: deprecated_spinel_baudrate,
+        }
 
-    for method in probe_method:
-        for baudrate in baudrates[method]:
-            probe_methods.append((method, baudrate))
+        probe_methods = []
+
+        for method in deprecated_probe_methods:
+            for baudrate in baudrates[method]:
+                probe_methods.append((method, baudrate))
 
     ctx.obj = {
         "verbosity": verbose,
