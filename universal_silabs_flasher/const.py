@@ -42,13 +42,25 @@ FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
 }
 
 
-DEFAULT_BAUDRATES = {
-    ApplicationType.GECKO_BOOTLOADER: [115200],
-    ApplicationType.EZSP: [115200, 460800],
-    ApplicationType.SPINEL: [460800],
-    ApplicationType.ROUTER: [115200],
-    ApplicationType.CPC: [460800, 115200, 230400],
-}
+DEFAULT_PROBE_METHODS = (
+    (ApplicationType.GECKO_BOOTLOADER, 115200),
+    (ApplicationType.EZSP, 115200),
+    (ApplicationType.EZSP, 460800),
+    (ApplicationType.SPINEL, 460800),
+    (ApplicationType.CPC, 460800),
+    (ApplicationType.CPC, 115200),
+    (ApplicationType.CPC, 230400),
+    (ApplicationType.ROUTER, 115200),
+)
+
+# Backwards compat
+DEFAULT_BAUDRATES: dict[ApplicationType, list[int]] = {}
+
+for method, baudrate in DEFAULT_PROBE_METHODS:
+    if method not in DEFAULT_BAUDRATES:
+        DEFAULT_BAUDRATES[method] = []
+
+    DEFAULT_BAUDRATES[method].append(baudrate)
 
 
 class ResetTarget(enum.Enum):

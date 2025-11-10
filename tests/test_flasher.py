@@ -97,49 +97,13 @@ async def test_trigger_bootloader_reset_first_probe_succeeds():
     assert result.version == Version("1.0.0")
     assert result.baudrate == 115200
 
-    # Only first reset target should be attempted
-    assert mock_trigger.mock_calls == [call(ResetTarget.RTS_DTR)]
-    # Only one probe attempt for the first reset target
-    assert mock_probe.mock_calls == [call(run_firmware=False, baudrate=115200)]
-
-
-async def test_trigger_bootloader_reset_second_probe_succeeds():
-    flasher = Flasher(
-        device="/dev/ttyMOCK",
-        bootloader_reset=(ResetTarget.RTS_DTR, ResetTarget.BAUDRATE),
-    )
-
-    with (
-        patch.object(flasher, "trigger_bootloader") as mock_trigger,
-        patch.object(
-            flasher,
-            "probe_gecko_bootloader",
-            side_effect=[
-                asyncio.TimeoutError,  # First reset target fails
-                ProbeResult(  # Second reset target succeeds
-                    version=Version("1.0.0"),
-                    continue_probing=False,
-                    baudrate=115200,
-                ),
-            ],
-        ) as mock_probe,
-    ):
-        result = await flasher.trigger_bootloader_reset()
-
-    assert result is not None
-    assert result.version == Version("1.0.0")
-    assert result.baudrate == 115200
-
-    # Both reset targets should be attempted
+    # All reset targets are triggered upfront
     assert mock_trigger.mock_calls == [
         call(ResetTarget.RTS_DTR),
         call(ResetTarget.BAUDRATE),
     ]
-    # Two probe attempts - one for each reset target
-    assert mock_probe.mock_calls == [
-        call(run_firmware=False, baudrate=115200),
-        call(run_firmware=False, baudrate=115200),
-    ]
+    # Only one probe attempt since the first one succeeds
+    assert mock_probe.mock_calls == [call(run_firmware=False, baudrate=115200)]
 
 
 async def test_trigger_bootloader_reset_all_probes_fail():
@@ -160,14 +124,13 @@ async def test_trigger_bootloader_reset_all_probes_fail():
 
     assert result is None
 
-    # Both reset targets should be attempted
+    # All reset targets are triggered upfront
     assert mock_trigger.mock_calls == [
         call(ResetTarget.RTS_DTR),
         call(ResetTarget.BAUDRATE),
     ]
-    # Two probe attempts - one for each reset target
+    # One probe attempt at the only bootloader baudrate
     assert mock_probe.mock_calls == [
-        call(run_firmware=False, baudrate=115200),
         call(run_firmware=False, baudrate=115200),
     ]
 
