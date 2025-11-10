@@ -298,6 +298,7 @@ class Flasher:
             try:
                 result = await probe_funcs[probe_method](baudrate=baudrate)
             except asyncio.TimeoutError:
+                _LOGGER.debug("Probe timed out")
                 continue
 
             _LOGGER.debug("Probe result: %s", result)
