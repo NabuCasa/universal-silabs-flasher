@@ -217,10 +217,12 @@ class SpinelProtocol(SerialProtocol):
         retries: int = 2,
         timeout: float = COMMAND_TIMEOUT,
         retry_delay: float = 0.1,
+        tid: int | None = None,
     ) -> SpinelFrame | None:
         # A transaction ID of `0` is special: we only use 1-15
-        self._transaction_id = (self._transaction_id + 1) % (0b1111 - 1)
-        tid = 1 + self._transaction_id
+        if tid is None:
+            self._transaction_id = (self._transaction_id + 1) % (0b1111 - 1)
+            tid = 1 + self._transaction_id
 
         future = asyncio.get_running_loop().create_future()
         self._pending_frames[tid] = future
@@ -332,6 +334,7 @@ class SpinelProtocol(SerialProtocol):
             CommandID.RESET,
             reset_type.serialize(),
             wait_response=False,
+            tid=0,  # Reset uses TID=0
         )
 
         if reset_type == ResetReason.BOOTLOADER:
