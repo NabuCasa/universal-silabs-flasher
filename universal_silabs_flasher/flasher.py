@@ -43,6 +43,10 @@ _LOGGER = logging.getLogger(__name__)
 BOOTLOADER_LAUNCH_DELAY = 3
 
 
+class FailedToEnterBootloaderError(Exception):
+    """Failed to enter the bootloader."""
+
+
 @dataclasses.dataclass(frozen=True)
 class ProbeResult:
     version: Version | None
@@ -201,7 +205,7 @@ class Flasher:
         )
 
     async def trigger_bootloader_reset(
-        self, *, run_firmware: bool = False
+        self, *, run_firmware: bool
     ) -> ProbeResult | None:
         """Reset into the bootloader by trying the probing methods, one by one."""
 
@@ -216,6 +220,11 @@ class Flasher:
 
         await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
 
+        return await self._detect_gecko_bootloader(run_firmware=run_firmware)
+
+    async def _detect_gecko_bootloader(
+        self, *, run_firmware: bool
+    ) -> ProbeResult | None:
         # Try probing the bootloader at all known baudrates
         bootloader_baudrates = [
             baudrate
@@ -235,10 +244,8 @@ class Flasher:
             except asyncio.TimeoutError:
                 continue
             else:
-                _LOGGER.debug("Successfully triggered bootloader")
                 return probe_result
 
-        _LOGGER.debug("Failed to trigger bootloader")
         return None
 
     async def probe_app_type(
@@ -341,7 +348,7 @@ class Flasher:
 
     async def enter_bootloader(self) -> None:
         # If we can enter the bootloader externally, do it
-        bootloader_probe = await self.trigger_bootloader_reset()
+        bootloader_probe = await self.trigger_bootloader_reset(run_firmware=False)
         if bootloader_probe is not None:
             self.bootloader_baudrate = bootloader_probe.baudrate
             return
@@ -382,11 +389,15 @@ class Flasher:
         else:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
 
-        await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
+        if self.app_type is not ApplicationType.GECKO_BOOTLOADER:
+            await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
 
-        # Probe the bootloader baudrate if not already known
-        if self.bootloader_baudrate is None:
-            await self.probe_app_type(only=[ApplicationType.GECKO_BOOTLOADER])
+        # Verify the bootloader has launched
+        bootloader_probe = await self._detect_gecko_bootloader(run_firmware=False)
+        if bootloader_probe is None:
+            raise FailedToEnterBootloaderError()
+
+        self.bootloader_baudrate = bootloader_probe.baudrate
 
     async def flash_firmware(
         self,
