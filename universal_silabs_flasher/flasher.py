@@ -410,7 +410,13 @@ class Flasher:
         # Pad the image to the XMODEM block size
         data = pad_to_multiple(data, XMODEM_BLOCK_SIZE, b"\xff")
 
-        async with self._connect_gecko_bootloader(self.bootloader_baudrate) as gecko:
+        if self.bootloader_baudrate is None:
+            _LOGGER.debug("Bootloader baudrate unknown, assuming 115200")
+            bootloader_baudrate = 115200
+        else:
+            bootloader_baudrate = self.bootloader_baudrate
+
+        async with self._connect_gecko_bootloader(bootloader_baudrate) as gecko:
             await gecko.probe()
             await gecko.upload_firmware(data, progress_callback=progress_callback)
 
