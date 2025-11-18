@@ -40,7 +40,7 @@ from .spinel import SpinelProtocol
 
 _LOGGER = logging.getLogger(__name__)
 
-EZSP_BOOTLOADER_LAUNCH_DELAY = 5
+BOOTLOADER_LAUNCH_DELAY = 3
 
 
 @dataclasses.dataclass(frozen=True)
@@ -214,6 +214,8 @@ class Flasher:
             _LOGGER.info(f"Triggering {target.value} bootloader")
             await self.trigger_bootloader(target)
 
+        await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
+
         # Try probing the bootloader at all known baudrates
         bootloader_baudrates = [
             baudrate
@@ -377,10 +379,10 @@ class Flasher:
                         raise RuntimeError(
                             f"EmberZNet could not enter the bootloader: {res[0]!r}"
                         )
-
-                    await asyncio.sleep(EZSP_BOOTLOADER_LAUNCH_DELAY)
         else:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
+
+        await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
 
         # Probe the bootloader baudrate if not already known
         if self.bootloader_baudrate is None:
