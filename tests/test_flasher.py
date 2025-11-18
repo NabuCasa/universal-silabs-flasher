@@ -1,12 +1,20 @@
 import asyncio
+from collections.abc import Generator
 from unittest.mock import MagicMock, call, patch
 
+import pytest
 import zigpy.types as t
 
 from universal_silabs_flasher.common import FlowControlSerialProtocol, Version
 from universal_silabs_flasher.const import ApplicationType, ResetTarget
 from universal_silabs_flasher.flasher import Flasher, ProbeResult
 from universal_silabs_flasher.gecko_bootloader import GeckoBootloaderProtocol
+
+
+@pytest.fixture(autouse=True)
+def reduce_timeouts() -> Generator[None, None, None]:
+    with patch("universal_silabs_flasher.flasher.BOOTLOADER_LAUNCH_DELAY", 0.05):
+        yield
 
 
 async def test_write_emberznet_eui64():
@@ -49,7 +57,7 @@ async def test_baudrate_reset_pattern():
     ) as mock_connect_protocol:
         mock_uart = mock_connect_protocol.return_value.__aenter__.return_value
         mock_uart._transport.write = MagicMock()
-        await flasher.trigger_bootloader_reset()
+        await flasher.trigger_bootloader_reset(run_firmware=False)
 
     assert mock_connect_protocol.mock_calls == [
         # Connect with 150 baud
@@ -91,7 +99,7 @@ async def test_trigger_bootloader_reset_first_probe_succeeds():
             ),
         ) as mock_probe,
     ):
-        result = await flasher.trigger_bootloader_reset()
+        result = await flasher.trigger_bootloader_reset(run_firmware=False)
 
     assert result is not None
     assert result.version == Version("1.0.0")
@@ -120,7 +128,7 @@ async def test_trigger_bootloader_reset_all_probes_fail():
             side_effect=asyncio.TimeoutError,  # All probes fail
         ) as mock_probe,
     ):
-        result = await flasher.trigger_bootloader_reset()
+        result = await flasher.trigger_bootloader_reset(run_firmware=False)
 
     assert result is None
 
