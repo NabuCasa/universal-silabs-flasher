@@ -169,7 +169,6 @@ class SpinelProtocol(SerialProtocol):
     def frame_received(self, frame: SpinelFrame) -> None:
         _LOGGER.debug("Parsed frame %r", frame)
 
-        # TID=0 is reserved for callbacks, they shouldn't be used for responses
         if frame.header.transaction_id in self._pending_frames:
             fut = self._pending_frames[frame.header.transaction_id]
 
