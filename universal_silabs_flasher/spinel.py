@@ -169,8 +169,20 @@ class SpinelProtocol(SerialProtocol):
     def frame_received(self, frame: SpinelFrame) -> None:
         _LOGGER.debug("Parsed frame %r", frame)
 
-        if frame.header.transaction_id in self._pending_frames:
-            self._pending_frames[frame.header.transaction_id].set_result(frame)
+        # TID=0 is reserved for callbacks, they shouldn't be used for responses
+        if (
+            frame.header.transaction_id != 0
+            and frame.header.transaction_id in self._pending_frames
+        ):
+            fut = self._pending_frames[frame.header.transaction_id]
+
+            if fut.done():
+                _LOGGER.debug(
+                    "Ignoring duplicate response for TID %d",
+                    frame.header.transaction_id,
+                )
+            else:
+                fut.set_result(frame)
 
         if frame.command_id == CommandID.PROP_VALUE_IS:
             prop_id, data = PackedUInt21.deserialize(frame.data)
