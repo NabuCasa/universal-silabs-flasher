@@ -170,10 +170,7 @@ class SpinelProtocol(SerialProtocol):
         _LOGGER.debug("Parsed frame %r", frame)
 
         # TID=0 is reserved for callbacks, they shouldn't be used for responses
-        if (
-            frame.header.transaction_id != 0
-            and frame.header.transaction_id in self._pending_frames
-        ):
+        if frame.header.transaction_id in self._pending_frames:
             fut = self._pending_frames[frame.header.transaction_id]
 
             if fut.done():
@@ -236,9 +233,6 @@ class SpinelProtocol(SerialProtocol):
             self._transaction_id = (self._transaction_id + 1) % (0b1111 - 1)
             tid = 1 + self._transaction_id
 
-        future = asyncio.get_running_loop().create_future()
-        self._pending_frames[tid] = future
-
         # Replace the transaction ID
         new_frame = dataclasses.replace(
             frame, header=frame.header.replace(transaction_id=tid)
@@ -248,6 +242,12 @@ class SpinelProtocol(SerialProtocol):
             _LOGGER.debug("Sending frame %r", new_frame)
             self.send_data(HDLCLiteFrame(data=new_frame.serialize()).serialize())
             return None
+
+        if tid == 0:
+            raise ValueError("Cannot wait for response on TID=0 frames")
+
+        future = asyncio.get_running_loop().create_future()
+        self._pending_frames[tid] = future
 
         try:
             for attempt in range(retries + 1):
