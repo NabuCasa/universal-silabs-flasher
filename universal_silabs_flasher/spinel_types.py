@@ -11,10 +11,13 @@ class PackedUInt21(zigpy.types.uint_t, bits=21):  # type: ignore[call-arg]
         n = int(self)
         chunks = []
 
-        while n:
+        while True:
             # Set the least significant bit on all other octets.
             chunks.append((n & 0b01111111) | 0b10000000)
             n >>= 7
+
+            if n == 0:
+                break
 
         # Clear the most significant bit of the most significant octet.
         chunks[-1] &= 0b01111111

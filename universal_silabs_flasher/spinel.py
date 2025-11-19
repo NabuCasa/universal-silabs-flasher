@@ -201,10 +201,11 @@ class SpinelProtocol(SerialProtocol):
         self,
         frame: SpinelFrame,
         *,
-        wait_response: typing.Literal[True],
-        retries: int,
-        timeout: float,
-        retry_delay: float,
+        wait_response: typing.Literal[False],
+        retries: int = ...,
+        timeout: float = ...,
+        retry_delay: float = ...,
+        tid: int | None = ...,
     ) -> None: ...
 
     @typing.overload
@@ -212,10 +213,11 @@ class SpinelProtocol(SerialProtocol):
         self,
         frame: SpinelFrame,
         *,
-        wait_response: typing.Literal[False],
-        retries: int,
-        timeout: float,
-        retry_delay: float,
+        wait_response: typing.Literal[True],
+        retries: int = ...,
+        timeout: float = ...,
+        retry_delay: float = ...,
+        tid: int | None = ...,
     ) -> SpinelFrame: ...
 
     async def send_frame(
