@@ -170,7 +170,15 @@ class SpinelProtocol(SerialProtocol):
         _LOGGER.debug("Parsed frame %r", frame)
 
         if frame.header.transaction_id in self._pending_frames:
-            self._pending_frames[frame.header.transaction_id].set_result(frame)
+            fut = self._pending_frames[frame.header.transaction_id]
+
+            if fut.done():
+                _LOGGER.debug(
+                    "Ignoring duplicate response for TID %d",
+                    frame.header.transaction_id,
+                )
+            else:
+                fut.set_result(frame)
 
         if frame.command_id == CommandID.PROP_VALUE_IS:
             prop_id, data = PackedUInt21.deserialize(frame.data)
@@ -192,10 +200,11 @@ class SpinelProtocol(SerialProtocol):
         self,
         frame: SpinelFrame,
         *,
-        wait_response: typing.Literal[True],
-        retries: int,
-        timeout: float,
-        retry_delay: float,
+        wait_response: typing.Literal[False],
+        retries: int = ...,
+        timeout: float = ...,
+        retry_delay: float = ...,
+        tid: int | None = ...,
     ) -> None: ...
 
     @typing.overload
@@ -203,10 +212,11 @@ class SpinelProtocol(SerialProtocol):
         self,
         frame: SpinelFrame,
         *,
-        wait_response: typing.Literal[False],
-        retries: int,
-        timeout: float,
-        retry_delay: float,
+        wait_response: typing.Literal[True],
+        retries: int = ...,
+        timeout: float = ...,
+        retry_delay: float = ...,
+        tid: int | None = ...,
     ) -> SpinelFrame: ...
 
     async def send_frame(
@@ -224,9 +234,6 @@ class SpinelProtocol(SerialProtocol):
             self._transaction_id = (self._transaction_id + 1) % (0b1111 - 1)
             tid = 1 + self._transaction_id
 
-        future = asyncio.get_running_loop().create_future()
-        self._pending_frames[tid] = future
-
         # Replace the transaction ID
         new_frame = dataclasses.replace(
             frame, header=frame.header.replace(transaction_id=tid)
@@ -236,6 +243,12 @@ class SpinelProtocol(SerialProtocol):
             _LOGGER.debug("Sending frame %r", new_frame)
             self.send_data(HDLCLiteFrame(data=new_frame.serialize()).serialize())
             return None
+
+        if tid == 0:
+            raise ValueError("Cannot wait for response on TID=0 frames")
+
+        future = asyncio.get_running_loop().create_future()
+        self._pending_frames[tid] = future
 
         try:
             for attempt in range(retries + 1):
