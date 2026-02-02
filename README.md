@@ -67,6 +67,16 @@ $ universal-silabs-flasher \
     --firmware NabuCasa_SkyConnect_EZSP_v7.1.3.0_ncp-uart-hw_115200.gbl
 ```
 
+### Home Assistant Connect ZBT-2
+The Home Assistant Connect ZBT-2 will be rebooted into its bootloader from the running application
+
+```bash
+$ universal-silabs-flasher \
+    --device /dev/ttyACM0 \
+    flash \
+    --firmware zbt2_openthread_rcp_2.4.4.0_GitHub-7074a43e4_gsdk_4.4.4.gbl
+```
+
 ### Sonoff ZBDongle-E
 The Sonoff dongles use the RTS/DTR bootloader reset method:
 
