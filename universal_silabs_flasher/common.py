@@ -255,7 +255,7 @@ class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
         )
 
         if hasattr(self._transport, "set_signals"):
-            await self._transport.set_signals(rts=rts, cts=cts, dtr=dtr)
+            await self._transport.set_signals(rts=rts, cts=cts, dtr=dtr)  # type: ignore[union-attr]
             return
 
         loop = asyncio.get_running_loop()
