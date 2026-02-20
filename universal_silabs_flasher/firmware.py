@@ -70,6 +70,7 @@ class NabuCasaMetadata:
     ezsp_version: Version | None
     ot_rcp_version: Version | None
     cpc_version: Version | None
+    zwave_version: Version | None
 
     fw_type: FirmwareImageType | None
     fw_variant: str | None
@@ -82,6 +83,7 @@ class NabuCasaMetadata:
             self.cpc_version
             or self.ezsp_version
             or self.ot_rcp_version
+            or self.zwave_version
             or self.sdk_version
         )
 
@@ -108,6 +110,9 @@ class NabuCasaMetadata:
         if cpc_version := obj.pop("cpc_version", None):
             cpc_version = Version(cpc_version)
 
+        if zwave_version := obj.pop("zwave_version", None):
+            zwave_version = Version(zwave_version)
+
         if fw_type := obj.pop("fw_type", None):
             if fw_type in LEGACY_FIRMWARE_TYPE_REMAPPING:
                 fw_type = LEGACY_FIRMWARE_TYPE_REMAPPING[fw_type]
@@ -132,6 +137,7 @@ class NabuCasaMetadata:
             ezsp_version=ezsp_version,
             ot_rcp_version=ot_rcp_version,
             cpc_version=cpc_version,
+            zwave_version=zwave_version,
             fw_type=fw_type,
             fw_variant=fw_variant,
             baudrate=baudrate,

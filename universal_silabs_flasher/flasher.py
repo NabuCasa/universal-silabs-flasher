@@ -37,6 +37,7 @@ from .gecko_bootloader import (
 from .gpio import find_gpiochip_by_label, send_gpio_pattern
 from .router import RouterProtocol
 from .spinel import SpinelProtocol
+from .zwave import ZWaveProtocol
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -140,6 +141,9 @@ class Flasher:
     def _connect_spinel(self, baudrate: int):
         return connect_protocol(self._device, baudrate, SpinelProtocol)
 
+    def _connect_zwave(self, baudrate: int):
+        return connect_protocol(self._device, baudrate, ZWaveProtocol)
+
     async def probe_gecko_bootloader(
         self, *, baudrate: int, run_firmware: bool = True
     ) -> ProbeResult:
@@ -197,6 +201,16 @@ class Flasher:
     async def probe_spinel(self, baudrate: int) -> ProbeResult:
         async with self._connect_spinel(baudrate) as spinel:
             version = await spinel.probe()
+
+        return ProbeResult(
+            version=version,
+            baudrate=baudrate,
+            continue_probing=False,
+        )
+
+    async def probe_zwave(self, baudrate: int) -> ProbeResult:
+        async with self._connect_zwave(baudrate) as zwave:
+            version = await zwave.probe()
 
         return ProbeResult(
             version=version,
@@ -279,6 +293,7 @@ class Flasher:
             ApplicationType.EZSP: self.probe_ezsp,
             ApplicationType.SPINEL: self.probe_spinel,
             ApplicationType.ROUTER: self.probe_router,
+            ApplicationType.ZWAVE: self.probe_zwave,
         }
 
         # Reset into bootloader, if possible. Run the firmware so that we can probe the
@@ -372,6 +387,10 @@ class Flasher:
             async with self._connect_router(self.app_baudrate) as router:
                 async with asyncio_timeout(PROBE_TIMEOUT):
                     await router.enter_bootloader()
+        elif self.app_type is ApplicationType.ZWAVE:
+            async with self._connect_zwave(self.app_baudrate) as zwave:
+                async with asyncio_timeout(PROBE_TIMEOUT):
+                    await zwave.enter_bootloader()
         elif self.app_type is ApplicationType.EZSP:
             async with self._connect_ezsp(self.app_baudrate) as ezsp:
                 try:

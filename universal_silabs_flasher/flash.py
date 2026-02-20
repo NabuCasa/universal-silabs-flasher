@@ -7,6 +7,7 @@ import os.path
 import pathlib
 import re
 import sys
+import typing
 import urllib.parse
 
 import coloredlogs
@@ -486,6 +487,8 @@ async def _cmd_flash(
     elif flasher.app_type == ApplicationType.CPC:
         # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
         running_image_type = FirmwareImageType.MULTIPAN
+    elif flasher.app_type == ApplicationType.ZWAVE:
+        running_image_type = FirmwareImageType.ZWAVE_NCP
     elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
         running_image_type = None
     else:
