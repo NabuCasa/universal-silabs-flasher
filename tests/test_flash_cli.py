@@ -1,10 +1,8 @@
 """CLI integration tests to ensure argument parsing works correctly."""
 
+import io
 from unittest.mock import AsyncMock, patch
 
-import click
-import click.core
-from click.testing import CliRunner
 import pytest
 
 from universal_silabs_flasher.const import (
@@ -13,32 +11,46 @@ from universal_silabs_flasher.const import (
     ResetTarget,
 )
 from universal_silabs_flasher.flash import main
+from universal_silabs_flasher.flasher import Flasher
 
 
-class CtxCliRunner(CliRunner):
-    """CliRunner that captures the Click context in the result."""
+def invoke_main(argv, *, catch_exit=True):
+    """Invoke main() with the given argv, capturing stdout/stderr."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    exit_code = 0
+    captured_flasher = None
 
-    def invoke(self, cli, *args, **kwargs):
-        captured = None
-        original_make_context = click.core.Command.make_context
+    original_init = Flasher.__init__
 
-        def make_context_and_capture(
-            cmd_self, info_name, cmd_args, parent=None, **extra
+    def capture_init(self, **kwargs):
+        nonlocal captured_flasher
+        original_init(self, **kwargs)
+        captured_flasher = self
+
+    try:
+        with (
+            patch("universal_silabs_flasher.flasher.Flasher.__init__", capture_init),
+            patch("sys.stdout", stdout),
+            patch("sys.stderr", stderr),
         ):
-            nonlocal captured
+            main(argv)
+    except SystemExit as e:
+        if not catch_exit:
+            raise
+        exit_code = e.code if e.code is not None else 0
 
-            ctx = original_make_context(cmd_self, info_name, cmd_args, parent, **extra)
-            if parent is None:
-                captured = ctx
-
-            return ctx
-
-        with patch.object(click.core.Command, "make_context", make_context_and_capture):
-            result = super().invoke(cli, *args, **kwargs)
-
-        result.ctx = captured
-
-        return result
+    result = type(
+        "Result",
+        (),
+        {
+            "exit_code": exit_code,
+            "output": stdout.getvalue(),
+            "stderr": stderr.getvalue(),
+            "flasher": captured_flasher,
+        },
+    )()
+    return result
 
 
 @pytest.fixture
@@ -73,8 +85,8 @@ def mock_connections():
             new_callable=AsyncMock,
         ),
         patch(
-            "universal_silabs_flasher.flash.SerialPort.convert",
-            side_effect=lambda v, *_: v,
+            "universal_silabs_flasher.flash._parse_serial_port",
+            side_effect=lambda v: v,
         ),
     ):
         yield
@@ -236,16 +248,14 @@ def test_flash_command_argument_parsing(
     expected_reset,
 ):
     """Test that flash command correctly parses various argument combinations."""
-    runner = CtxCliRunner()
-    result = runner.invoke(main, args + ["--force"], catch_exceptions=False)
+    result = invoke_main(args + ["--force"])
 
     assert result.exit_code == 0
-    assert result.ctx is not None
+    assert result.flasher is not None
 
-    flasher = result.ctx.obj["flasher"]
-    assert flasher._device == expected_device
-    assert set(flasher._probe_methods) == set(expected_probe_methods)
-    assert flasher._reset_targets == expected_reset
+    assert result.flasher._device == expected_device
+    assert set(result.flasher._probe_methods) == set(expected_probe_methods)
+    assert result.flasher._reset_targets == expected_reset
 
 
 @pytest.mark.parametrize(
@@ -258,14 +268,10 @@ def test_flash_command_argument_parsing(
 )
 def test_probe_command_argument_parsing(mock_connections, args, expected_device):
     """Test that probe command correctly parses arguments."""
-    runner = CtxCliRunner()
-    result = runner.invoke(main, args, catch_exceptions=False)
+    result = invoke_main(args)
 
     assert result.exit_code == 0
-    assert result.ctx is not None
-
-    flasher = result.ctx.obj["flasher"]
-    assert flasher._device == expected_device
+    assert result.flasher._device == expected_device
 
 
 @pytest.mark.parametrize(
@@ -301,13 +307,11 @@ def test_write_ieee_command_argument_parsing(
     mock_connections, args, expected_ieee, expected_force
 ):
     """Test that write-ieee command correctly parses arguments."""
-    runner = CliRunner()
-
     with patch(
         "universal_silabs_flasher.flasher.Flasher.write_emberznet_eui64",
         new_callable=AsyncMock,
     ) as mock_write:
-        result = runner.invoke(main, args, catch_exceptions=False)
+        result = invoke_main(args)
 
         assert result.exit_code == 0
 
@@ -320,15 +324,12 @@ def test_write_ieee_command_argument_parsing(
 
 def test_dump_gbl_metadata_command():
     """Test that dump-gbl-metadata command works without --device."""
-    runner = CliRunner()
-    result = runner.invoke(
-        main,
+    result = invoke_main(
         [
             "dump-gbl-metadata",
             "--firmware",
             "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-        ],
-        catch_exceptions=False,
+        ]
     )
 
     assert result.exit_code == 0
@@ -380,12 +381,12 @@ def test_dump_gbl_metadata_command():
         # Missing firmware for flash
         (
             ["--device", "/dev/ttyUSB0", "flash"],
-            "Missing option",
+            "required",
         ),
         # Missing IEEE for write-ieee
         (
             ["--device", "/dev/ttyUSB0", "write-ieee"],
-            "Missing option",
+            "required",
         ),
         # Removed --baudrate flag
         (
@@ -398,7 +399,7 @@ def test_dump_gbl_metadata_command():
                 "--firmware",
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
-            "no such option",
+            "error",
         ),
     ],
 )
@@ -406,15 +407,14 @@ def test_invalid_argument_combinations_with_mocked_device(
     args, expected_error_fragment
 ):
     """Test invalid argument combinations with mocked device validator."""
-    runner = CliRunner()
-
     with patch(
-        "universal_silabs_flasher.flash.SerialPort.convert", side_effect=lambda v, *_: v
+        "universal_silabs_flasher.flash._parse_serial_port", side_effect=lambda v: v
     ):
-        result = runner.invoke(main, args)
+        result = invoke_main(args)
 
     assert result.exit_code != 0
-    assert expected_error_fragment.lower() in result.output.lower()
+    combined = result.output.lower() + result.stderr.lower()
+    assert expected_error_fragment.lower() in combined
 
 
 @pytest.mark.parametrize(
@@ -451,11 +451,11 @@ def test_invalid_argument_combinations_without_mocked_device(
     args, expected_error_fragment
 ):
     """Test invalid argument combinations without mocked device validator."""
-    runner = CliRunner()
-    result = runner.invoke(main, args)
+    result = invoke_main(args)
 
     assert result.exit_code != 0
-    assert expected_error_fragment.lower() in result.output.lower()
+    combined = result.output.lower() + result.stderr.lower()
+    assert expected_error_fragment.lower() in combined
 
 
 @pytest.mark.parametrize(
@@ -512,8 +512,7 @@ def test_invalid_argument_combinations_without_mocked_device(
 )
 def test_flash_command_flags(mock_connections, args):
     """Test that flash command boolean flags are parsed correctly."""
-    runner = CliRunner()
-    result = runner.invoke(main, args, catch_exceptions=False)
+    result = invoke_main(args)
 
     assert result.exit_code == 0
 
@@ -549,11 +548,7 @@ def test_flash_command_flags(mock_connections, args):
 )
 def test_deprecated_reset_flags(mock_connections, args, expected_reset_target):
     """Test deprecated reset flags set reset targets correctly."""
-    runner = CtxCliRunner()
-    result = runner.invoke(main, args, catch_exceptions=False)
+    result = invoke_main(args)
 
     assert result.exit_code == 0
-    assert result.ctx is not None
-
-    flasher = result.ctx.obj["flasher"]
-    assert flasher._reset_targets == expected_reset_target
+    assert result.flasher._reset_targets == expected_reset_target

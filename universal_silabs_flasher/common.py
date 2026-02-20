@@ -10,7 +10,6 @@ import re
 import sys
 import typing
 
-import click
 import crc
 import zigpy.serial
 
@@ -145,33 +144,6 @@ async def connect_protocol(port, baudrate, factory):
         yield protocol
     finally:
         await protocol.disconnect()
-
-
-class CommaSeparatedNumbers(click.ParamType):
-    """Click type to parse comma-separated numbers into a list of integers."""
-
-    name = "numbers"
-
-    def convert(
-        self, value: typing.Any, param: click.Parameter | None, ctx: click.Context
-    ) -> list[int]:
-        if isinstance(value, list):
-            return value
-
-        values = []
-
-        for v in value.split(","):
-            if not v.strip():
-                continue
-
-            try:
-                values.append(int(v, 10))
-            except ValueError:
-                raise click.BadParameter(
-                    f"Comma-separated list of numbers contains bad value: {v!r}"
-                )
-
-        return values
 
 
 def put_first(lst: list[typing.Any], elements: list[typing.Any]) -> list[typing.Any]:
