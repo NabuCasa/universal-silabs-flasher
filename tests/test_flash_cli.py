@@ -1,5 +1,6 @@
 """CLI integration tests to ensure argument parsing works correctly."""
 
+from dataclasses import dataclass
 import io
 from unittest.mock import AsyncMock, patch
 
@@ -14,11 +15,20 @@ from universal_silabs_flasher.flash import main
 from universal_silabs_flasher.flasher import Flasher
 
 
-def invoke_main(argv, *, catch_exit=True):
+@dataclass
+class Result:
+    exit_code: str | int
+    output: str
+    stderr: str
+    flasher: Flasher
+
+
+async def invoke_main(argv: list[str], *, catch_exit: bool = True) -> Result:
     """Invoke main() with the given argv, capturing stdout/stderr."""
     stdout = io.StringIO()
     stderr = io.StringIO()
-    exit_code = 0
+
+    exit_code: str | int = 0
     captured_flasher = None
 
     original_init = Flasher.__init__
@@ -28,68 +38,55 @@ def invoke_main(argv, *, catch_exit=True):
         original_init(self, **kwargs)
         captured_flasher = self
 
+    async def mock_probe_app_type(self):
+        self.app_type = ApplicationType.EZSP
+        self.app_version = None
+
     try:
         with (
             patch("universal_silabs_flasher.flasher.Flasher.__init__", capture_init),
             patch("sys.stdout", stdout),
             patch("sys.stderr", stderr),
+            patch("universal_silabs_flasher.flasher.connect_protocol"),
+            patch("universal_silabs_flasher.flasher.Flasher._connect_ezsp"),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.probe_app_type",
+                mock_probe_app_type,
+            ),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.dump_emberznet_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.write_emberznet_eui64",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.enter_bootloader",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.flash_firmware",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "universal_silabs_flasher.flash._parse_serial_port",
+                side_effect=lambda v: v,
+            ),
         ):
-            main(argv)
+            await main(argv)
     except SystemExit as e:
         if not catch_exit:
             raise
+
         exit_code = e.code if e.code is not None else 0
 
-    result = type(
-        "Result",
-        (),
-        {
-            "exit_code": exit_code,
-            "output": stdout.getvalue(),
-            "stderr": stderr.getvalue(),
-            "flasher": captured_flasher,
-        },
-    )()
-    return result
-
-
-@pytest.fixture
-def mock_connections():
-    """Mock network connections to prevent actual hardware communication."""
-
-    async def mock_probe_app_type(self):
-        self.app_type = ApplicationType.EZSP
-        self.app_version = None
-
-    with (
-        patch("universal_silabs_flasher.flasher.connect_protocol"),
-        patch("universal_silabs_flasher.flasher.Flasher._connect_ezsp"),
-        patch(
-            "universal_silabs_flasher.flasher.Flasher.probe_app_type",
-            mock_probe_app_type,
-        ),
-        patch(
-            "universal_silabs_flasher.flasher.Flasher.dump_emberznet_config",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "universal_silabs_flasher.flasher.Flasher.write_emberznet_eui64",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "universal_silabs_flasher.flasher.Flasher.enter_bootloader",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "universal_silabs_flasher.flasher.Flasher.flash_firmware",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "universal_silabs_flasher.flash._parse_serial_port",
-            side_effect=lambda v: v,
-        ),
-    ):
-        yield
+    return Result(
+        exit_code=exit_code,
+        output=stdout.getvalue(),
+        stderr=stderr.getvalue(),
+        flasher=captured_flasher,
+    )
 
 
 @pytest.mark.parametrize(
@@ -240,15 +237,14 @@ def mock_connections():
         ),
     ],
 )
-def test_flash_command_argument_parsing(
-    mock_connections,
+async def test_flash_command_argument_parsing(
     args,
     expected_device,
     expected_probe_methods,
     expected_reset,
 ):
     """Test that flash command correctly parses various argument combinations."""
-    result = invoke_main(args + ["--force"])
+    result = await invoke_main(args + ["--force"])
 
     assert result.exit_code == 0
     assert result.flasher is not None
@@ -266,9 +262,9 @@ def test_flash_command_argument_parsing(
         (["--device", "socket://localhost:5000", "probe"], "socket://localhost:5000"),
     ],
 )
-def test_probe_command_argument_parsing(mock_connections, args, expected_device):
+async def test_probe_command_argument_parsing(args, expected_device):
     """Test that probe command correctly parses arguments."""
-    result = invoke_main(args)
+    result = await invoke_main(args)
 
     assert result.exit_code == 0
     assert result.flasher._device == expected_device
@@ -303,15 +299,13 @@ def test_probe_command_argument_parsing(mock_connections, args, expected_device)
         ),
     ],
 )
-def test_write_ieee_command_argument_parsing(
-    mock_connections, args, expected_ieee, expected_force
-):
+async def test_write_ieee_command_argument_parsing(args, expected_ieee, expected_force):
     """Test that write-ieee command correctly parses arguments."""
     with patch(
         "universal_silabs_flasher.flasher.Flasher.write_emberznet_eui64",
         new_callable=AsyncMock,
     ) as mock_write:
-        result = invoke_main(args)
+        result = await invoke_main(args)
 
         assert result.exit_code == 0
 
@@ -322,9 +316,9 @@ def test_write_ieee_command_argument_parsing(
         assert call_args.kwargs["force"] == expected_force
 
 
-def test_dump_gbl_metadata_command():
+async def test_dump_gbl_metadata_command():
     """Test that dump-gbl-metadata command works without --device."""
-    result = invoke_main(
+    result = await invoke_main(
         [
             "dump-gbl-metadata",
             "--firmware",
@@ -403,14 +397,14 @@ def test_dump_gbl_metadata_command():
         ),
     ],
 )
-def test_invalid_argument_combinations_with_mocked_device(
+async def test_invalid_argument_combinations_with_mocked_device(
     args, expected_error_fragment
 ):
     """Test invalid argument combinations with mocked device validator."""
     with patch(
         "universal_silabs_flasher.flash._parse_serial_port", side_effect=lambda v: v
     ):
-        result = invoke_main(args)
+        result = await invoke_main(args)
 
     assert result.exit_code != 0
     combined = result.output.lower() + result.stderr.lower()
@@ -447,11 +441,11 @@ def test_invalid_argument_combinations_with_mocked_device(
         ),
     ],
 )
-def test_invalid_argument_combinations_without_mocked_device(
+async def test_invalid_argument_combinations_without_mocked_device(
     args, expected_error_fragment
 ):
     """Test invalid argument combinations without mocked device validator."""
-    result = invoke_main(args)
+    result = await invoke_main(args)
 
     assert result.exit_code != 0
     combined = result.output.lower() + result.stderr.lower()
@@ -510,9 +504,9 @@ def test_invalid_argument_combinations_without_mocked_device(
         ],
     ],
 )
-def test_flash_command_flags(mock_connections, args):
+async def test_flash_command_flags(args):
     """Test that flash command boolean flags are parsed correctly."""
-    result = invoke_main(args)
+    result = await invoke_main(args)
 
     assert result.exit_code == 0
 
@@ -546,9 +540,9 @@ def test_flash_command_flags(mock_connections, args):
         ),
     ],
 )
-def test_deprecated_reset_flags(mock_connections, args, expected_reset_target):
+async def test_deprecated_reset_flags(args, expected_reset_target):
     """Test deprecated reset flags set reset targets correctly."""
-    result = invoke_main(args)
+    result = await invoke_main(args)
 
     assert result.exit_code == 0
     assert result.flasher._reset_targets == expected_reset_target
