@@ -22,7 +22,7 @@ from .const import (
     ApplicationType,
     ResetTarget,
 )
-from .firmware import FirmwareImageType, parse_firmware_image
+from .firmware import parse_firmware_image
 from .flasher import Flasher
 from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
@@ -256,24 +256,28 @@ async def main(argv: list[str] | None = None) -> None:
         "--force",
         action="store_true",
         default=False,
+        help=argparse.SUPPRESS,
     )
     flash_parser.add_argument(
         "--ensure-exact-version",
         action="store_true",
         default=False,
         dest="ensure_exact_version",
+        help=argparse.SUPPRESS,
     )
     flash_parser.add_argument(
         "--allow-downgrades",
         action="store_true",
         default=False,
         dest="allow_downgrades",
+        help=argparse.SUPPRESS,
     )
     flash_parser.add_argument(
         "--allow-cross-flashing",
         action="store_true",
         default=False,
         dest="allow_cross_flashing",
+        help=argparse.SUPPRESS,
     )
     flash_parser.add_argument(
         "--yellow-gpio-reset",
@@ -479,73 +483,18 @@ async def _cmd_flash(
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if flasher.app_type == ApplicationType.EZSP:
-        running_image_type = FirmwareImageType.ZIGBEE_NCP
-    elif flasher.app_type == ApplicationType.ROUTER:
-        running_image_type = FirmwareImageType.ZIGBEE_ROUTER
-    elif flasher.app_type == ApplicationType.SPINEL:
-        running_image_type = FirmwareImageType.OPENTHREAD_RCP
-    elif flasher.app_type == ApplicationType.CPC:
-        # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
-        running_image_type = FirmwareImageType.MULTIPAN
-    elif flasher.app_type == ApplicationType.ZWAVE:
-        running_image_type = FirmwareImageType.ZWAVE_NCP
-    elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
-        running_image_type = None
-    else:
-        raise RuntimeError(f"Unknown application type {flasher.app_type!r}")
-
-    # Ensure the firmware versions and image types are consistent
-    if not args.force and flasher.app_version is not None and metadata is not None:
-        app_version = flasher.app_version
-        fw_version = metadata.get_public_version()
-
-        is_cross_flashing = (
-            metadata.fw_type is not None
-            and running_image_type is not None
-            and metadata.fw_type != running_image_type
-        )
-
-        if is_cross_flashing and not args.allow_cross_flashing:
-            print(
-                f"Error: Running image type {running_image_type}"
-                f" does not match firmware image type {metadata.fw_type}."
-                f" If you intend to cross-flash, run with `--allow-cross-flashing`.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-        if not is_cross_flashing:
-            if (
-                metadata.baudrate is not None
-                and metadata.baudrate != flasher.app_baudrate
-            ):
-                _LOGGER.info(
-                    "Firmware baudrate %s differs from expected baudrate %s",
-                    flasher.app_baudrate,
-                    metadata.baudrate,
-                )
-            elif args.ensure_exact_version and app_version != fw_version:
-                _LOGGER.info(
-                    "Firmware version %s does not match expected version %s",
-                    fw_version,
-                    app_version,
-                )
-            elif app_version.compatible_with(fw_version):
-                _LOGGER.info(
-                    "Firmware version %s is flashed, not re-installing", app_version
-                )
-                return
-            elif not args.allow_downgrades and app_version > fw_version:
-                _LOGGER.info(
-                    "Firmware version %s does not upgrade current version %s",
-                    fw_version,
-                    app_version,
-                )
-                return
-        else:
-            _LOGGER.info(
-                "Cross-flashing from %s to %s", running_image_type, metadata.fw_type
+    _DEPRECATED_FLASH_FLAGS = {
+        "--force": args.force,
+        "--ensure-exact-version": args.ensure_exact_version,
+        "--allow-downgrades": args.allow_downgrades,
+        "--allow-cross-flashing": args.allow_cross_flashing,
+    }
+    for flag, used in _DEPRECATED_FLASH_FLAGS.items():
+        if used:
+            _LOGGER.warning(
+                "The '%s' flag is deprecated and has no effect. Firmware will always"
+                " be flashed unconditionally.",
+                flag,
             )
 
     await flasher.enter_bootloader()
