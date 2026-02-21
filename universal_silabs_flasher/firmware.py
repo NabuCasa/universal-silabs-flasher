@@ -66,17 +66,19 @@ class EBLTagId(zigpy_t.enum16):
 class NabuCasaMetadata:
     metadata_version: int
 
-    sdk_version: Version | None
-    ezsp_version: Version | None
-    ot_rcp_version: Version | None
-    cpc_version: Version | None
-    zwave_version: Version | None
+    sdk_version: Version | None = None
+    ezsp_version: Version | None = None
+    ot_rcp_version: Version | None = None
+    cpc_version: Version | None = None
+    zwave_version: Version | None = None
 
-    fw_type: FirmwareImageType | None
-    fw_variant: str | None
-    baudrate: int | None
+    fw_type: FirmwareImageType | None = None
+    fw_variant: str | None = None
+    baudrate: int | None = None
 
-    original_json: dict[str, typing.Any] = dataclasses.field(repr=False)
+    original_json: dict[str, typing.Any] = dataclasses.field(
+        repr=False, default_factory=dict
+    )
 
     def get_public_version(self) -> Version | None:
         return (
