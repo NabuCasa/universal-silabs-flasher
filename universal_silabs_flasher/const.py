@@ -31,6 +31,7 @@ class ApplicationType(enum.Enum):
     EZSP = "ezsp"
     SPINEL = "spinel"
     ROUTER = "router"
+    ZWAVE = "zwave"
 
 
 FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
@@ -39,6 +40,7 @@ FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
     FirmwareImageType.OPENTHREAD_RCP: ApplicationType.SPINEL,
     FirmwareImageType.BOOTLOADER: ApplicationType.GECKO_BOOTLOADER,
     FirmwareImageType.ZIGBEE_ROUTER: ApplicationType.ROUTER,
+    FirmwareImageType.ZWAVE_NCP: ApplicationType.ZWAVE,
 }
 
 

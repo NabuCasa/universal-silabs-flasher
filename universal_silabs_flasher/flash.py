@@ -350,7 +350,9 @@ async def main(argv: list[str] | None = None) -> None:
         }
 
         deprecated_methods = getattr(
-            args, "deprecated_probe_methods", list(ApplicationType)
+            args,
+            "deprecated_probe_methods",
+            [t for t in ApplicationType if t != ApplicationType.ZWAVE],
         )
         probe_methods = [
             (method, baudrate)
@@ -486,6 +488,8 @@ async def _cmd_flash(
     elif flasher.app_type == ApplicationType.CPC:
         # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
         running_image_type = FirmwareImageType.MULTIPAN
+    elif flasher.app_type == ApplicationType.ZWAVE:
+        running_image_type = FirmwareImageType.ZWAVE_NCP
     elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
         running_image_type = None
     else:
