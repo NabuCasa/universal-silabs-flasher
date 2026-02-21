@@ -350,7 +350,9 @@ async def main(argv: list[str] | None = None) -> None:
         }
 
         deprecated_methods = getattr(
-            args, "deprecated_probe_methods", list(ApplicationType)
+            args,
+            "deprecated_probe_methods",
+            [t for t in ApplicationType if t != ApplicationType.ZWAVE],
         )
         probe_methods = [
             (method, baudrate)
