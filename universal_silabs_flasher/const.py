@@ -55,15 +55,6 @@ DEFAULT_PROBE_METHODS = (
     (ApplicationType.ROUTER, 115200),
 )
 
-# Backwards compat
-DEFAULT_BAUDRATES: dict[ApplicationType, list[int]] = {}
-
-for method, baudrate in DEFAULT_PROBE_METHODS:
-    if method not in DEFAULT_BAUDRATES:
-        DEFAULT_BAUDRATES[method] = []
-
-    DEFAULT_BAUDRATES[method].append(baudrate)
-
 
 class ResetTarget(enum.Enum):
     YELLOW = "yellow"

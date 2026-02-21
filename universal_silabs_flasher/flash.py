@@ -4,10 +4,7 @@ import argparse
 import json
 import logging
 import os.path
-import pathlib
-import re
 import sys
-import urllib.parse
 
 import coloredlogs
 import tqdm
@@ -16,44 +13,17 @@ import zigpy.types
 
 from .common import put_first
 from .const import (
-    DEFAULT_BAUDRATES,
     DEFAULT_PROBE_METHODS,
     FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
     ApplicationType,
     ResetTarget,
 )
-from .firmware import FirmwareImageType, parse_firmware_image
+from .firmware import parse_firmware_image
 from .flasher import Flasher
 from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 _LOGGER = logging.getLogger(__name__)
 LOG_LEVELS = ["INFO", "DEBUG"]
-
-
-def parse_serial_port(value: str) -> str:
-    path = pathlib.Path(value)
-
-    if path.exists():
-        return value
-
-    # Windows COM port (COM10+ uses a different syntax)
-    if re.match(r"^COM[0-9]$|\\\\\.\\COM[0-9]+$", str(path)):
-        return value
-
-    # Socket URI
-    try:
-        parsed = urllib.parse.urlparse(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid URI: {path}")
-
-    if parsed.scheme == "socket":
-        return value
-    elif parsed.scheme != "":
-        raise argparse.ArgumentTypeError(
-            f"invalid URL scheme {parsed.scheme!r}, only `socket://` is accepted"
-        )
-    else:
-        raise argparse.ArgumentTypeError(f"{path} does not exist")
 
 
 def parse_probe_methods(value: str) -> list[tuple[ApplicationType, int]]:
@@ -106,32 +76,6 @@ def parse_reset_methods(value: str) -> list[ResetTarget]:
     return enums
 
 
-def parse_comma_separated_numbers(value: str) -> list[int]:
-    values = []
-
-    for v in value.split(","):
-        if not v.strip():
-            continue
-        try:
-            values.append(int(v, 10))
-        except ValueError:
-            raise argparse.ArgumentTypeError(
-                f"Comma-separated list of numbers contains bad value: {v!r}"
-            )
-
-    return values
-
-
-def parse_application_type(value: str) -> ApplicationType:
-    try:
-        return ApplicationType(value)
-    except ValueError:
-        expected = [m.value for m in ApplicationType]
-        raise argparse.ArgumentTypeError(
-            f"{value!r} is invalid, must be one of: {', '.join(expected)}"
-        )
-
-
 async def main(argv: list[str] | None = None) -> None:
     global_parser = argparse.ArgumentParser(add_help=False)
     global_parser.add_argument(
@@ -142,7 +86,7 @@ async def main(argv: list[str] | None = None) -> None:
     )
     global_parser.add_argument(
         "--device",
-        type=parse_serial_port,
+        type=str,
         default=argparse.SUPPRESS,
     )
     global_parser.add_argument(
@@ -168,50 +112,6 @@ async def main(argv: list[str] | None = None) -> None:
             f" methods can be chained by separating them with a comma. Valid values:"
             f" {', '.join([m.value for m in ResetTarget])}"
         ),
-    )
-    # Deprecated flags
-    global_parser.add_argument(
-        "--bootloader-baudrate",
-        dest="deprecated_bootloader_baudrate",
-        type=parse_comma_separated_numbers,
-        default=argparse.SUPPRESS,
-        help=argparse.SUPPRESS,
-    )
-    global_parser.add_argument(
-        "--cpc-baudrate",
-        dest="deprecated_cpc_baudrate",
-        type=parse_comma_separated_numbers,
-        default=argparse.SUPPRESS,
-        help=argparse.SUPPRESS,
-    )
-    global_parser.add_argument(
-        "--ezsp-baudrate",
-        dest="deprecated_ezsp_baudrate",
-        type=parse_comma_separated_numbers,
-        default=argparse.SUPPRESS,
-        help=argparse.SUPPRESS,
-    )
-    global_parser.add_argument(
-        "--router-baudrate",
-        dest="deprecated_router_baudrate",
-        type=parse_comma_separated_numbers,
-        default=argparse.SUPPRESS,
-        help=argparse.SUPPRESS,
-    )
-    global_parser.add_argument(
-        "--spinel-baudrate",
-        dest="deprecated_spinel_baudrate",
-        type=parse_comma_separated_numbers,
-        default=argparse.SUPPRESS,
-        help=argparse.SUPPRESS,
-    )
-    global_parser.add_argument(
-        "--probe-method",
-        dest="deprecated_probe_methods",
-        action="append",
-        type=parse_application_type,
-        default=argparse.SUPPRESS,
-        help=argparse.SUPPRESS,
     )
 
     parser = argparse.ArgumentParser(
@@ -252,41 +152,6 @@ async def main(argv: list[str] | None = None) -> None:
         type=argparse.FileType("rb"),
         required=True,
     )
-    flash_parser.add_argument(
-        "--force",
-        action="store_true",
-        default=False,
-    )
-    flash_parser.add_argument(
-        "--ensure-exact-version",
-        action="store_true",
-        default=False,
-        dest="ensure_exact_version",
-    )
-    flash_parser.add_argument(
-        "--allow-downgrades",
-        action="store_true",
-        default=False,
-        dest="allow_downgrades",
-    )
-    flash_parser.add_argument(
-        "--allow-cross-flashing",
-        action="store_true",
-        default=False,
-        dest="allow_cross_flashing",
-    )
-    flash_parser.add_argument(
-        "--yellow-gpio-reset",
-        action="store_true",
-        default=False,
-        dest="yellow_gpio_reset",
-    )
-    flash_parser.add_argument(
-        "--sonoff-reset",
-        action="store_true",
-        default=False,
-        dest="sonoff_reset",
-    )
 
     args = parser.parse_args(argv)
 
@@ -304,65 +169,9 @@ async def main(argv: list[str] | None = None) -> None:
     if not hasattr(args, "device") and args.command != "dump-gbl-metadata":
         parser.error("Missing option '--device'")
 
-    # Handle deprecated baudrate/probe-method flags
-    _DEPRECATED_ATTRS = (
-        "deprecated_bootloader_baudrate",
-        "deprecated_cpc_baudrate",
-        "deprecated_ezsp_baudrate",
-        "deprecated_router_baudrate",
-        "deprecated_spinel_baudrate",
-        "deprecated_probe_methods",
-    )
-    probe_methods = list(getattr(args, "probe_methods", DEFAULT_PROBE_METHODS))
-
-    if any(hasattr(args, attr) for attr in _DEPRECATED_ATTRS):
-        if hasattr(args, "probe_methods"):
-            parser.error(
-                "`--probe-methods` cannot be used with deprecated baudrate flags"
-            )
-
-        baudrates = {
-            ApplicationType.GECKO_BOOTLOADER: getattr(
-                args,
-                "deprecated_bootloader_baudrate",
-                DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
-            ),
-            ApplicationType.CPC: getattr(
-                args,
-                "deprecated_cpc_baudrate",
-                DEFAULT_BAUDRATES[ApplicationType.CPC],
-            ),
-            ApplicationType.EZSP: getattr(
-                args,
-                "deprecated_ezsp_baudrate",
-                DEFAULT_BAUDRATES[ApplicationType.EZSP],
-            ),
-            ApplicationType.ROUTER: getattr(
-                args,
-                "deprecated_router_baudrate",
-                DEFAULT_BAUDRATES[ApplicationType.ROUTER],
-            ),
-            ApplicationType.SPINEL: getattr(
-                args,
-                "deprecated_spinel_baudrate",
-                DEFAULT_BAUDRATES[ApplicationType.SPINEL],
-            ),
-        }
-
-        deprecated_methods = getattr(
-            args,
-            "deprecated_probe_methods",
-            [t for t in ApplicationType if t != ApplicationType.ZWAVE],
-        )
-        probe_methods = [
-            (method, baudrate)
-            for method in deprecated_methods
-            for baudrate in baudrates[method]
-        ]
-
     flasher = Flasher(
         device=getattr(args, "device", None),
-        probe_methods=probe_methods,
+        probe_methods=list(getattr(args, "probe_methods", DEFAULT_PROBE_METHODS)),
         bootloader_reset=tuple(getattr(args, "bootloader_reset", [])),
     )
 
@@ -443,8 +252,8 @@ async def _cmd_flash(
 
     try:
         metadata = fw_image.get_nabucasa_metadata()
-    except Exception:
-        _LOGGER.info("Failed to read firmware metadata: {exc!r}")
+    except Exception as exc:
+        _LOGGER.info(f"Failed to read firmware metadata: {exc!r}")
         metadata = None
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
@@ -461,92 +270,11 @@ async def _cmd_flash(
             flasher._probe_methods, [(app_type, metadata.baudrate)]
         )
 
-    # Maintain backward compatibility with the deprecated reset flags
-    reset_msg = (
-        "The '%s' flag is deprecated. Use '--bootloader-reset' "
-        "instead, see --help for details."
-    )
-    if args.yellow_gpio_reset:
-        flasher._reset_targets = [ResetTarget.YELLOW]
-        _LOGGER.info(reset_msg, "--yellow-gpio-reset")
-    elif args.sonoff_reset:
-        flasher._reset_targets = [ResetTarget.RTS_DTR]
-        _LOGGER.info(reset_msg, "--sonoff-reset")
-
     try:
         await flasher.probe_app_type()
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
-
-    if flasher.app_type == ApplicationType.EZSP:
-        running_image_type = FirmwareImageType.ZIGBEE_NCP
-    elif flasher.app_type == ApplicationType.ROUTER:
-        running_image_type = FirmwareImageType.ZIGBEE_ROUTER
-    elif flasher.app_type == ApplicationType.SPINEL:
-        running_image_type = FirmwareImageType.OPENTHREAD_RCP
-    elif flasher.app_type == ApplicationType.CPC:
-        # TODO: how do you distinguish RCP_UART_802154 from ZIGBEE_NCP_RCP_UART_802154?
-        running_image_type = FirmwareImageType.MULTIPAN
-    elif flasher.app_type == ApplicationType.ZWAVE:
-        running_image_type = FirmwareImageType.ZWAVE_NCP
-    elif flasher.app_type == ApplicationType.GECKO_BOOTLOADER:
-        running_image_type = None
-    else:
-        raise RuntimeError(f"Unknown application type {flasher.app_type!r}")
-
-    # Ensure the firmware versions and image types are consistent
-    if not args.force and flasher.app_version is not None and metadata is not None:
-        app_version = flasher.app_version
-        fw_version = metadata.get_public_version()
-
-        is_cross_flashing = (
-            metadata.fw_type is not None
-            and running_image_type is not None
-            and metadata.fw_type != running_image_type
-        )
-
-        if is_cross_flashing and not args.allow_cross_flashing:
-            print(
-                f"Error: Running image type {running_image_type}"
-                f" does not match firmware image type {metadata.fw_type}."
-                f" If you intend to cross-flash, run with `--allow-cross-flashing`.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-        if not is_cross_flashing:
-            if (
-                metadata.baudrate is not None
-                and metadata.baudrate != flasher.app_baudrate
-            ):
-                _LOGGER.info(
-                    "Firmware baudrate %s differs from expected baudrate %s",
-                    flasher.app_baudrate,
-                    metadata.baudrate,
-                )
-            elif args.ensure_exact_version and app_version != fw_version:
-                _LOGGER.info(
-                    "Firmware version %s does not match expected version %s",
-                    fw_version,
-                    app_version,
-                )
-            elif app_version.compatible_with(fw_version):
-                _LOGGER.info(
-                    "Firmware version %s is flashed, not re-installing", app_version
-                )
-                return
-            elif not args.allow_downgrades and app_version > fw_version:
-                _LOGGER.info(
-                    "Firmware version %s does not upgrade current version %s",
-                    fw_version,
-                    app_version,
-                )
-                return
-        else:
-            _LOGGER.info(
-                "Cross-flashing from %s to %s", running_image_type, metadata.fw_type
-            )
 
     await flasher.enter_bootloader()
 
