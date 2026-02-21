@@ -1,22 +1,20 @@
 from __future__ import annotations
 
-import asyncio
-import enum
-import functools
+import argparse
 import json
 import logging
 import os.path
 import pathlib
 import re
-import typing
+import sys
 import urllib.parse
 
-import click
 import coloredlogs
+import tqdm
 import zigpy.ota.validators
 import zigpy.types
 
-from .common import CommaSeparatedNumbers, put_first
+from .common import put_first
 from .const import (
     DEFAULT_BAUDRATES,
     DEFAULT_PROBE_METHODS,
@@ -32,264 +30,266 @@ _LOGGER = logging.getLogger(__name__)
 LOG_LEVELS = ["INFO", "DEBUG"]
 
 
-def click_coroutine(f: typing.Callable) -> typing.Callable:
-    @functools.wraps(f)
-    def inner(*args: tuple[typing.Any], **kwargs: typing.Any) -> typing.Any:
-        return asyncio.run(f(*args, **kwargs))
+def parse_serial_port(value: str) -> str:
+    path = pathlib.Path(value)
 
-    return inner
+    if path.exists():
+        return value
 
+    # Windows COM port (COM10+ uses a different syntax)
+    if re.match(r"^COM[0-9]$|\\\\\.\\COM[0-9]+$", str(path)):
+        return value
 
-def click_enum_validator_factory(
-    enum_cls: type[enum.Enum],
-) -> typing.Callable[[click.Context, typing.Any, typing.Any], typing.Any]:
-    """Click enum validator factory."""
+    # Socket URI
+    try:
+        parsed = urllib.parse.urlparse(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid URI: {path}")
 
-    def validator_callback(
-        ctx: click.Context, param: click.Parameter, value: tuple[str]
-    ) -> typing.Any:
-        values = []
-
-        for v in value:
-            try:
-                values.append(enum_cls(v))
-            except ValueError:
-                expected = [m.value for m in enum_cls]
-                raise click.BadParameter(
-                    f"{v!r} is invalid, must be one of: {', '.join(expected)}"
-                )
-
-        return values
-
-    return validator_callback
+    if parsed.scheme == "socket":
+        return value
+    elif parsed.scheme != "":
+        raise argparse.ArgumentTypeError(
+            f"invalid URL scheme {parsed.scheme!r}, only `socket://` is accepted"
+        )
+    else:
+        raise argparse.ArgumentTypeError(f"{path} does not exist")
 
 
-class EnumWithSeparator(click.ParamType):
-    """Click validator that accepts enum values separated by plus signs."""
+def parse_probe_methods(value: str) -> list[tuple[ApplicationType, int]]:
+    result = []
 
-    name = "enum_with_separator"
+    for method in value.split(","):
+        parts = method.split(":")
 
-    def __init__(self, enum_cls: type[enum.Enum], separator: str = ",") -> None:
-        self._enum_cls = enum_cls
-        self._separator = separator
-
-    def convert(
-        self, value: str | list[enum.Enum], param: click.Parameter, ctx: click.Context
-    ) -> list[enum.Enum]:
-        if isinstance(value, list):
-            return value
-
-        values = value.split(self._separator)
-        enums = []
-
-        for v in values:
-            try:
-                enums.append(self._enum_cls(v))
-            except ValueError:
-                expected = [m.value for m in self._enum_cls]
-                self.fail(
-                    f"{v!r} is invalid, must be one of: {', '.join(expected)}",
-                    param,
-                    ctx,
-                )
-
-        return enums
-
-
-class ClickProbeMethods(click.ParamType):
-    """Click validator that accepts probe methods in the format
-    '<application_type>:<baudrate>,<application_type>:<baudrate>,...'
-    """
-
-    name = "probe_methods"
-
-    def convert(
-        self,
-        value: str | list[tuple[ApplicationType, int]],
-        param: click.Parameter,
-        ctx: click.Context,
-    ) -> list[tuple[ApplicationType, int]]:
-        if isinstance(value, list):
-            return value
-
-        methods = value.split(",")
-        result = []
-
-        for method in methods:
-            parts = method.split(":")
-
-            if len(parts) != 2:
-                self.fail(
-                    f"invalid probe method {method!r}, must be in the format"
-                    f" '<application_type>:<baudrate>'",
-                    param,
-                    ctx,
-                )
-
-            app_type_str, baudrate_str = parts
-
-            try:
-                app_type = ApplicationType(app_type_str)
-            except ValueError:
-                expected = [m.value for m in ApplicationType]
-                self.fail(
-                    f"invalid application type {app_type_str!r}, must be one of: "
-                    f"{', '.join(expected)}",
-                    param,
-                    ctx,
-                )
-
-            try:
-                baudrate = int(baudrate_str)
-            except ValueError:
-                self.fail(
-                    f"invalid baudrate {baudrate_str!r}, must be an integer",
-                    param,
-                    ctx,
-                )
-
-            result.append((app_type, baudrate))
-
-        return result
-
-
-class SerialPort(click.ParamType):
-    """Click validator that accepts serial ports."""
-
-    name = "path_or_url"
-
-    def convert(self, value: tuple | str, param: click.Parameter, ctx: click.Context):
-        if isinstance(value, tuple):
-            return value
-
-        # File
-        path = pathlib.Path(value)
-
-        if path.exists():
-            return value
-
-        # Windows COM port (COM10+ uses a different syntax)
-        if re.match(r"^COM[0-9]$|\\\\\.\\COM[0-9]+$", str(path)):
-            return value
-
-        # Socket URI
-        try:
-            parsed = urllib.parse.urlparse(value)
-        except ValueError:
-            self.fail(f"Invalid URI: {path}", param, ctx)
-
-        if parsed.scheme == "socket":
-            return value
-        elif parsed.scheme != "":
-            self.fail(
-                f"invalid URL scheme {parsed.scheme!r}, only `socket://` is accepted",
-                param,
-                ctx,
+        if len(parts) != 2:
+            raise argparse.ArgumentTypeError(
+                f"invalid probe method {method!r}, must be in the format"
+                f" '<application_type>:<baudrate>'"
             )
-        else:
-            # Fallback
-            self.fail(f"{path} does not exist", param, ctx)
+
+        app_type_str, baudrate_str = parts
+
+        try:
+            app_type = ApplicationType(app_type_str)
+        except ValueError:
+            expected = [m.value for m in ApplicationType]
+            raise argparse.ArgumentTypeError(
+                f"invalid application type {app_type_str!r}, must be one of: "
+                f"{', '.join(expected)}"
+            )
+
+        try:
+            baudrate = int(baudrate_str)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"invalid baudrate {baudrate_str!r}, must be an integer"
+            )
+
+        result.append((app_type, baudrate))
+
+    return result
 
 
-@click.group()
-@click.option("-v", "--verbose", count=True)
-@click.option("--device", type=SerialPort())
-@click.option(
-    "--probe-methods",
-    show_default=True,
-    type=ClickProbeMethods(),
-    default=",".join(
-        f"{method.value}:{baudrate}" for method, baudrate in DEFAULT_PROBE_METHODS
-    ),
-    help=(
-        "Comma-separated list of application type and baudrate pairs to use when"
-        " probing the device. Each pair should be in the format"
-        " '<application_type>:<baudrate>'. Valid application types: "
-        f"{', '.join([m.value for m in ApplicationType])}. Example: "
-        "'ezsp:115200,ezsp:460800,spinel:460800'"
-    ),
-)
-@click.option(
-    "--bootloader-reset",
-    default=[],
-    type=EnumWithSeparator(ResetTarget),
-    help=(
-        f"Reset methods to attempt when triggering bootloader mode. Multiple methods"
-        f" can be chained by separating them with a comma. Valid values: "
-        f" {', '.join([m.value for m in ResetTarget])}"
-    ),
-)
-# Begin deprecated flags
-@click.option(
-    "--bootloader-baudrate",
-    "deprecated_bootloader_baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-    hidden=True,
-    deprecated=True,
-)
-@click.option(
-    "--cpc-baudrate",
-    "deprecated_cpc_baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.CPC],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-    hidden=True,
-    deprecated=True,
-)
-@click.option(
-    "--ezsp-baudrate",
-    "deprecated_ezsp_baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.EZSP],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-    hidden=True,
-    deprecated=True,
-)
-@click.option(
-    "--router-baudrate",
-    "deprecated_router_baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.ROUTER],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-    hidden=True,
-    deprecated=True,
-)
-@click.option(
-    "--spinel-baudrate",
-    "deprecated_spinel_baudrate",
-    default=DEFAULT_BAUDRATES[ApplicationType.SPINEL],
-    type=CommaSeparatedNumbers(),
-    show_default=True,
-    hidden=True,
-    deprecated=True,
-)
-@click.option(
-    "--probe-method",
-    "deprecated_probe_methods",
-    multiple=True,
-    default=[m.value for m in ApplicationType],
-    callback=click_enum_validator_factory(ApplicationType),
-    show_default=True,
-    hidden=True,
-    deprecated=True,
-)
-# End deprecated flags
-@click.pass_context
-def main(
-    ctx: click.Context,
-    verbose: bool,
-    device: str,
-    probe_methods: list[tuple[ApplicationType, int]],
-    bootloader_reset: list[ResetTarget],
-    deprecated_bootloader_baudrate: list[int],
-    deprecated_cpc_baudrate: list[int],
-    deprecated_ezsp_baudrate: list[int],
-    deprecated_router_baudrate: list[int],
-    deprecated_spinel_baudrate: list[int],
-    deprecated_probe_methods: list[ApplicationType],
-) -> None:
+def parse_reset_methods(value: str) -> list[ResetTarget]:
+    enums = []
+
+    for v in value.split(","):
+        try:
+            enums.append(ResetTarget(v))
+        except ValueError:
+            expected = [m.value for m in ResetTarget]
+            raise argparse.ArgumentTypeError(
+                f"{v!r} is invalid, must be one of: {', '.join(expected)}"
+            )
+
+    return enums
+
+
+def parse_comma_separated_numbers(value: str) -> list[int]:
+    values = []
+
+    for v in value.split(","):
+        if not v.strip():
+            continue
+        try:
+            values.append(int(v, 10))
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"Comma-separated list of numbers contains bad value: {v!r}"
+            )
+
+    return values
+
+
+def parse_application_type(value: str) -> ApplicationType:
+    try:
+        return ApplicationType(value)
+    except ValueError:
+        expected = [m.value for m in ApplicationType]
+        raise argparse.ArgumentTypeError(
+            f"{value!r} is invalid, must be one of: {', '.join(expected)}"
+        )
+
+
+async def main(argv: list[str] | None = None) -> None:
+    global_parser = argparse.ArgumentParser(add_help=False)
+    global_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
+        "--device",
+        type=parse_serial_port,
+        default=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
+        "--probe-methods",
+        dest="probe_methods",
+        type=parse_probe_methods,
+        default=argparse.SUPPRESS,
+        help=(
+            "Comma-separated list of application type and baudrate pairs to use when"
+            " probing the device. Each pair should be in the format"
+            " '<application_type>:<baudrate>'. Valid application types: "
+            f"{', '.join([m.value for m in ApplicationType])}. Example: "
+            "'ezsp:115200,ezsp:460800,spinel:460800'"
+        ),
+    )
+    global_parser.add_argument(
+        "--bootloader-reset",
+        dest="bootloader_reset",
+        type=parse_reset_methods,
+        default=argparse.SUPPRESS,
+        help=(
+            f"Reset methods to attempt when triggering bootloader mode. Multiple"
+            f" methods can be chained by separating them with a comma. Valid values:"
+            f" {', '.join([m.value for m in ResetTarget])}"
+        ),
+    )
+    # Deprecated flags
+    global_parser.add_argument(
+        "--bootloader-baudrate",
+        dest="deprecated_bootloader_baudrate",
+        type=parse_comma_separated_numbers,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
+        "--cpc-baudrate",
+        dest="deprecated_cpc_baudrate",
+        type=parse_comma_separated_numbers,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
+        "--ezsp-baudrate",
+        dest="deprecated_ezsp_baudrate",
+        type=parse_comma_separated_numbers,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
+        "--router-baudrate",
+        dest="deprecated_router_baudrate",
+        type=parse_comma_separated_numbers,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
+        "--spinel-baudrate",
+        dest="deprecated_spinel_baudrate",
+        type=parse_comma_separated_numbers,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
+        "--probe-method",
+        dest="deprecated_probe_methods",
+        action="append",
+        type=parse_application_type,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="universal-silabs-flasher",
+        parents=[global_parser],
+        allow_abbrev=False,
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # dump-gbl-metadata: --device not required
+    dump_parser = subparsers.add_parser("dump-gbl-metadata", parents=[global_parser])
+    dump_parser.add_argument(
+        "--firmware",
+        type=argparse.FileType("rb"),
+        required=True,
+    )
+
+    # probe
+    subparsers.add_parser("probe", parents=[global_parser])
+
+    # write-ieee
+    write_ieee_parser = subparsers.add_parser("write-ieee", parents=[global_parser])
+    write_ieee_parser.add_argument(
+        "--ieee",
+        required=True,
+        type=zigpy.types.EUI64.convert,
+    )
+    write_ieee_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+    )
+
+    # flash
+    flash_parser = subparsers.add_parser("flash", parents=[global_parser])
+    flash_parser.add_argument(
+        "--firmware",
+        type=argparse.FileType("rb"),
+        required=True,
+    )
+    flash_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+    )
+    flash_parser.add_argument(
+        "--ensure-exact-version",
+        action="store_true",
+        default=False,
+        dest="ensure_exact_version",
+    )
+    flash_parser.add_argument(
+        "--allow-downgrades",
+        action="store_true",
+        default=False,
+        dest="allow_downgrades",
+    )
+    flash_parser.add_argument(
+        "--allow-cross-flashing",
+        action="store_true",
+        default=False,
+        dest="allow_cross_flashing",
+    )
+    flash_parser.add_argument(
+        "--yellow-gpio-reset",
+        action="store_true",
+        default=False,
+        dest="yellow_gpio_reset",
+    )
+    flash_parser.add_argument(
+        "--sonoff-reset",
+        action="store_true",
+        default=False,
+        dest="sonoff_reset",
+    )
+
+    args = parser.parse_args(argv)
+
     coloredlogs.install(
         fmt=(
             "%(asctime)s.%(msecs)03d"
@@ -297,79 +297,96 @@ def main(
             " %(name)s"
             " %(levelname)s %(message)s"
         ),
-        level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, verbose)],
+        level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, getattr(args, "verbose", 0))],
     )
 
-    # To maintain some backwards compatibility, make `--device` required only when we
-    # are actually invoking a command that interacts with a device
-    if ctx.get_parameter_source(
-        "device"
-    ) == click.core.ParameterSource.DEFAULT and ctx.invoked_subcommand not in (
-        dump_gbl_metadata.name
-    ):
-        # Replicate the "Error: Missing option" traceback
-        param = next(p for p in ctx.command.params if p.name == "device")
-        raise click.MissingParameter(ctx=ctx, param=param)
+    # --device is required for all subcommands except dump-gbl-metadata
+    if not hasattr(args, "device") and args.command != "dump-gbl-metadata":
+        parser.error("Missing option '--device'")
 
-    # Finally, deprecated baudrate baudrate flags should be converted
-    if any(
-        ctx.get_parameter_source(param) != click.core.ParameterSource.DEFAULT
-        for param in (
-            "deprecated_bootloader_baudrate",
-            "deprecated_cpc_baudrate",
-            "deprecated_ezsp_baudrate",
-            "deprecated_router_baudrate",
-            "deprecated_spinel_baudrate",
-            "deprecated_probe_methods",
-        )
-    ):
-        if (
-            ctx.get_parameter_source("probe_methods")
-            != click.core.ParameterSource.DEFAULT
-        ):
-            raise click.ClickException(
+    # Handle deprecated baudrate/probe-method flags
+    _DEPRECATED_ATTRS = (
+        "deprecated_bootloader_baudrate",
+        "deprecated_cpc_baudrate",
+        "deprecated_ezsp_baudrate",
+        "deprecated_router_baudrate",
+        "deprecated_spinel_baudrate",
+        "deprecated_probe_methods",
+    )
+    probe_methods = list(getattr(args, "probe_methods", DEFAULT_PROBE_METHODS))
+
+    if any(hasattr(args, attr) for attr in _DEPRECATED_ATTRS):
+        if hasattr(args, "probe_methods"):
+            parser.error(
                 "`--probe-methods` cannot be used with deprecated baudrate flags"
             )
 
         baudrates = {
-            ApplicationType.GECKO_BOOTLOADER: deprecated_bootloader_baudrate,
-            ApplicationType.CPC: deprecated_cpc_baudrate,
-            ApplicationType.EZSP: deprecated_ezsp_baudrate,
-            ApplicationType.ROUTER: deprecated_router_baudrate,
-            ApplicationType.SPINEL: deprecated_spinel_baudrate,
+            ApplicationType.GECKO_BOOTLOADER: getattr(
+                args,
+                "deprecated_bootloader_baudrate",
+                DEFAULT_BAUDRATES[ApplicationType.GECKO_BOOTLOADER],
+            ),
+            ApplicationType.CPC: getattr(
+                args,
+                "deprecated_cpc_baudrate",
+                DEFAULT_BAUDRATES[ApplicationType.CPC],
+            ),
+            ApplicationType.EZSP: getattr(
+                args,
+                "deprecated_ezsp_baudrate",
+                DEFAULT_BAUDRATES[ApplicationType.EZSP],
+            ),
+            ApplicationType.ROUTER: getattr(
+                args,
+                "deprecated_router_baudrate",
+                DEFAULT_BAUDRATES[ApplicationType.ROUTER],
+            ),
+            ApplicationType.SPINEL: getattr(
+                args,
+                "deprecated_spinel_baudrate",
+                DEFAULT_BAUDRATES[ApplicationType.SPINEL],
+            ),
         }
 
-        probe_methods = []
+        deprecated_methods = getattr(
+            args, "deprecated_probe_methods", list(ApplicationType)
+        )
+        probe_methods = [
+            (method, baudrate)
+            for method in deprecated_methods
+            for baudrate in baudrates[method]
+        ]
 
-        for method in deprecated_probe_methods:
-            for baudrate in baudrates[method]:
-                probe_methods.append((method, baudrate))
+    flasher = Flasher(
+        device=getattr(args, "device", None),
+        probe_methods=probe_methods,
+        bootloader_reset=tuple(getattr(args, "bootloader_reset", [])),
+    )
 
-    ctx.obj = {
-        "verbosity": verbose,
-        "flasher": Flasher(
-            device=device,
-            probe_methods=probe_methods,
-            bootloader_reset=tuple(bootloader_reset),
-        ),
-    }
+    if args.command == "dump-gbl-metadata":
+        await _cmd_dump_gbl_metadata(args)
+    elif args.command == "probe":
+        await _cmd_probe(flasher)
+    elif args.command == "write-ieee":
+        await _cmd_write_ieee(args, flasher)
+    elif args.command == "flash":
+        await _cmd_flash(args, flasher, getattr(args, "verbose", 0))
 
 
-@main.command()
-@click.pass_context
-@click.option("--firmware", type=click.File("rb"), required=True, show_default=True)
-@click_coroutine
-async def dump_gbl_metadata(ctx: click.Context, firmware: typing.BinaryIO) -> None:
-    # Parse and validate the firmware image
-    firmware_data = firmware.read()
-    firmware.close()
+async def _cmd_dump_gbl_metadata(args: argparse.Namespace) -> None:
+    firmware_data = args.firmware.read()
+    args.firmware.close()
 
     try:
         fw_image = parse_firmware_image(firmware_data)
     except zigpy.ota.validators.ValidationError as e:
-        raise click.ClickException(
-            f"{firmware.name!r} does not appear to be a valid firmware image: {e!r}"
+        print(
+            f"Error: {args.firmware.name!r} does not appear to be a valid firmware"
+            f" image: {e!r}",
+            file=sys.stderr,
         )
+        sys.exit(1)
 
     try:
         metadata = fw_image.get_nabucasa_metadata()
@@ -382,69 +399,45 @@ async def dump_gbl_metadata(ctx: click.Context, firmware: typing.BinaryIO) -> No
     print(json.dumps(metadata_obj))
 
 
-@main.command()
-@click.pass_context
-@click_coroutine
-async def probe(ctx: click.Context) -> None:
-    flasher = ctx.obj["flasher"]
-
+async def _cmd_probe(flasher: Flasher) -> None:
     try:
         await flasher.probe_app_type()
     except RuntimeError as e:
-        raise click.ClickException(str(e)) from e
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if flasher.app_type == ApplicationType.EZSP:
         _LOGGER.info("Dumping EmberZNet Config")
         try:
             await flasher.dump_emberznet_config()
         except RuntimeError as e:
-            raise click.ClickException(str(e)) from e
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
 
-@main.command()
-@click.pass_context
-@click.option("--ieee", required=True, type=zigpy.types.EUI64.convert)
-@click.option("--force", default=False, type=bool)
-@click_coroutine
-async def write_ieee(ctx: click.Context, ieee: zigpy.types.EUI64, force: bool) -> None:
+async def _cmd_write_ieee(args: argparse.Namespace, flasher: Flasher) -> None:
     try:
-        await ctx.obj["flasher"].write_emberznet_eui64(ieee, force=force)
+        await flasher.write_emberznet_eui64(args.ieee, force=args.force)
     except (ValueError, RuntimeError) as e:
-        raise click.ClickException(str(e)) from e
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
-@main.command()
-@click.option("--firmware", type=click.File("rb"), required=True, show_default=True)
-@click.option("--force", is_flag=True, default=False, show_default=True)
-@click.option("--ensure-exact-version", is_flag=True, default=False, show_default=True)
-@click.option("--allow-downgrades", is_flag=True, default=False, show_default=True)
-@click.option("--allow-cross-flashing", is_flag=True, default=False, show_default=True)
-@click.option("--yellow-gpio-reset", is_flag=True, default=False, show_default=True)
-@click.option("--sonoff-reset", is_flag=True, default=False, show_default=True)
-@click.pass_context
-@click_coroutine
-async def flash(
-    ctx: click.Context,
-    firmware: typing.BinaryIO,
-    force: bool,
-    ensure_exact_version: bool,
-    allow_downgrades: bool,
-    allow_cross_flashing: bool,
-    yellow_gpio_reset: bool,
-    sonoff_reset: bool,
+async def _cmd_flash(
+    args: argparse.Namespace, flasher: Flasher, verbosity: int
 ) -> None:
-    flasher = ctx.obj["flasher"]
-
-    # Parse and validate the firmware image
-    firmware_data = firmware.read()
-    firmware.close()
+    firmware_data = args.firmware.read()
+    args.firmware.close()
 
     try:
         fw_image = parse_firmware_image(firmware_data)
     except (zigpy.ota.validators.ValidationError, ValueError) as e:
-        raise click.ClickException(
-            f"{firmware.name!r} does not appear to be a valid firmware image: {e!r}"
+        print(
+            f"Error: {args.firmware.name!r} does not appear to be a valid firmware"
+            f" image: {e!r}",
+            file=sys.stderr,
         )
+        sys.exit(1)
 
     try:
         metadata = fw_image.get_nabucasa_metadata()
@@ -471,17 +464,18 @@ async def flash(
         "The '%s' flag is deprecated. Use '--bootloader-reset' "
         "instead, see --help for details."
     )
-    if yellow_gpio_reset:
+    if args.yellow_gpio_reset:
         flasher._reset_targets = [ResetTarget.YELLOW]
         _LOGGER.info(reset_msg, "--yellow-gpio-reset")
-    elif sonoff_reset:
+    elif args.sonoff_reset:
         flasher._reset_targets = [ResetTarget.RTS_DTR]
         _LOGGER.info(reset_msg, "--sonoff-reset")
 
     try:
         await flasher.probe_app_type()
     except RuntimeError as e:
-        raise click.ClickException(str(e)) from e
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if flasher.app_type == ApplicationType.EZSP:
         running_image_type = FirmwareImageType.ZIGBEE_NCP
@@ -498,7 +492,7 @@ async def flash(
         raise RuntimeError(f"Unknown application type {flasher.app_type!r}")
 
     # Ensure the firmware versions and image types are consistent
-    if not force and flasher.app_version is not None and metadata is not None:
+    if not args.force and flasher.app_version is not None and metadata is not None:
         app_version = flasher.app_version
         fw_version = metadata.get_public_version()
 
@@ -508,12 +502,14 @@ async def flash(
             and metadata.fw_type != running_image_type
         )
 
-        if is_cross_flashing and not allow_cross_flashing:
-            raise click.ClickException(
-                f"Running image type {running_image_type}"
+        if is_cross_flashing and not args.allow_cross_flashing:
+            print(
+                f"Error: Running image type {running_image_type}"
                 f" does not match firmware image type {metadata.fw_type}."
-                f" If you intend to cross-flash, run with `--allow-cross-flashing`."
+                f" If you intend to cross-flash, run with `--allow-cross-flashing`.",
+                file=sys.stderr,
             )
+            sys.exit(1)
 
         if not is_cross_flashing:
             if (
@@ -525,7 +521,7 @@ async def flash(
                     flasher.app_baudrate,
                     metadata.baudrate,
                 )
-            elif ensure_exact_version and app_version != fw_version:
+            elif args.ensure_exact_version and app_version != fw_version:
                 _LOGGER.info(
                     "Firmware version %s does not match expected version %s",
                     fw_version,
@@ -536,7 +532,7 @@ async def flash(
                     "Firmware version %s is flashed, not re-installing", app_version
                 )
                 return
-            elif not allow_downgrades and app_version > fw_version:
+            elif not args.allow_downgrades and app_version > fw_version:
                 _LOGGER.info(
                     "Firmware version %s does not upgrade current version %s",
                     fw_version,
@@ -550,18 +546,13 @@ async def flash(
 
     await flasher.enter_bootloader()
 
-    pbar = click.progressbar(
-        label=os.path.basename(firmware.name),
-        length=len(firmware_data),
-        show_eta=True,
-        show_percent=True,
-    )
-
-    # Only show the progress bar if verbose logging won't interfere
-    if ctx.obj["verbosity"] > 1:
-        pbar.is_hidden = True
-
-    with pbar:
+    with tqdm.tqdm(
+        total=len(firmware_data),
+        desc=os.path.basename(args.firmware.name),
+        unit="B",
+        unit_scale=True,
+        disable=verbosity > 1,
+    ) as pbar:
         try:
             await flasher.flash_firmware(
                 fw_image,
@@ -569,7 +560,9 @@ async def flash(
                 progress_callback=lambda current, _: pbar.update(XMODEM_BLOCK_SIZE),
             )
         except ReceiverCancelled:
-            raise click.ClickException(
-                "Firmware image was rejected by the device. Ensure this is the correct"
-                " image for this device."
+            print(
+                "Error: Firmware image was rejected by the device. Ensure this is"
+                " the correct image for this device.",
+                file=sys.stderr,
             )
+            sys.exit(1)

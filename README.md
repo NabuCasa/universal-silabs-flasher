@@ -9,31 +9,24 @@ $ pip install universal-silabs-flasher
 ## Usage
 
 ```console
-Usage: universal-silabs-flasher [OPTIONS] COMMAND [ARGS]...
+usage: universal-silabs-flasher [-h] [-v] [--device DEVICE] [--probe-methods PROBE_METHODS]
+                                [--bootloader-reset BOOTLOADER_RESET]
+                                {dump-gbl-metadata,probe,write-ieee,flash} ...
 
-Options:
+positional arguments:
+  {dump-gbl-metadata,probe,write-ieee,flash}
+
+options:
+  -h, --help            show this help message and exit
   -v, --verbose
-  --device PATH_OR_URL
-  --bootloader-baudrate NUMBERS   [default: 115200]
-  --cpc-baudrate NUMBERS          [default: 460800, 115200, 230400]
-  --ezsp-baudrate NUMBERS         [default: 115200, 460800]
-  --router-baudrate NUMBERS       [default: 115200]
-  --spinel-baudrate NUMBERS       [default: 460800]
-  --probe-method TEXT             [default: bootloader, cpc, ezsp, spinel,
-                                  router]
-  --bootloader-reset ENUM_WITH_SEPARATOR
-                                  Reset methods to attempt when triggering
-                                  bootloader mode. Multiple methods can be
-                                  chained by separating them with a comma.
-                                  Valid values:  yellow, ihost, slzb07,
-                                  rts_dtr, baudrate
-  --help                          Show this message and exit.
-
-Commands:
-  dump-gbl-metadata
-  flash
-  probe
-  write-ieee
+  --device DEVICE
+  --probe-methods PROBE_METHODS
+                        Comma-separated list of application type and baudrate pairs to use when probing the device.
+                        Each pair should be in the format '<application_type>:<baudrate>'. Valid application types:
+                        bootloader, cpc, ezsp, spinel, router. Example: 'ezsp:115200,ezsp:460800,spinel:460800'
+  --bootloader-reset BOOTLOADER_RESET
+                        Reset methods to attempt when triggering bootloader mode. Multiple methods can be chained by
+                        separating them with a comma. Valid values: yellow, ihost, slzb07, rts_dtr, baudrate
 ```
 
 ## Flashing firmware

@@ -1,47 +1,44 @@
-import click
+from argparse import ArgumentTypeError
+
 import pytest
 
 from universal_silabs_flasher.const import ResetTarget
-from universal_silabs_flasher.flash import EnumWithSeparator, SerialPort
+from universal_silabs_flasher.flash import parse_reset_methods, parse_serial_port
 
 
 def test_click_serialport_validation():
-    assert SerialPort().convert("/dev/null", None, None) == "/dev/null"
-    assert SerialPort().convert("socket://1.2.3.4", None, None) == "socket://1.2.3.4"
-    assert SerialPort().convert("COM1", None, None) == "COM1"
-    assert SerialPort().convert("\\\\.\\COM123", None, None) == "\\\\.\\COM123"
+    assert parse_serial_port("/dev/null") == "/dev/null"
+    assert parse_serial_port("socket://1.2.3.4") == "socket://1.2.3.4"
+    assert parse_serial_port("COM1") == "COM1"
+    assert parse_serial_port("\\\\.\\COM123") == "\\\\.\\COM123"
 
-    with pytest.raises(click.BadParameter) as exc_info:
-        assert SerialPort().convert("COM10", None, None)
+    with pytest.raises(ArgumentTypeError):
+        assert parse_serial_port("COM10")
 
-    with pytest.raises(click.BadParameter) as exc_info:
-        assert SerialPort().convert("http://1.2.3.4", None, None)
+    with pytest.raises(ArgumentTypeError) as exc_info:
+        assert parse_serial_port("http://1.2.3.4")
 
-    assert "invalid URL scheme" in exc_info.value.message
+    assert "invalid URL scheme" in str(exc_info.value)
 
-    with pytest.raises(click.BadParameter) as exc_info:
-        assert SerialPort().convert("/dev/serial/by-id/does-not-exist", None, None)
+    with pytest.raises(ArgumentTypeError) as exc_info:
+        assert parse_serial_port("/dev/serial/by-id/does-not-exist")
 
-    assert "does not exist" in exc_info.value.message
+    assert "does not exist" in str(exc_info.value)
 
 
 def test_enum_with_separator_single_value() -> None:
-    converter = EnumWithSeparator(ResetTarget)
-    result = converter.convert("rts_dtr", None, None)
+    result = parse_reset_methods("rts_dtr")
     assert result == [ResetTarget.RTS_DTR]
 
 
 def test_enum_with_separator_multiple_values() -> None:
-    converter = EnumWithSeparator(ResetTarget)
-    result = converter.convert("rts_dtr,baudrate", None, None)
+    result = parse_reset_methods("rts_dtr,baudrate")
     assert result == [ResetTarget.RTS_DTR, ResetTarget.BAUDRATE]
 
 
 def test_enum_with_separator_invalid_value() -> None:
-    converter = EnumWithSeparator(ResetTarget)
-
-    with pytest.raises(click.BadParameter) as exc_info:
-        converter.convert("invalid_target", None, None)
+    with pytest.raises(ArgumentTypeError) as exc_info:
+        parse_reset_methods("invalid_target")
 
     assert "'invalid_target' is invalid, must be one of:" in str(exc_info.value)
     assert "yellow" in str(exc_info.value)
