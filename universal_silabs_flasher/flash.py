@@ -30,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 LOG_LEVELS = ["INFO", "DEBUG"]
 
 
-def _parse_serial_port(value: str) -> str:
+def parse_serial_port(value: str) -> str:
     path = pathlib.Path(value)
 
     if path.exists():
@@ -56,7 +56,7 @@ def _parse_serial_port(value: str) -> str:
         raise argparse.ArgumentTypeError(f"{path} does not exist")
 
 
-def _parse_probe_methods(value: str) -> list[tuple[ApplicationType, int]]:
+def parse_probe_methods(value: str) -> list[tuple[ApplicationType, int]]:
     result = []
 
     for method in value.split(","):
@@ -91,7 +91,7 @@ def _parse_probe_methods(value: str) -> list[tuple[ApplicationType, int]]:
     return result
 
 
-def _parse_reset_methods(value: str) -> list[ResetTarget]:
+def parse_reset_methods(value: str) -> list[ResetTarget]:
     enums = []
 
     for v in value.split(","):
@@ -106,7 +106,7 @@ def _parse_reset_methods(value: str) -> list[ResetTarget]:
     return enums
 
 
-def _parse_comma_separated_numbers(value: str) -> list[int]:
+def parse_comma_separated_numbers(value: str) -> list[int]:
     values = []
 
     for v in value.split(","):
@@ -122,7 +122,7 @@ def _parse_comma_separated_numbers(value: str) -> list[int]:
     return values
 
 
-def _parse_application_type(value: str) -> ApplicationType:
+def parse_application_type(value: str) -> ApplicationType:
     try:
         return ApplicationType(value)
     except ValueError:
@@ -130,14 +130,6 @@ def _parse_application_type(value: str) -> ApplicationType:
         raise argparse.ArgumentTypeError(
             f"{value!r} is invalid, must be one of: {', '.join(expected)}"
         )
-
-
-def _parse_bool(value: str) -> bool:
-    if value.lower() in ("true", "1", "yes"):
-        return True
-    if value.lower() in ("false", "0", "no"):
-        return False
-    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value!r}")
 
 
 async def main(argv: list[str] | None = None) -> None:
@@ -150,13 +142,13 @@ async def main(argv: list[str] | None = None) -> None:
     )
     global_parser.add_argument(
         "--device",
-        type=_parse_serial_port,
+        type=parse_serial_port,
         default=argparse.SUPPRESS,
     )
     global_parser.add_argument(
         "--probe-methods",
         dest="probe_methods",
-        type=_parse_probe_methods,
+        type=parse_probe_methods,
         default=argparse.SUPPRESS,
         help=(
             "Comma-separated list of application type and baudrate pairs to use when"
@@ -169,7 +161,7 @@ async def main(argv: list[str] | None = None) -> None:
     global_parser.add_argument(
         "--bootloader-reset",
         dest="bootloader_reset",
-        type=_parse_reset_methods,
+        type=parse_reset_methods,
         default=argparse.SUPPRESS,
         help=(
             f"Reset methods to attempt when triggering bootloader mode. Multiple"
@@ -181,35 +173,35 @@ async def main(argv: list[str] | None = None) -> None:
     global_parser.add_argument(
         "--bootloader-baudrate",
         dest="deprecated_bootloader_baudrate",
-        type=_parse_comma_separated_numbers,
+        type=parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
     global_parser.add_argument(
         "--cpc-baudrate",
         dest="deprecated_cpc_baudrate",
-        type=_parse_comma_separated_numbers,
+        type=parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
     global_parser.add_argument(
         "--ezsp-baudrate",
         dest="deprecated_ezsp_baudrate",
-        type=_parse_comma_separated_numbers,
+        type=parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
     global_parser.add_argument(
         "--router-baudrate",
         dest="deprecated_router_baudrate",
-        type=_parse_comma_separated_numbers,
+        type=parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
     global_parser.add_argument(
         "--spinel-baudrate",
         dest="deprecated_spinel_baudrate",
-        type=_parse_comma_separated_numbers,
+        type=parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
@@ -217,7 +209,7 @@ async def main(argv: list[str] | None = None) -> None:
         "--probe-method",
         dest="deprecated_probe_methods",
         action="append",
-        type=_parse_application_type,
+        type=parse_application_type,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
@@ -249,7 +241,7 @@ async def main(argv: list[str] | None = None) -> None:
     )
     write_ieee_parser.add_argument(
         "--force",
-        type=_parse_bool,
+        action="store_true",
         default=False,
     )
 

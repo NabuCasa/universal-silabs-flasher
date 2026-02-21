@@ -70,7 +70,7 @@ async def invoke_main(argv: list[str], *, catch_exit: bool = True) -> Result:
                 new_callable=AsyncMock,
             ),
             patch(
-                "universal_silabs_flasher.flash._parse_serial_port",
+                "universal_silabs_flasher.flash.parse_serial_port",
                 side_effect=lambda v: v,
             ),
         ):
@@ -402,7 +402,7 @@ async def test_invalid_argument_combinations_with_mocked_device(
 ):
     """Test invalid argument combinations with mocked device validator."""
     with patch(
-        "universal_silabs_flasher.flash._parse_serial_port", side_effect=lambda v: v
+        "universal_silabs_flasher.flash.parse_serial_port", side_effect=lambda v: v
     ):
         result = await invoke_main(args)
 
