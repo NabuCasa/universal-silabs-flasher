@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -93,6 +93,7 @@ def test_frame_deserialize_wrong_sof() -> None:
 )
 def test_protocol_data_received(chunks: list[bytes]) -> None:
     protocol = ZWaveProtocol()
+    protocol.connection_made(Mock())
 
     with patch.object(protocol, "frame_received") as mock:
         for chunk in chunks:
@@ -128,6 +129,7 @@ def test_protocol_sends_ack_on_valid_frame() -> None:
 
 def test_protocol_skips_ack_nak_can_and_junk() -> None:
     protocol = ZWaveProtocol()
+    protocol.connection_made(Mock())
 
     with patch.object(protocol, "frame_received") as mock:
         # ACK + NAK + CAN + junk + valid frame
@@ -140,6 +142,7 @@ def test_protocol_skips_ack_nak_can_and_junk() -> None:
 
 def test_protocol_bad_checksum_recovers() -> None:
     protocol = ZWaveProtocol()
+    protocol.connection_made(Mock())
 
     bad = bytearray(GET_CAPABILITIES_REQUEST)
     bad[-1] ^= 0xFF
