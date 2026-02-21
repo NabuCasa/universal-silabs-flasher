@@ -226,6 +226,9 @@ class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
         cts: bool | None = None,
         dtr: bool | None = None,
     ) -> None:
+        assert self._transport is not None
+        assert self._transport.serial is not None
+
         if rts is not None:
             self._transport.serial.rts = rts
 
@@ -242,6 +245,8 @@ class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
         cts: bool | None = None,
         dtr: bool | None = None,
     ) -> None:
+        assert self._transport is not None
+
         _LOGGER.debug(
             "Setting UART signals: rts=%s, cts=%s, dtr=%s",
             int(rts) if rts is not None else "-",

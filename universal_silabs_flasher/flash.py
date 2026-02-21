@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import logging
 import os.path
@@ -141,16 +140,20 @@ def _parse_bool(value: str) -> bool:
     raise argparse.ArgumentTypeError(f"Invalid boolean value: {value!r}")
 
 
-def _build_global_parser() -> argparse.ArgumentParser:
-    """Build a parser for global options, shared by all subcommands via parents.
-
-    All options use default=argparse.SUPPRESS so they don't overwrite values already
-    parsed by the parent parser when they appear before the subcommand name.
-    """
-    p = argparse.ArgumentParser(add_help=False)
-    p.add_argument("-v", "--verbose", action="count", default=argparse.SUPPRESS)
-    p.add_argument("--device", type=_parse_serial_port, default=argparse.SUPPRESS)
-    p.add_argument(
+async def main(argv: list[str] | None = None) -> None:
+    global_parser = argparse.ArgumentParser(add_help=False)
+    global_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
+        "--device",
+        type=_parse_serial_port,
+        default=argparse.SUPPRESS,
+    )
+    global_parser.add_argument(
         "--probe-methods",
         dest="probe_methods",
         type=_parse_probe_methods,
@@ -163,7 +166,7 @@ def _build_global_parser() -> argparse.ArgumentParser:
             "'ezsp:115200,ezsp:460800,spinel:460800'"
         ),
     )
-    p.add_argument(
+    global_parser.add_argument(
         "--bootloader-reset",
         dest="bootloader_reset",
         type=_parse_reset_methods,
@@ -175,42 +178,42 @@ def _build_global_parser() -> argparse.ArgumentParser:
         ),
     )
     # Deprecated flags
-    p.add_argument(
+    global_parser.add_argument(
         "--bootloader-baudrate",
         dest="deprecated_bootloader_baudrate",
         type=_parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
-    p.add_argument(
+    global_parser.add_argument(
         "--cpc-baudrate",
         dest="deprecated_cpc_baudrate",
         type=_parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
-    p.add_argument(
+    global_parser.add_argument(
         "--ezsp-baudrate",
         dest="deprecated_ezsp_baudrate",
         type=_parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
-    p.add_argument(
+    global_parser.add_argument(
         "--router-baudrate",
         dest="deprecated_router_baudrate",
         type=_parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
-    p.add_argument(
+    global_parser.add_argument(
         "--spinel-baudrate",
         dest="deprecated_spinel_baudrate",
         type=_parse_comma_separated_numbers,
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
-    p.add_argument(
+    global_parser.add_argument(
         "--probe-method",
         dest="deprecated_probe_methods",
         action="append",
@@ -218,11 +221,6 @@ def _build_global_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
         help=argparse.SUPPRESS,
     )
-    return p
-
-
-def main(argv: list[str] | None = None) -> None:
-    global_parser = _build_global_parser()
 
     parser = argparse.ArgumentParser(
         prog="universal-silabs-flasher",
@@ -232,46 +230,66 @@ def main(argv: list[str] | None = None) -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # dump-gbl-metadata: --device not required
-    dump_p = subparsers.add_parser("dump-gbl-metadata", parents=[global_parser])
-    dump_p.add_argument("--firmware", type=argparse.FileType("rb"), required=True)
+    dump_parser = subparsers.add_parser("dump-gbl-metadata", parents=[global_parser])
+    dump_parser.add_argument(
+        "--firmware",
+        type=argparse.FileType("rb"),
+        required=True,
+    )
 
     # probe
     subparsers.add_parser("probe", parents=[global_parser])
 
     # write-ieee
-    write_ieee_p = subparsers.add_parser("write-ieee", parents=[global_parser])
-    write_ieee_p.add_argument("--ieee", required=True, type=zigpy.types.EUI64.convert)
-    write_ieee_p.add_argument("--force", type=_parse_bool, default=False)
+    write_ieee_parser = subparsers.add_parser("write-ieee", parents=[global_parser])
+    write_ieee_parser.add_argument(
+        "--ieee",
+        required=True,
+        type=zigpy.types.EUI64.convert,
+    )
+    write_ieee_parser.add_argument(
+        "--force",
+        type=_parse_bool,
+        default=False,
+    )
 
     # flash
-    flash_p = subparsers.add_parser("flash", parents=[global_parser])
-    flash_p.add_argument("--firmware", type=argparse.FileType("rb"), required=True)
-    flash_p.add_argument("--force", action="store_true", default=False)
-    flash_p.add_argument(
+    flash_parser = subparsers.add_parser("flash", parents=[global_parser])
+    flash_parser.add_argument(
+        "--firmware",
+        type=argparse.FileType("rb"),
+        required=True,
+    )
+    flash_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+    )
+    flash_parser.add_argument(
         "--ensure-exact-version",
         action="store_true",
         default=False,
         dest="ensure_exact_version",
     )
-    flash_p.add_argument(
+    flash_parser.add_argument(
         "--allow-downgrades",
         action="store_true",
         default=False,
         dest="allow_downgrades",
     )
-    flash_p.add_argument(
+    flash_parser.add_argument(
         "--allow-cross-flashing",
         action="store_true",
         default=False,
         dest="allow_cross_flashing",
     )
-    flash_p.add_argument(
+    flash_parser.add_argument(
         "--yellow-gpio-reset",
         action="store_true",
         default=False,
         dest="yellow_gpio_reset",
     )
-    flash_p.add_argument(
+    flash_parser.add_argument(
         "--sonoff-reset",
         action="store_true",
         default=False,
@@ -303,10 +321,9 @@ def main(argv: list[str] | None = None) -> None:
         "deprecated_spinel_baudrate",
         "deprecated_probe_methods",
     )
-    deprecated_used = any(hasattr(args, attr) for attr in _DEPRECATED_ATTRS)
     probe_methods = list(getattr(args, "probe_methods", DEFAULT_PROBE_METHODS))
 
-    if deprecated_used:
+    if any(hasattr(args, attr) for attr in _DEPRECATED_ATTRS):
         if hasattr(args, "probe_methods"):
             parser.error(
                 "`--probe-methods` cannot be used with deprecated baudrate flags"
@@ -356,13 +373,13 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if args.command == "dump-gbl-metadata":
-        asyncio.run(_cmd_dump_gbl_metadata(args))
+        await _cmd_dump_gbl_metadata(args)
     elif args.command == "probe":
-        asyncio.run(_cmd_probe(flasher))
+        await _cmd_probe(flasher)
     elif args.command == "write-ieee":
-        asyncio.run(_cmd_write_ieee(args, flasher))
+        await _cmd_write_ieee(args, flasher)
     elif args.command == "flash":
-        asyncio.run(_cmd_flash(args, flasher, getattr(args, "verbose", 0)))
+        await _cmd_flash(args, flasher, getattr(args, "verbose", 0))
 
 
 async def _cmd_dump_gbl_metadata(args: argparse.Namespace) -> None:

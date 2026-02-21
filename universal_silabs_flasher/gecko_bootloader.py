@@ -117,11 +117,11 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self._xmodem_completion_future: asyncio.Future[None] | None = None
         self._xmodem_timeout_handle: asyncio.TimerHandle | None = None
 
-    def connection_made(self, transport: asyncio.Transport) -> None:
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         super().connection_made(transport)
         self.loop = asyncio.get_running_loop()
 
-    def connection_lost(self, exc: Exception | None) -> None:
+    def connection_lost(self, exc: BaseException | None) -> None:
         super().connection_lost(exc)
         self._state_machine.cancel_all_futures(
             exc or RuntimeError("Connection has been lost")
