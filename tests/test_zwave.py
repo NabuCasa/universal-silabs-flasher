@@ -6,8 +6,13 @@ from unittest.mock import patch
 import pytest
 
 from universal_silabs_flasher.common import BufferTooShort, Version
-from universal_silabs_flasher.zwave import ACK, ZWaveFrame, ZWaveProtocol
-from universal_silabs_flasher.zwave_types import FunctionID, MessageType
+from universal_silabs_flasher.zwave import (
+    ACK,
+    FunctionID,
+    MessageType,
+    ZWaveFrame,
+    ZWaveProtocol,
+)
 
 from .common import PairedTransport
 
