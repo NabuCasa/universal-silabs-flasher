@@ -7,7 +7,6 @@ import os.path
 import pathlib
 import re
 import sys
-import typing
 import urllib.parse
 
 import coloredlogs
