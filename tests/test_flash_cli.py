@@ -1,5 +1,6 @@
 """CLI integration tests to ensure argument parsing works correctly."""
 
+from contextlib import ExitStack
 from dataclasses import dataclass
 import io
 from unittest.mock import AsyncMock, patch
@@ -23,7 +24,9 @@ class Result:
     flasher: Flasher
 
 
-async def invoke_main(argv: list[str], *, catch_exit: bool = True) -> Result:
+async def invoke_main(
+    argv: list[str], *, catch_exit: bool = True, mock_serial_port: bool = True
+) -> Result:
     """Invoke main() with the given argv, capturing stdout/stderr."""
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -43,37 +46,43 @@ async def invoke_main(argv: list[str], *, catch_exit: bool = True) -> Result:
         self.app_version = None
 
     try:
-        with (
-            patch("universal_silabs_flasher.flasher.Flasher.__init__", capture_init),
-            patch("sys.stdout", stdout),
-            patch("sys.stderr", stderr),
-            patch("universal_silabs_flasher.flasher.connect_protocol"),
-            patch("universal_silabs_flasher.flasher.Flasher._connect_ezsp"),
-            patch(
-                "universal_silabs_flasher.flasher.Flasher.probe_app_type",
-                mock_probe_app_type,
-            ),
-            patch(
-                "universal_silabs_flasher.flasher.Flasher.dump_emberznet_config",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "universal_silabs_flasher.flasher.Flasher.write_emberznet_eui64",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "universal_silabs_flasher.flasher.Flasher.enter_bootloader",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "universal_silabs_flasher.flasher.Flasher.flash_firmware",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "universal_silabs_flasher.flash.parse_serial_port",
-                side_effect=lambda v: v,
-            ),
-        ):
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch("universal_silabs_flasher.flasher.Flasher.__init__", capture_init)
+            )
+            stack.enter_context(patch("sys.stdout", stdout))
+            stack.enter_context(patch("sys.stderr", stderr))
+            stack.enter_context(
+                patch(
+                    "universal_silabs_flasher.flasher.Flasher.probe_app_type",
+                    mock_probe_app_type,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "universal_silabs_flasher.flasher.Flasher.dump_emberznet_config",
+                    new_callable=AsyncMock,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "universal_silabs_flasher.flasher.Flasher.enter_bootloader",
+                    new_callable=AsyncMock,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "universal_silabs_flasher.flasher.Flasher.flash_firmware",
+                    new_callable=AsyncMock,
+                )
+            )
+            if mock_serial_port:
+                stack.enter_context(
+                    patch(
+                        "universal_silabs_flasher.flash.parse_serial_port",
+                        side_effect=lambda v: v,
+                    )
+                )
             await main(argv)
     except SystemExit as e:
         if not catch_exit:
@@ -292,7 +301,6 @@ async def test_probe_command_argument_parsing(args, expected_device):
                 "--ieee",
                 "11:22:33:44:55:66:77:88",
                 "--force",
-                "true",
             ],
             "11:22:33:44:55:66:77:88",
             True,
@@ -445,7 +453,7 @@ async def test_invalid_argument_combinations_without_mocked_device(
     args, expected_error_fragment
 ):
     """Test invalid argument combinations without mocked device validator."""
-    result = await invoke_main(args)
+    result = await invoke_main(args, mock_serial_port=False)
 
     assert result.exit_code != 0
     combined = result.output.lower() + result.stderr.lower()
