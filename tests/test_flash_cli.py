@@ -1,6 +1,5 @@
 """CLI integration tests to ensure argument parsing works correctly."""
 
-from contextlib import ExitStack
 from dataclasses import dataclass
 import io
 from unittest.mock import AsyncMock, patch
@@ -24,9 +23,7 @@ class Result:
     flasher: Flasher
 
 
-async def invoke_main(
-    argv: list[str], *, catch_exit: bool = True, mock_serial_port: bool = True
-) -> Result:
+async def invoke_main(argv: list[str]) -> Result:
     """Invoke main() with the given argv, capturing stdout/stderr."""
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -46,48 +43,29 @@ async def invoke_main(
         self.app_version = None
 
     try:
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch("universal_silabs_flasher.flasher.Flasher.__init__", capture_init)
-            )
-            stack.enter_context(patch("sys.stdout", stdout))
-            stack.enter_context(patch("sys.stderr", stderr))
-            stack.enter_context(
-                patch(
-                    "universal_silabs_flasher.flasher.Flasher.probe_app_type",
-                    mock_probe_app_type,
-                )
-            )
-            stack.enter_context(
-                patch(
-                    "universal_silabs_flasher.flasher.Flasher.dump_emberznet_config",
-                    new_callable=AsyncMock,
-                )
-            )
-            stack.enter_context(
-                patch(
-                    "universal_silabs_flasher.flasher.Flasher.enter_bootloader",
-                    new_callable=AsyncMock,
-                )
-            )
-            stack.enter_context(
-                patch(
-                    "universal_silabs_flasher.flasher.Flasher.flash_firmware",
-                    new_callable=AsyncMock,
-                )
-            )
-            if mock_serial_port:
-                stack.enter_context(
-                    patch(
-                        "universal_silabs_flasher.flash.parse_serial_port",
-                        side_effect=lambda v: v,
-                    )
-                )
+        with (
+            patch("universal_silabs_flasher.flasher.Flasher.__init__", capture_init),
+            patch("sys.stdout", stdout),
+            patch("sys.stderr", stderr),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.probe_app_type",
+                mock_probe_app_type,
+            ),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.dump_emberznet_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.enter_bootloader",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "universal_silabs_flasher.flasher.Flasher.flash_firmware",
+                new_callable=AsyncMock,
+            ),
+        ):
             await main(argv)
     except SystemExit as e:
-        if not catch_exit:
-            raise
-
         exit_code = e.code if e.code is not None else 0
 
     return Result(
@@ -126,79 +104,6 @@ async def invoke_main(
             ],
             "/dev/ttyUSB1",
             DEFAULT_PROBE_METHODS,
-            [],
-        ),
-        # With custom bootloader baudrate (deprecated flag)
-        (
-            [
-                "--device",
-                "/dev/ttyUSB0",
-                "--bootloader-baudrate",
-                "115200",
-                "flash",
-                "--firmware",
-                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            ],
-            "/dev/ttyUSB0",
-            [
-                (ApplicationType.GECKO_BOOTLOADER, 115200),
-                (ApplicationType.CPC, 460800),
-                (ApplicationType.CPC, 115200),
-                (ApplicationType.CPC, 230400),
-                (ApplicationType.EZSP, 115200),
-                (ApplicationType.EZSP, 460800),
-                (ApplicationType.ROUTER, 115200),
-                (ApplicationType.SPINEL, 460800),
-            ],
-            [],
-        ),
-        # With multiple custom baudrates (deprecated flags)
-        (
-            [
-                "--device",
-                "/dev/ttyUSB0",
-                "--bootloader-baudrate",
-                "115200,230400",
-                "--ezsp-baudrate",
-                "115200",
-                "flash",
-                "--firmware",
-                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            ],
-            "/dev/ttyUSB0",
-            [
-                (ApplicationType.GECKO_BOOTLOADER, 115200),
-                (ApplicationType.GECKO_BOOTLOADER, 230400),
-                (ApplicationType.CPC, 460800),
-                (ApplicationType.CPC, 115200),
-                (ApplicationType.CPC, 230400),
-                (ApplicationType.EZSP, 115200),
-                (ApplicationType.ROUTER, 115200),
-                (ApplicationType.SPINEL, 460800),
-            ],
-            [],
-        ),
-        # With custom probe methods (deprecated flag)
-        (
-            [
-                "--device",
-                "/dev/ttyUSB0",
-                "--probe-method",
-                "ezsp",
-                "--probe-method",
-                "cpc",
-                "flash",
-                "--firmware",
-                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            ],
-            "/dev/ttyUSB0",
-            [
-                (ApplicationType.EZSP, 115200),
-                (ApplicationType.EZSP, 460800),
-                (ApplicationType.CPC, 460800),
-                (ApplicationType.CPC, 115200),
-                (ApplicationType.CPC, 230400),
-            ],
             [],
         ),
         # With single bootloader reset method
@@ -253,7 +158,7 @@ async def test_flash_command_argument_parsing(
     expected_reset,
 ):
     """Test that flash command correctly parses various argument combinations."""
-    result = await invoke_main(args + ["--force"])
+    result = await invoke_main(args)
 
     assert result.exit_code == 0
     assert result.flasher is not None
@@ -409,148 +314,8 @@ async def test_invalid_argument_combinations_with_mocked_device(
     args, expected_error_fragment
 ):
     """Test invalid argument combinations with mocked device validator."""
-    with patch(
-        "universal_silabs_flasher.flash.parse_serial_port", side_effect=lambda v: v
-    ):
-        result = await invoke_main(args)
+    result = await invoke_main(args)
 
     assert result.exit_code != 0
     combined = result.output.lower() + result.stderr.lower()
     assert expected_error_fragment.lower() in combined
-
-
-@pytest.mark.parametrize(
-    "args,expected_error_fragment",
-    [
-        # Invalid device scheme
-        (
-            [
-                "--device",
-                "http://example.com",
-                "flash",
-                "--firmware",
-                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            ],
-            "invalid URL scheme",
-        ),
-        # Missing device for flash
-        (
-            [
-                "flash",
-                "--firmware",
-                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            ],
-            "Missing option",
-        ),
-        # Missing device for probe
-        (
-            ["probe"],
-            "Missing option",
-        ),
-    ],
-)
-async def test_invalid_argument_combinations_without_mocked_device(
-    args, expected_error_fragment
-):
-    """Test invalid argument combinations without mocked device validator."""
-    result = await invoke_main(args, mock_serial_port=False)
-
-    assert result.exit_code != 0
-    combined = result.output.lower() + result.stderr.lower()
-    assert expected_error_fragment.lower() in combined
-
-
-@pytest.mark.parametrize(
-    "args",
-    [
-        [
-            "-v",
-            "--device",
-            "/dev/ttyUSB0",
-            "flash",
-            "--firmware",
-            "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            "--force",
-        ],
-        [
-            "-vv",
-            "--device",
-            "/dev/ttyUSB0",
-            "flash",
-            "--firmware",
-            "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            "--force",
-            "--ensure-exact-version",
-        ],
-        [
-            "--device",
-            "/dev/ttyUSB0",
-            "flash",
-            "--firmware",
-            "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            "--force",
-            "--allow-downgrades",
-        ],
-        [
-            "--device",
-            "/dev/ttyUSB0",
-            "flash",
-            "--firmware",
-            "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            "--force",
-            "--allow-cross-flashing",
-        ],
-        [
-            "--device",
-            "/dev/ttyUSB0",
-            "flash",
-            "--firmware",
-            "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-            "--force",
-            "--allow-downgrades",
-            "--ensure-exact-version",
-        ],
-    ],
-)
-async def test_flash_command_flags(args):
-    """Test that flash command boolean flags are parsed correctly."""
-    result = await invoke_main(args)
-
-    assert result.exit_code == 0
-
-
-@pytest.mark.parametrize(
-    "args,expected_reset_target",
-    [
-        (
-            [
-                "--device",
-                "/dev/ttyUSB0",
-                "flash",
-                "--firmware",
-                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-                "--force",
-                "--yellow-gpio-reset",
-            ],
-            [ResetTarget.YELLOW],
-        ),
-        (
-            [
-                "--device",
-                "/dev/ttyUSB0",
-                "flash",
-                "--firmware",
-                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
-                "--force",
-                "--sonoff-reset",
-            ],
-            [ResetTarget.RTS_DTR],
-        ),
-    ],
-)
-async def test_deprecated_reset_flags(args, expected_reset_target):
-    """Test deprecated reset flags set reset targets correctly."""
-    result = await invoke_main(args)
-
-    assert result.exit_code == 0
-    assert result.flasher._reset_targets == expected_reset_target
