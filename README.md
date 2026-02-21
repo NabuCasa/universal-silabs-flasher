@@ -32,13 +32,6 @@ options:
 ## Flashing firmware
 For safety, firmware GBL image files are validated and their checksums verified both before sending, and by the device bootloader itself.
 
-In addition to validating the firmware image, the version number of the firmware image currently running on the device is read.
-
- - If the provided firmware image type does not match the running image type, the firmware will not be flashed. Cross-flashing can be enabled with `--allow-cross-flashing`.
- - If the provided firmware image is a lower version than the currently running image, the downgrade will not be allowed. Downgrades can be enabled with `--allow-downgrades`.
- - To always upgrade/downgrade firmware to a specific version (i.e. as the entry point for an addon bundling firmware), use `--ensure-exact-version`.
- - All of the above logic can be skipped with `--force`.
-
 ### Yellow
 The Yellow's bootloader can always be activated with the `--bootloader-reset yellow` option:
 
