@@ -5,19 +5,31 @@ import dataclasses
 import logging
 import typing
 
+from typing_extensions import Self
 from zigpy.serial import SerialProtocol
+import zigpy.types as t
 
 from .common import BufferTooShort, Version, asyncio_timeout
-from .zwave_types import FunctionID, MessageType
 
 _LOGGER = logging.getLogger(__name__)
+
+COMMAND_TIMEOUT = 2
+
+
+class MessageType(t.enum8):
+    REQUEST = 0x00
+    RESPONSE = 0x01
+
+
+class FunctionID(t.enum8):
+    SERIAL_API_GET_CAPABILITIES = 0x07
+    SERIAL_API_ENTER_BOOTLOADER = 0x27
+
 
 SOF = 0x01
 ACK = 0x06
 NAK = 0x15
 CAN = 0x18
-
-COMMAND_TIMEOUT = 2
 
 
 @dataclasses.dataclass(frozen=True)
@@ -27,7 +39,7 @@ class ZWaveFrame:
     data: bytes
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[ZWaveFrame, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         if len(data) < 2:
             raise BufferTooShort()
 
@@ -39,18 +51,16 @@ class ZWaveFrame:
         if len(data) < 2 + length:
             raise BufferTooShort()
 
-        # Checksum covers [length, type, function_id, payload...] (data[1:1+length])
-        checksum_input = data[1 : 1 + length]
-        received_checksum = data[1 + length]
-
+        expected_checksum = data[1 + length]
         computed_checksum = 0xFF
-        for b in checksum_input:
+
+        for b in data[1 : 1 + length]:
             computed_checksum ^= b
 
-        if computed_checksum != received_checksum:
+        if computed_checksum != expected_checksum:
             raise ValueError(
                 f"Checksum mismatch: expected 0x{computed_checksum:02x},"
-                f" got 0x{received_checksum:02x}"
+                f" got 0x{expected_checksum:02x}"
             )
 
         msg_type = MessageType(data[2])
@@ -64,8 +74,7 @@ class ZWaveFrame:
 
     def serialize(self) -> bytes:
         length = 1 + 1 + len(self.data) + 1
-
-        body = (
+        data = (
             bytes([length])
             + self.type.serialize()
             + self.function_id.serialize()
@@ -73,10 +82,10 @@ class ZWaveFrame:
         )
 
         checksum = 0xFF
-        for b in body:
+        for b in data:
             checksum ^= b
 
-        return bytes([SOF]) + body + bytes([checksum])
+        return bytes([SOF]) + data + bytes([checksum])
 
 
 class ZWaveProtocol(SerialProtocol):
@@ -95,20 +104,20 @@ class ZWaveProtocol(SerialProtocol):
         super().data_received(data)
 
         while self._buffer:
-            first_byte = self._buffer[0]
+            byte = self._buffer[0]
 
-            if first_byte == ACK:
+            if byte == ACK:
                 _LOGGER.debug("Received ACK")
                 self._buffer = self._buffer[1:]
                 continue
 
-            if first_byte in (NAK, CAN):
-                _LOGGER.debug("Received 0x%02x", first_byte)
+            if byte in (NAK, CAN):
+                _LOGGER.debug("Received 0x%02x", byte)
                 self._buffer = self._buffer[1:]
                 continue
 
-            if first_byte != SOF:
-                _LOGGER.debug("Discarding unexpected byte 0x%02x", first_byte)
+            if byte != SOF:
+                _LOGGER.debug("Discarding unexpected byte 0x%02x", byte)
                 self._buffer = self._buffer[1:]
                 continue
 
@@ -121,8 +130,7 @@ class ZWaveProtocol(SerialProtocol):
                 self._buffer = self._buffer[1:]
             else:
                 self._buffer = typing.cast(bytearray, new_buffer)
-                if self._transport is not None:
-                    self._transport.write(bytes([ACK]))
+                self.send_data(bytes([ACK]))
                 self.frame_received(frame)
 
     def frame_received(self, frame: ZWaveFrame) -> None:
@@ -152,8 +160,6 @@ class ZWaveProtocol(SerialProtocol):
         timeout: float = COMMAND_TIMEOUT,
         retry_delay: float = 0.1,
     ) -> ZWaveFrame:
-        frame = ZWaveFrame(type=MessageType.REQUEST, function_id=function_id, data=data)
-
         assert function_id not in self._pending_frames
 
         future = asyncio.get_running_loop().create_future()
@@ -161,12 +167,16 @@ class ZWaveProtocol(SerialProtocol):
 
         try:
             for attempt in range(retries + 1):
+                frame = ZWaveFrame(
+                    type=MessageType.REQUEST, function_id=function_id, data=data
+                )
+
                 _LOGGER.debug("Sending frame %r", frame)
                 self.send_data(frame.serialize())
 
                 try:
                     async with asyncio_timeout(timeout):
-                        return await asyncio.shield(future)
+                        return await future
                 except asyncio.TimeoutError:
                     _LOGGER.debug(
                         "Failed to send %r, trying again in %0.2fs (attempt %s of %s)",
@@ -183,7 +193,8 @@ class ZWaveProtocol(SerialProtocol):
         finally:
             self._pending_frames.pop(function_id, None)
 
-        raise AssertionError("Unreachable")
+        # Unreachable
+        assert False
 
     async def probe(self) -> Version:
         rsp = await self.send_command(FunctionID.SERIAL_API_GET_CAPABILITIES)
