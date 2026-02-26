@@ -55,15 +55,14 @@ class ProbeResult:
     baudrate: int
 
 
-class Flasher:
+class BaseFlasher:
     def __init__(
         self,
         *,
+        device: str,
         probe_methods: typing.Sequence[
             tuple[ApplicationType, int]
         ] = DEFAULT_PROBE_METHODS,
-        device: str,
-        bootloader_reset: str | tuple[ResetTarget, ...] = (),
         # To restore flasher "state", we can pass these to the constructor
         app_type: ApplicationType | None = None,
         app_version: Version | None = None,
@@ -78,53 +77,8 @@ class Flasher:
         self.app_baudrate = app_baudrate
         self.bootloader_baudrate = bootloader_baudrate
 
-        if isinstance(bootloader_reset, str):
-            bootloader_reset = (ResetTarget(bootloader_reset),)
-
-        self._reset_targets: list[ResetTarget] = [
-            ResetTarget(target) for target in bootloader_reset if target
-        ]
-
     async def trigger_bootloader(self, target: ResetTarget) -> None:
-        config = RESET_CONFIGS[target]
-
-        if isinstance(config, BaudrateResetConfig):
-            # Baudrate command mode uses a pattern of baudrates to enter a command mode
-            for baudrate in config.baudrates:
-                async with connect_protocol(
-                    self._device, baudrate, FlowControlSerialProtocol
-                ) as uart:
-                    await asyncio.sleep(config.delay_after_each)
-
-                    # Write command on the last baudrate if specified
-                    if baudrate == config.baudrates[-1] and config.command:
-                        uart._transport.write(config.command)
-
-            await asyncio.sleep(config.delay_after_final)
-        elif isinstance(config, GpioResetConfig):
-            chip = config.chip
-
-            if config.chip_type == "cp210x":
-                _LOGGER.warning(
-                    "When using %s bootloader reset ensure no other CP2102 USB serial"
-                    " devices are connected.",
-                    target.value,
-                )
-
-                chip = await find_gpiochip_by_label(config.chip_type)
-
-            if config.chip_type == "uart":
-                # The baudrate isn't necessary, since we're just using flow control pins
-                async with connect_protocol(
-                    self._device, 115200, FlowControlSerialProtocol
-                ) as uart:
-                    for pattern in config.pattern:
-                        await uart.set_signals(**pattern.pins)
-                        await asyncio.sleep(pattern.delay_after)
-            else:
-                await send_gpio_pattern(chip, config.pattern)
-        else:
-            raise TypeError(f"Invalid reset configuration for {target!r}")
+        raise NotImplementedError
 
     def _connect_gecko_bootloader(self, baudrate: int):
         return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)
@@ -223,18 +177,7 @@ class Flasher:
     ) -> ProbeResult | None:
         """Reset into the bootloader by trying the probing methods, one by one."""
 
-        # If we have no way to enter the bootloader, don't try
-        if not self._reset_targets:
-            return None
-
-        # We don't really care which method works, just try them all at once
-        for target in self._reset_targets:
-            _LOGGER.info(f"Triggering {target.value} bootloader")
-            await self.trigger_bootloader(target)
-
-        await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
-
-        return await self._detect_gecko_bootloader(run_firmware=run_firmware)
+        raise NotImplementedError
 
     async def _detect_gecko_bootloader(
         self, *, run_firmware: bool
@@ -441,6 +384,84 @@ class Flasher:
 
             if run_firmware:
                 await gecko.run_firmware()
+
+
+class Flasher(BaseFlasher):
+    """Backwards compatible generic flasher."""
+
+    def __init__(
+        self,
+        *,
+        bootloader_reset: str | tuple[ResetTarget, ...] = (),
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        if isinstance(bootloader_reset, str):
+            bootloader_reset = (ResetTarget(bootloader_reset),)
+
+        self._reset_targets: list[ResetTarget] = [
+            ResetTarget(target) for target in bootloader_reset if target
+        ]
+
+    async def trigger_bootloader(self, target: ResetTarget) -> None:
+        config = RESET_CONFIGS[target]
+
+        if isinstance(config, BaudrateResetConfig):
+            # Baudrate command mode uses a pattern of baudrates to enter a command mode
+            for baudrate in config.baudrates:
+                async with connect_protocol(
+                    self._device, baudrate, FlowControlSerialProtocol
+                ) as uart:
+                    await asyncio.sleep(config.delay_after_each)
+
+                    # Write command on the last baudrate if specified
+                    if baudrate == config.baudrates[-1] and config.command:
+                        uart._transport.write(config.command)
+
+            await asyncio.sleep(config.delay_after_final)
+        elif isinstance(config, GpioResetConfig):
+            chip = config.chip
+
+            if config.chip_type == "cp210x":
+                _LOGGER.warning(
+                    "When using %s bootloader reset ensure no other CP2102 USB serial"
+                    " devices are connected.",
+                    target.value,
+                )
+
+                chip = await find_gpiochip_by_label(config.chip_type)
+
+            if config.chip_type == "uart":
+                # The baudrate isn't necessary, since we're just using flow control pins
+                async with connect_protocol(
+                    self._device, 115200, FlowControlSerialProtocol
+                ) as uart:
+                    for pattern in config.pattern:
+                        await uart.set_signals(**pattern.pins)
+                        await asyncio.sleep(pattern.delay_after)
+            else:
+                await send_gpio_pattern(chip, config.pattern)
+        else:
+            raise TypeError(f"Invalid reset configuration for {target!r}")
+
+    async def trigger_bootloader_reset(
+        self, *, run_firmware: bool
+    ) -> ProbeResult | None:
+        """Reset into the bootloader by trying the probing methods, one by one."""
+
+        # If we have no way to enter the bootloader, don't try
+        if not self._reset_targets:
+            return None
+
+        # We don't really care which method works, just try them all at once
+        for target in self._reset_targets:
+            _LOGGER.info(f"Triggering {target.value} bootloader")
+            await self.trigger_bootloader(target)
+
+        await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
+
+        return await self._detect_gecko_bootloader(run_firmware=run_firmware)
 
     async def dump_emberznet_config(self) -> None:
         if self.app_type != ApplicationType.EZSP:
