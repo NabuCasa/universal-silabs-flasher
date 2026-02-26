@@ -40,6 +40,7 @@ from .spinel import SpinelProtocol
 from .zwave import ZWaveProtocol
 
 _LOGGER = logging.getLogger(__name__)
+T = typing.TypeVar("T", bound="type[DeviceSpecificFlasher]")
 
 BOOTLOADER_LAUNCH_DELAY = 3
 
@@ -53,6 +54,14 @@ class ProbeResult:
     version: Version | None
     continue_probing: bool
     baudrate: int
+
+
+FLASHERS: dict[str, type[BaseFlasher]] = {}
+
+
+def register_flasher(cls: T) -> T:
+    FLASHERS[cls.name] = cls
+    return cls
 
 
 class BaseFlasher:
@@ -500,7 +509,12 @@ class Flasher(BaseFlasher):
         return True
 
 
-class ZBT2Flasher(BaseFlasher):
+class DeviceSpecificFlasher(BaseFlasher):
+    pass
+
+
+@register_flasher
+class ZBT2Flasher(DeviceSpecificFlasher):
     name = "zbt2"
     _default_probe_methods = (
         (ApplicationType.GECKO_BOOTLOADER, 115200),
