@@ -56,29 +56,31 @@ class ProbeResult:
 
 
 class BaseFlasher:
+    name: str
+    _default_probe_methods: typing.Sequence[tuple[ApplicationType, int]] = (
+        DEFAULT_PROBE_METHODS
+    )
+
     def __init__(
         self,
         *,
         device: str,
-        probe_methods: typing.Sequence[
-            tuple[ApplicationType, int]
-        ] = DEFAULT_PROBE_METHODS,
+        probe_methods: typing.Sequence[tuple[ApplicationType, int]] | None = None,
         # To restore flasher "state", we can pass these to the constructor
         app_type: ApplicationType | None = None,
         app_version: Version | None = None,
         app_baudrate: int | None = None,
         bootloader_baudrate: int | None = None,
     ):
-        self._probe_methods = probe_methods
+        self._probe_methods = (
+            probe_methods if probe_methods is not None else self._default_probe_methods
+        )
         self._device = device
 
         self.app_type = app_type
         self.app_version = app_version
         self.app_baudrate = app_baudrate
         self.bootloader_baudrate = bootloader_baudrate
-
-    async def trigger_bootloader(self, target: ResetTarget) -> None:
-        raise NotImplementedError
 
     def _connect_gecko_bootloader(self, baudrate: int):
         return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)
@@ -389,6 +391,8 @@ class BaseFlasher:
 class Flasher(BaseFlasher):
     """Backwards compatible generic flasher."""
 
+    name = "flasher"
+
     def __init__(
         self,
         *,
@@ -494,3 +498,44 @@ class Flasher(BaseFlasher):
             _LOGGER.info("Wrote new device IEEE: %s", new_ieee)
 
         return True
+
+
+class ZBT2Flasher(BaseFlasher):
+    name = "zbt2"
+    _default_probe_methods = (
+        (ApplicationType.GECKO_BOOTLOADER, 115200),
+        (ApplicationType.EZSP, 460800),
+        (ApplicationType.SPINEL, 460800),
+        (ApplicationType.ROUTER, 115200),
+    )
+
+    async def _send_esp_command(self, command: str) -> None:
+        for baudrate in [150, 300, 1200]:
+            async with connect_protocol(
+                self._device, baudrate, FlowControlSerialProtocol
+            ) as uart:
+                await asyncio.sleep(0.1)
+
+                # Write command on the last baudrate if specified
+                if baudrate == 1200:
+                    uart._transport.write(command.encode("ascii"))
+                    await asyncio.sleep(0.5)
+
+    async def trigger_bootloader_reset(
+        self, *, run_firmware: bool
+    ) -> ProbeResult | None:
+        # Try to trigger the bootloader nicely
+        await self._send_esp_command("BZ")
+
+        bootloader_probe = await self._detect_gecko_bootloader(
+            run_firmware=run_firmware
+        )
+        if bootloader_probe is not None:
+            return bootloader_probe
+
+        # We failed and the ESP firmware's UART thread is stuck. Hard reset...
+        _LOGGER.debug("Failed to trigger bootloader, trying hard reset")
+        await self._send_esp_command("RE")
+        await self._send_esp_command("BZ")
+
+        return await self._detect_gecko_bootloader(run_firmware=run_firmware)
