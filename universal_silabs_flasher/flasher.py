@@ -539,6 +539,7 @@ class ZBT2Flasher(DeviceSpecificFlasher):
 
                 # Write command on the last baudrate if specified
                 if baudrate == 1200:
+                    _LOGGER.debug("Sending command to ZBT-2 ESP: %r", command)
                     uart._transport.write(command.encode("ascii"))
                     await asyncio.sleep(0.5)
 
@@ -556,7 +557,21 @@ class ZBT2Flasher(DeviceSpecificFlasher):
 
         # We failed and the ESP firmware's UART thread is stuck. Hard reset...
         _LOGGER.debug("Failed to trigger bootloader, trying hard reset")
-        await self._send_esp_command("RE")
-        await self._send_esp_command("BZ")
+        try:
+            await self._send_esp_command("RE")
+        except Exception as exc:
+            _LOGGER.debug("Expected failure when sending reset command: %r", exc)
+
+        # Wait for a while for the stick to come back
+        async with asyncio_timeout(10):
+            while True:
+                try:
+                    await self._send_esp_command("BZ")
+                    break
+                except Exception as exc:
+                    await asyncio.sleep(0.5)
+                    _LOGGER.debug(
+                        "Device unavailable, waiting for it to reappear: %r", exc
+                    )
 
         return await self._detect_gecko_bootloader(run_firmware=run_firmware)
