@@ -42,8 +42,6 @@ from .zwave import ZWaveProtocol
 _LOGGER = logging.getLogger(__name__)
 T = typing.TypeVar("T", bound="type[DeviceSpecificFlasher]")
 
-BOOTLOADER_LAUNCH_DELAY = 3
-
 
 class FailedToEnterBootloaderError(Exception):
     """Failed to enter the bootloader."""
@@ -65,10 +63,11 @@ def register_flasher(cls: T) -> T:
 
 
 class BaseFlasher:
-    name: str
     _default_probe_methods: typing.Sequence[tuple[ApplicationType, int]] = (
         DEFAULT_PROBE_METHODS
     )
+
+    _bootloader_launch_delay: float = 3
 
     def __init__(
         self,
@@ -367,7 +366,7 @@ class BaseFlasher:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
 
         if self.app_type is not ApplicationType.GECKO_BOOTLOADER:
-            await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
+            await asyncio.sleep(self._bootloader_launch_delay)
 
         # Verify the bootloader has launched
         bootloader_probe = await self._detect_gecko_bootloader(run_firmware=False)
@@ -403,8 +402,6 @@ class BaseFlasher:
 
 class Flasher(BaseFlasher):
     """Backwards compatible generic flasher."""
-
-    name = "flasher"
 
     def __init__(
         self,
@@ -479,7 +476,7 @@ class Flasher(BaseFlasher):
             _LOGGER.info(f"Triggering {target.value} bootloader")
             await self.trigger_bootloader(target)
 
-        await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
+        await asyncio.sleep(self._bootloader_launch_delay)
 
         return await self._detect_gecko_bootloader(run_firmware=run_firmware)
 
@@ -517,7 +514,7 @@ class Flasher(BaseFlasher):
 
 
 class DeviceSpecificFlasher(BaseFlasher):
-    pass
+    name: str
 
 
 @register_flasher
@@ -530,15 +527,18 @@ class ZBT2Flasher(DeviceSpecificFlasher):
         (ApplicationType.ROUTER, 115200),
     )
 
-    async def _send_esp_command(self, command: str) -> None:
-        for baudrate in [150, 300, 1200]:
+    _esp32_trigger_baudrates = (150, 300, 1200)
+    _reconnect_timeout: float = 10
+
+    async def _send_esp32_command(self, command: str) -> None:
+        for index, baudrate in enumerate(self._esp32_trigger_baudrates):
             async with connect_protocol(
                 self._device, baudrate, FlowControlSerialProtocol
             ) as uart:
                 await asyncio.sleep(0.1)
 
                 # Write command on the last baudrate if specified
-                if baudrate == 1200:
+                if index == len(self._esp32_trigger_baudrates) - 1:
                     _LOGGER.debug("Sending command to ZBT-2 ESP: %r", command)
                     uart._transport.write(command.encode("ascii"))
                     await asyncio.sleep(0.5)
@@ -547,7 +547,7 @@ class ZBT2Flasher(DeviceSpecificFlasher):
         self, *, run_firmware: bool
     ) -> ProbeResult | None:
         # Try to trigger the bootloader nicely
-        await self._send_esp_command("BZ")
+        await self._send_esp32_command("BZ")
 
         bootloader_probe = await self._detect_gecko_bootloader(
             run_firmware=run_firmware
@@ -558,20 +558,22 @@ class ZBT2Flasher(DeviceSpecificFlasher):
         # We failed and the ESP firmware's UART thread is stuck. Hard reset...
         _LOGGER.debug("Failed to trigger bootloader, trying hard reset")
         try:
-            await self._send_esp_command("RE")
+            await self._send_esp32_command("RE")
         except Exception as exc:
             _LOGGER.debug("Expected failure when sending reset command: %r", exc)
 
         # Wait for a while for the stick to come back
-        async with asyncio_timeout(10):
+        async with asyncio_timeout(self._reconnect_timeout):
             while True:
                 try:
-                    await self._send_esp_command("BZ")
+                    await self._send_esp32_command("BZ")
                     break
                 except Exception as exc:
                     await asyncio.sleep(0.5)
                     _LOGGER.debug(
                         "Device unavailable, waiting for it to reappear: %r", exc
                     )
+
+        await asyncio.sleep(self._bootloader_launch_delay)
 
         return await self._detect_gecko_bootloader(run_firmware=run_firmware)
