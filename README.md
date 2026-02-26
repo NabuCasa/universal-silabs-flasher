@@ -25,9 +25,12 @@ options:
                         Each pair should be in the format '<application_type>:<baudrate>'. Valid application types:
                         bootloader, cpc, ezsp, spinel, router. Example: 'ezsp:115200,ezsp:460800,spinel:460800'
   --bootloader-reset BOOTLOADER_RESET
-                        Reset methods to attempt when triggering bootloader mode. Multiple methods can be chained by
-                        separating them with a comma. Valid values: yellow, ihost, slzb07, rts_dtr, baudrate
+                         Reset methods to attempt when triggering bootloader mode. Multiple methods can be chained by
+                         separating them with a comma. Valid values: yellow, ihost, slzb07, rts_dtr, baudrate
 ```
+
+For `flash`, you can also pass `--profile {zbt2}` to use a predefined device profile.
+`--profile` cannot be combined with `--probe-methods` or `--bootloader-reset`.
 
 ## Flashing firmware
 For safety, firmware GBL image files are validated and their checksums verified both before sending, and by the device bootloader itself.
@@ -54,12 +57,13 @@ $ universal-silabs-flasher \
 ```
 
 ### Home Assistant Connect ZBT-2
-The Home Assistant Connect ZBT-2 will be rebooted into its bootloader from the running application
+The Home Assistant Connect ZBT-2 can use the built-in `zbt2` profile:
 
 ```bash
 $ universal-silabs-flasher \
     --device /dev/ttyACM0 \
     flash \
+    --profile zbt2 \
     --firmware zbt2_openthread_rcp_2.4.4.0_GitHub-7074a43e4_gsdk_4.4.4.gbl
 ```
 

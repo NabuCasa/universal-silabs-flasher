@@ -12,7 +12,7 @@ from universal_silabs_flasher.const import (
     ResetTarget,
 )
 from universal_silabs_flasher.flash import main
-from universal_silabs_flasher.flasher import Flasher
+from universal_silabs_flasher.flasher import BaseFlasher, ZBT2Flasher
 
 
 @dataclass
@@ -20,7 +20,7 @@ class Result:
     exit_code: str | int
     output: str
     stderr: str
-    flasher: Flasher
+    flasher: BaseFlasher | None
 
 
 async def invoke_main(argv: list[str]) -> Result:
@@ -31,7 +31,7 @@ async def invoke_main(argv: list[str]) -> Result:
     exit_code: str | int = 0
     captured_flasher = None
 
-    original_init = Flasher.__init__
+    original_init = BaseFlasher.__init__
 
     def capture_init(self, **kwargs):
         nonlocal captured_flasher
@@ -44,11 +44,13 @@ async def invoke_main(argv: list[str]) -> Result:
 
     try:
         with (
-            patch("universal_silabs_flasher.flasher.Flasher.__init__", capture_init),
+            patch(
+                "universal_silabs_flasher.flasher.BaseFlasher.__init__", capture_init
+            ),
             patch("sys.stdout", stdout),
             patch("sys.stderr", stderr),
             patch(
-                "universal_silabs_flasher.flasher.Flasher.probe_app_type",
+                "universal_silabs_flasher.flasher.BaseFlasher.probe_app_type",
                 mock_probe_app_type,
             ),
             patch(
@@ -56,11 +58,11 @@ async def invoke_main(argv: list[str]) -> Result:
                 new_callable=AsyncMock,
             ),
             patch(
-                "universal_silabs_flasher.flasher.Flasher.enter_bootloader",
+                "universal_silabs_flasher.flasher.BaseFlasher.enter_bootloader",
                 new_callable=AsyncMock,
             ),
             patch(
-                "universal_silabs_flasher.flasher.Flasher.flash_firmware",
+                "universal_silabs_flasher.flasher.BaseFlasher.flash_firmware",
                 new_callable=AsyncMock,
             ),
         ):
@@ -181,6 +183,7 @@ async def test_probe_command_argument_parsing(args, expected_device):
     result = await invoke_main(args)
 
     assert result.exit_code == 0
+    assert result.flasher is not None
     assert result.flasher._device == expected_device
 
 
@@ -241,6 +244,23 @@ async def test_dump_gbl_metadata_command():
 
     assert result.exit_code == 0
     assert '{"' in result.output or result.output.strip().endswith("null")
+
+
+async def test_flash_profile_uses_registered_flasher():
+    result = await invoke_main(
+        [
+            "--device",
+            "/dev/ttyUSB0",
+            "flash",
+            "--profile",
+            "zbt2",
+            "--firmware",
+            "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
+        ]
+    )
+
+    assert result.exit_code == 0
+    assert isinstance(result.flasher, ZBT2Flasher)
 
 
 @pytest.mark.parametrize(
@@ -307,6 +327,34 @@ async def test_dump_gbl_metadata_command():
                 "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
             ],
             "error",
+        ),
+        (
+            [
+                "--device",
+                "/dev/ttyUSB0",
+                "--probe-methods",
+                "ezsp:115200",
+                "flash",
+                "--profile",
+                "zbt2",
+                "--firmware",
+                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
+            ],
+            "--profile cannot be used",
+        ),
+        (
+            [
+                "--device",
+                "/dev/ttyUSB0",
+                "--bootloader-reset",
+                "rts_dtr",
+                "flash",
+                "--profile",
+                "zbt2",
+                "--firmware",
+                "tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl",
+            ],
+            "--profile cannot be used",
         ),
     ],
 )

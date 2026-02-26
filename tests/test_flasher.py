@@ -7,7 +7,7 @@ import zigpy.types as t
 
 from universal_silabs_flasher.common import FlowControlSerialProtocol, Version
 from universal_silabs_flasher.const import ApplicationType, ResetTarget
-from universal_silabs_flasher.flasher import Flasher, ProbeResult
+from universal_silabs_flasher.flasher import Flasher, ProbeResult, ZBT2Flasher
 from universal_silabs_flasher.gecko_bootloader import GeckoBootloaderProtocol
 
 
@@ -175,3 +175,29 @@ async def test_probe_app_type_fallback_to_bootloader() -> None:
     # trigger_bootloader_reset should be called twice - once at start and once
     # for fallback
     assert mock_trigger_reset.call_count == 2
+
+
+async def test_device_specific_probe_app_type_does_not_require_reset_targets() -> None:
+    flasher = ZBT2Flasher(device="/dev/ttyMOCK")
+
+    bootloader_result = ProbeResult(
+        version=Version("1.0.0"),
+        continue_probing=False,
+        baudrate=115200,
+    )
+
+    with patch.object(
+        flasher,
+        "trigger_bootloader_reset",
+        side_effect=[bootloader_result, bootloader_result],
+    ) as mock_trigger_reset:
+        await flasher.probe_app_type()
+
+    assert flasher.app_type == ApplicationType.GECKO_BOOTLOADER
+    assert flasher.app_version == Version("1.0.0")
+    assert flasher.app_baudrate == 115200
+    assert flasher.bootloader_baudrate == 115200
+    assert mock_trigger_reset.mock_calls == [
+        call(run_firmware=True),
+        call(run_firmware=False),
+    ]

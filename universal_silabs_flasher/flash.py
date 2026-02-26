@@ -19,7 +19,7 @@ from .const import (
     ResetTarget,
 )
 from .firmware import parse_firmware_image
-from .flasher import Flasher
+from .flasher import FLASHERS, Flasher
 from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 _LOGGER = logging.getLogger(__name__)
@@ -152,16 +152,20 @@ async def main(argv: list[str] | None = None) -> None:
         type=argparse.FileType("rb"),
         required=True,
     )
+    flash_parser.add_argument(
+        "--profile",
+        choices=sorted(FLASHERS),
+        default=argparse.SUPPRESS,
+        help=(
+            "Use a predefined flashing profile. Cannot be used with"
+            " --probe-methods or --bootloader-reset."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
     coloredlogs.install(
-        fmt=(
-            "%(asctime)s.%(msecs)03d"
-            " %(hostname)s"
-            " %(name)s"
-            " %(levelname)s %(message)s"
-        ),
+        fmt=("%(asctime)s.%(msecs)03d %(hostname)s %(name)s %(levelname)s %(message)s"),
         level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, getattr(args, "verbose", 0))],
     )
 
@@ -169,11 +173,28 @@ async def main(argv: list[str] | None = None) -> None:
     if not hasattr(args, "device") and args.command != "dump-gbl-metadata":
         parser.error("Missing option '--device'")
 
-    flasher = Flasher(
-        device=getattr(args, "device", None),
-        probe_methods=list(getattr(args, "probe_methods", DEFAULT_PROBE_METHODS)),
-        bootloader_reset=tuple(getattr(args, "bootloader_reset", [])),
-    )
+    if args.command == "flash" and hasattr(args, "profile"):
+        incompatible_args = []
+
+        if hasattr(args, "probe_methods"):
+            incompatible_args.append("--probe-methods")
+
+        if hasattr(args, "bootloader_reset"):
+            incompatible_args.append("--bootloader-reset")
+
+        if incompatible_args:
+            parser.error(
+                "--profile cannot be used with " + ", ".join(incompatible_args)
+            )
+
+        flasher_cls = FLASHERS[args.profile]
+        flasher = flasher_cls(device=getattr(args, "device", None))
+    else:
+        flasher = Flasher(
+            device=getattr(args, "device", None),
+            probe_methods=list(getattr(args, "probe_methods", DEFAULT_PROBE_METHODS)),
+            bootloader_reset=tuple(getattr(args, "bootloader_reset", [])),
+        )
 
     if args.command == "dump-gbl-metadata":
         await _cmd_dump_gbl_metadata(args)

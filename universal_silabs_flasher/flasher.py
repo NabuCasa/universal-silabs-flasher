@@ -190,6 +190,9 @@ class BaseFlasher:
 
         raise NotImplementedError
 
+    def _can_trigger_bootloader_reset(self) -> bool:
+        return True
+
     async def _detect_gecko_bootloader(
         self, *, run_firmware: bool
     ) -> ProbeResult | None:
@@ -235,7 +238,8 @@ class BaseFlasher:
             m == ApplicationType.GECKO_BOOTLOADER for m, _ in probe_methods
         )
 
-        run_firmware = self._reset_targets and not only_probe_bootloader
+        can_trigger_bootloader_reset = self._can_trigger_bootloader_reset()
+        run_firmware = can_trigger_bootloader_reset and not only_probe_bootloader
 
         probe_funcs = {
             ApplicationType.GECKO_BOOTLOADER: (
@@ -294,7 +298,7 @@ class BaseFlasher:
                 break
 
         if self.app_type is None:
-            if not bootloader_probe or not self._reset_targets:
+            if not bootloader_probe or not can_trigger_bootloader_reset:
                 raise RuntimeError("Failed to probe running application type")
 
             # We have no valid application image but can still re-enter the
@@ -416,6 +420,9 @@ class Flasher(BaseFlasher):
         self._reset_targets: list[ResetTarget] = [
             ResetTarget(target) for target in bootloader_reset if target
         ]
+
+    def _can_trigger_bootloader_reset(self) -> bool:
+        return bool(self._reset_targets)
 
     async def trigger_bootloader(self, target: ResetTarget) -> None:
         config = RESET_CONFIGS[target]
