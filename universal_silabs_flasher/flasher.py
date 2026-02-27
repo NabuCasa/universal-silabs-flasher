@@ -54,11 +54,11 @@ class ProbeResult:
     baudrate: int
 
 
-FLASHERS: dict[str, type[BaseFlasher]] = {}
+DEVICE_SPECIFIC_FLASHERS: dict[str, type[BaseFlasher]] = {}
 
 
 def register_flasher(cls: T) -> T:
-    FLASHERS[cls.name] = cls
+    DEVICE_SPECIFIC_FLASHERS[cls.name] = cls
     return cls
 
 

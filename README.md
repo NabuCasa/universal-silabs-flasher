@@ -29,7 +29,7 @@ options:
                          separating them with a comma. Valid values: yellow, ihost, slzb07, rts_dtr, baudrate
 ```
 
-For `flash`, you can also pass `--profile {zbt2}` to use a predefined device profile.
+For `flash`, you can also pass `--profile` to use a predefined device profile.
 `--profile` cannot be combined with `--probe-methods` or `--bootloader-reset`.
 
 ## Flashing firmware

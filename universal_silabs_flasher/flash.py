@@ -11,15 +11,9 @@ import tqdm
 import zigpy.ota.validators
 import zigpy.types
 
-from .common import put_first
-from .const import (
-    DEFAULT_PROBE_METHODS,
-    FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
-    ApplicationType,
-    ResetTarget,
-)
+from .const import DEFAULT_PROBE_METHODS, ApplicationType, ResetTarget
 from .firmware import parse_firmware_image
-from .flasher import FLASHERS, Flasher
+from .flasher import DEVICE_SPECIFIC_FLASHERS, Flasher
 from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 _LOGGER = logging.getLogger(__name__)
@@ -154,7 +148,7 @@ async def main(argv: list[str] | None = None) -> None:
     )
     flash_parser.add_argument(
         "--profile",
-        choices=sorted(FLASHERS),
+        choices=list(reversed(DEVICE_SPECIFIC_FLASHERS)),
         default=argparse.SUPPRESS,
         help=(
             "Use a predefined flashing profile. Cannot be used with"
@@ -187,7 +181,7 @@ async def main(argv: list[str] | None = None) -> None:
                 "--profile cannot be used with " + ", ".join(incompatible_args)
             )
 
-        flasher_cls = FLASHERS[args.profile]
+        flasher_cls = DEVICE_SPECIFIC_FLASHERS[args.profile]
         flasher = flasher_cls(device=getattr(args, "device", None))
     else:
         flasher = Flasher(
@@ -278,18 +272,6 @@ async def _cmd_flash(
         metadata = None
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
-
-    # Prefer to probe with the current firmware's settings to speed up startup after the
-    # firmware is flashed for the first time
-    if metadata is not None and metadata.fw_type is not None:
-        app_type = FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type]
-
-        _LOGGER.debug(
-            "Probing app type %s at %s baud first", app_type, metadata.baudrate
-        )
-        flasher._probe_methods = put_first(
-            flasher._probe_methods, [(app_type, metadata.baudrate)]
-        )
 
     try:
         await flasher.probe_app_type()
