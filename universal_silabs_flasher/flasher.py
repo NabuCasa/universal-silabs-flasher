@@ -560,7 +560,7 @@ class YellowFlasher(ResetConfigFlasher):
 
 
 @register_flasher
-class ZBT1Flasher(ResetConfigFlasher):
+class Zbt1Flasher(ResetConfigFlasher):
     name = "zbt1"
 
     def _can_trigger_bootloader_reset(self) -> bool:
@@ -574,7 +574,7 @@ class ZBT1Flasher(ResetConfigFlasher):
 
 
 @register_flasher
-class ZBT2Flasher(DeviceSpecificFlasher):
+class Zbt2Flasher(DeviceSpecificFlasher):
     name = "zbt2"
     _default_probe_methods = (
         (ApplicationType.GECKO_BOOTLOADER, 115200),
