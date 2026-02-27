@@ -12,7 +12,7 @@ from universal_silabs_flasher.const import (
     ResetTarget,
 )
 from universal_silabs_flasher.flash import main
-from universal_silabs_flasher.flasher import BaseFlasher, ZBT2Flasher
+from universal_silabs_flasher.flasher import BaseFlasher, Zbt2Flasher
 
 
 @dataclass
@@ -260,7 +260,7 @@ async def test_flash_profile_uses_registered_flasher():
     )
 
     assert result.exit_code == 0
-    assert isinstance(result.flasher, ZBT2Flasher)
+    assert isinstance(result.flasher, Zbt2Flasher)
 
 
 @pytest.mark.parametrize(
