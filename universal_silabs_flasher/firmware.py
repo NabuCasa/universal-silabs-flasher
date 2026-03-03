@@ -174,7 +174,7 @@ class FirmwareImage(typing.Generic[TagId]):
 @dataclasses.dataclass(frozen=True)
 class GBLImage(FirmwareImage[GBLTagId]):
     @classmethod
-    def from_bytes(cls, data: bytes) -> GBLImage:
+    def from_bytes(cls, data: bytes | memoryview) -> GBLImage:
         if isinstance(data, memoryview):
             data = data.tobytes()
 

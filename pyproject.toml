@@ -61,6 +61,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.mypy]
 strict = true
+warn_unreachable = true
 show_error_codes = true
 show_error_context = true
 
