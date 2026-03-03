@@ -107,9 +107,9 @@ class SpinelFrame:
         if header.flag != 0b10:
             raise ValueError(f"Spinel header flag is invalid in frame: {orig_data!r}")
 
-        command_id, data = CommandID.deserialize(data)
+        raw_command_id, data = CommandID.deserialize(data)
 
-        return cls(header=header, command_id=command_id, data=data)
+        return cls(header=header, command_id=CommandID(raw_command_id), data=data)
 
     def serialize(self) -> bytes:
         return self.header.serialize() + self.command_id.serialize() + self.data
@@ -235,9 +235,11 @@ class SpinelProtocol(SerialProtocol):
             tid = 1 + self._transaction_id
 
         # Replace the transaction ID
-        new_frame = dataclasses.replace(
-            frame, header=frame.header.replace(transaction_id=tid)
+        new_header = typing.cast(
+            SpinelHeader,
+            frame.header.replace(transaction_id=tid),  # type: ignore[arg-type]  # zigpy Struct.replace kwargs annotation is wrong
         )
+        new_frame = dataclasses.replace(frame, header=new_header)
 
         if not wait_response:
             _LOGGER.debug("Sending frame %r", new_frame)

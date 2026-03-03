@@ -147,9 +147,12 @@ class NabuCasaMetadata:
         )
 
 
+TagId = typing.TypeVar("TagId")
+
+
 @dataclasses.dataclass(frozen=True)
-class FirmwareImage:
-    tags: list[tuple[GBLTagId, bytes]]
+class FirmwareImage(typing.Generic[TagId]):
+    tags: list[tuple[TagId, bytes]]
 
     @classmethod
     def from_bytes(cls, data: bytes) -> FirmwareImage:
@@ -158,7 +161,10 @@ class FirmwareImage:
     def serialize(self) -> bytes:
         raise NotImplementedError()
 
-    def get_first_tag(self, tag_id: GBLTagId) -> bytes:
+    def get_nabucasa_metadata(self) -> NabuCasaMetadata:
+        raise KeyError("Metadata not available for this firmware type")
+
+    def get_first_tag(self, tag_id: TagId) -> bytes:
         try:
             return next(v for t, v in self.tags if t == tag_id)
         except StopIteration:
@@ -166,7 +172,7 @@ class FirmwareImage:
 
 
 @dataclasses.dataclass(frozen=True)
-class GBLImage(FirmwareImage):
+class GBLImage(FirmwareImage[GBLTagId]):
     @classmethod
     def from_bytes(cls, data: bytes) -> GBLImage:
         if isinstance(data, memoryview):
@@ -199,7 +205,7 @@ class GBLImage(FirmwareImage):
 
 
 @dataclasses.dataclass(frozen=True)
-class EBLImage(FirmwareImage):
+class EBLImage(FirmwareImage[EBLTagId]):
     @classmethod
     def from_bytes(cls, data: bytes) -> EBLImage:
         tags = []
@@ -227,7 +233,8 @@ class EBLImage(FirmwareImage):
 
 
 def parse_firmware_image(data: bytes) -> FirmwareImage:
-    for fw_cls in [GBLImage, EBLImage]:
+    fw_classes: list[type[GBLImage] | type[EBLImage]] = [GBLImage, EBLImage]
+    for fw_cls in fw_classes:
         try:
             return fw_cls.from_bytes(data)
         except ValidationError:

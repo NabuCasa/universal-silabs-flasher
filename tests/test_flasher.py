@@ -11,6 +11,8 @@ from universal_silabs_flasher.const import (
     BaudrateResetConfig,
     GpioPattern,
     GpioResetConfig,
+    ModemPinPattern,
+    ModemPinResetConfig,
     ResetTarget,
 )
 from universal_silabs_flasher.flasher import (
@@ -103,7 +105,7 @@ async def test_trigger_bootloader_reset_first_probe_succeeds():
 
     with (
         patch.object(flasher, "_trigger_baudrate_reset") as mock_trigger_baudrate,
-        patch.object(flasher, "_trigger_gpio_reset") as mock_trigger_gpio,
+        patch.object(flasher, "_trigger_modem_pin_reset") as mock_trigger_modem_pin,
         patch.object(
             flasher,
             "probe_gecko_bootloader",
@@ -122,7 +124,7 @@ async def test_trigger_bootloader_reset_first_probe_succeeds():
 
     # All reset targets are triggered upfront
     assert len(mock_trigger_baudrate.mock_calls) == 1
-    assert len(mock_trigger_gpio.mock_calls) == 1
+    assert len(mock_trigger_modem_pin.mock_calls) == 1
     # Only one probe attempt since the first one succeeds
     assert mock_probe.mock_calls == [call(run_firmware=False, baudrate=115200)]
 
@@ -135,7 +137,7 @@ async def test_trigger_bootloader_reset_all_probes_fail():
 
     with (
         patch.object(flasher, "_trigger_baudrate_reset") as mock_trigger_baudrate,
-        patch.object(flasher, "_trigger_gpio_reset") as mock_trigger_gpio,
+        patch.object(flasher, "_trigger_modem_pin_reset") as mock_trigger_modem_pin,
         patch.object(
             flasher,
             "probe_gecko_bootloader",
@@ -148,7 +150,7 @@ async def test_trigger_bootloader_reset_all_probes_fail():
 
     # All reset targets are triggered upfront
     assert len(mock_trigger_baudrate.mock_calls) == 1
-    assert len(mock_trigger_gpio.mock_calls) == 1
+    assert len(mock_trigger_modem_pin.mock_calls) == 1
     # One probe attempt at the only bootloader baudrate
     assert mock_probe.mock_calls == [
         call(run_firmware=False, baudrate=115200),
@@ -243,15 +245,13 @@ async def test_trigger_gpio_reset_cp210x():
     assert mock_send.mock_calls == [call("/dev/gpiochip_mock", config.pattern)]
 
 
-async def test_trigger_gpio_reset_uart():
+async def test_trigger_modem_pin_reset():
     flasher = Flasher(device="/dev/ttyMOCK")
 
-    config = GpioResetConfig(
-        chip=None,
-        chip_type="uart",
+    config = ModemPinResetConfig(
         pattern=[
-            GpioPattern(pins={"dtr": False, "rts": True}, delay_after=0.0),
-            GpioPattern(pins={"dtr": True, "rts": False}, delay_after=0.0),
+            ModemPinPattern(pins={"dtr": False, "rts": True}, delay_after=0.0),
+            ModemPinPattern(pins={"dtr": True, "rts": False}, delay_after=0.0),
         ],
     )
 
@@ -260,7 +260,7 @@ async def test_trigger_gpio_reset_uart():
     ) as mock_connect_protocol:
         mock_uart = mock_connect_protocol.return_value.__aenter__.return_value
         mock_uart.set_signals = AsyncMock()
-        await flasher._trigger_gpio_reset(config)
+        await flasher._trigger_modem_pin_reset(config)
 
     assert mock_connect_protocol.mock_calls[0] == call(
         "/dev/ttyMOCK", 115200, FlowControlSerialProtocol

@@ -15,7 +15,7 @@ from universal_silabs_flasher.const import (
     ResetTarget,
 )
 from universal_silabs_flasher.flash import main
-from universal_silabs_flasher.flasher import BaseFlasher, Zbt2Flasher
+from universal_silabs_flasher.flasher import BaseFlasher, Flasher, Zbt2Flasher
 
 FIRMWARE_URL = "https://example.com/firmware/skyconnect_zigbee_ncp_7.4.4.0.gbl"
 FIRMWARE_PATH = Path("tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl")
@@ -169,7 +169,7 @@ async def test_flash_command_argument_parsing(
     result = await invoke_main(args)
 
     assert result.exit_code == 0
-    assert result.flasher is not None
+    assert isinstance(result.flasher, Flasher)
 
     assert result.flasher._device == expected_device
     assert set(result.flasher._probe_methods) == set(expected_probe_methods)

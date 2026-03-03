@@ -25,8 +25,8 @@ if gpiod is None:
 elif is_gpiod_v1:
     # gpiod <= 1.5.4
     def _send_gpio_pattern(chip: str, pattern: list[GpioPattern]) -> None:
-        chip = gpiod.chip(chip, gpiod.chip.OPEN_BY_PATH)
-        lines = chip.get_lines(pattern[0].pins.keys())
+        gpiod_chip = gpiod.chip(chip, gpiod.chip.OPEN_BY_PATH)
+        lines = gpiod_chip.get_lines(pattern[0].pins.keys())
 
         config = gpiod.line_request()
         config.consumer = "universal-silabs-flasher"

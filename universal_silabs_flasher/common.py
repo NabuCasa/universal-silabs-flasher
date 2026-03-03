@@ -127,23 +127,31 @@ class StateMachine:
             self._futures_for_state[state].remove(future)
 
 
+P = typing.TypeVar("P", bound=zigpy.serial.SerialProtocol)
+
+
 @contextlib.asynccontextmanager
-async def connect_protocol(port, baudrate, factory):
+async def connect_protocol(
+    port: str,
+    baudrate: int,
+    factory: type[P],
+) -> typing.AsyncIterator[P]:
     loop = asyncio.get_running_loop()
 
     async with asyncio_timeout(CONNECT_TIMEOUT):
         _, protocol = await zigpy.serial.create_serial_connection(
-            loop=loop,
+            loop=loop,  # type: ignore[arg-type]  # zigpy expects BaseEventLoop
             protocol_factory=factory,
             url=port,
             baudrate=baudrate,
         )
-        await protocol.wait_until_connected()
+        serial_protocol = typing.cast(P, protocol)
+        await serial_protocol.wait_until_connected()
 
     try:
-        yield protocol
+        yield serial_protocol
     finally:
-        await protocol.disconnect()
+        await serial_protocol.disconnect()
 
 
 def put_first(lst: list[typing.Any], elements: list[typing.Any]) -> list[typing.Any]:

@@ -30,7 +30,7 @@ class RouterProtocol(SerialProtocol):
     def __init__(self) -> None:
         super().__init__()
         self._state_machine = StateMachine(
-            states=list(State),
+            states={s.value for s in State},
             initial=State.STARTUP,
         )
         self._version: str | None = None
