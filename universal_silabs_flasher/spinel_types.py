@@ -6,7 +6,7 @@ import math
 import zigpy.types
 
 
-class PackedUInt21(zigpy.types.uint_t, bits=21):  # type: ignore[call-arg]
+class PackedUInt21(zigpy.types.uint_t, bits=21):
     def serialize(self) -> bytes:
         n = int(self)
         chunks = []

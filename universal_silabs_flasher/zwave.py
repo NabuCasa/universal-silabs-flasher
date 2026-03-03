@@ -39,7 +39,7 @@ class ZWaveFrame:
     data: bytes
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+    def deserialize(cls, data: bytes | bytearray) -> tuple[Self, bytes | bytearray]:
         if len(data) < 2:
             raise BufferTooShort()
 
@@ -63,8 +63,8 @@ class ZWaveFrame:
                 f" got 0x{expected_checksum:02x}"
             )
 
-        msg_type = MessageType(data[2])
-        function_id = FunctionID(data[3])
+        msg_type = MessageType(data[2])  # type: ignore[no-untyped-call]
+        function_id = FunctionID(data[3])  # type: ignore[no-untyped-call]
         payload = bytes(data[4 : 1 + length])
 
         return (
@@ -93,7 +93,7 @@ class ZWaveProtocol(SerialProtocol):
 
     def __init__(self) -> None:
         super().__init__()
-        self._pending_frames: dict[FunctionID, asyncio.Future] = {}
+        self._pending_frames: dict[FunctionID, asyncio.Future[ZWaveFrame]] = {}
 
     def send_data(self, data: bytes) -> None:
         assert self._transport is not None
@@ -162,7 +162,7 @@ class ZWaveProtocol(SerialProtocol):
     ) -> ZWaveFrame:
         assert function_id not in self._pending_frames
 
-        future = asyncio.get_running_loop().create_future()
+        future: asyncio.Future[ZWaveFrame] = asyncio.get_running_loop().create_future()
         self._pending_frames[function_id] = future
 
         try:

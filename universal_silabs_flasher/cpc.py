@@ -123,7 +123,7 @@ class UnnumberedFrame:
         return (
             self.command_id.serialize()
             + self.command_seq.serialize()
-            + zigpy.types.uint16_t(len(payload)).serialize()
+            + zigpy.types.uint16_t(len(payload)).serialize()  # type: ignore[no-untyped-call]
             + payload
         )
 
@@ -140,7 +140,7 @@ class CPCTransportFrame:
         """Serialize the transport frame and compute lengths and checksums."""
         assert isinstance(self.payload, UnnumberedFrame)
         payload = self.payload.to_bytes()
-        length = zigpy.types.uint16_t(len(payload) + 2)
+        length = zigpy.types.uint16_t(len(payload) + 2)  # type: ignore[no-untyped-call]
 
         header = (
             cpc_types.FLAG.serialize()
@@ -155,12 +155,12 @@ class CPCTransportFrame:
         return header + header_checksum + payload + payload_checksum
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[CPCTransportFrame, bytes]:
+    def deserialize(cls, data: bytes | bytearray) -> tuple[CPCTransportFrame, bytes]:
         if len(data) < 7:
             raise BufferTooShort("Data is too short to contain packet header")
 
         orig_data = data
-        flag, data = zigpy.types.uint8_t.deserialize(data)
+        flag, data = zigpy.types.uint8_t.deserialize(data)  # type: ignore[arg-type]
 
         if flag != cpc_types.FLAG:
             raise ValueError("Invalid flag")
@@ -200,7 +200,7 @@ class CPCTransportFrame:
         if frame_type == 0:
             frame_type = 1
 
-        return cpc_types.FrameType(frame_type)
+        return cpc_types.FrameType(frame_type)  # type: ignore[no-untyped-call]
 
     def seq(self) -> int:
         return (self.control & 0b01110000) >> 4
@@ -214,7 +214,7 @@ class CPCTransportFrame:
 
     def unnumbered_type(self) -> cpc_types.UnnumberedFrameType:
         assert self.frame_type() == cpc_types.FrameType.UNNUMBERED
-        return cpc_types.UnnumberedFrameType((self.control & 0b00111111) >> 0)
+        return cpc_types.UnnumberedFrameType((self.control & 0b00111111) >> 0)  # type: ignore[no-untyped-call]
 
     def poll_final(self) -> bool:
         return bool((self.control & 0b00001000) >> 3)
@@ -228,7 +228,7 @@ class CPCProtocol(SerialProtocol):
     def __init__(self) -> None:
         super().__init__()
         self._command_seq: int = 0
-        self._pending_frames: dict[int, asyncio.Future] = {}
+        self._pending_frames: dict[int, asyncio.Future[CPCTransportFrame]] = {}
 
     async def probe(self) -> Version:
         cpc_version = await self.get_cpc_version()
@@ -351,12 +351,12 @@ class CPCProtocol(SerialProtocol):
         """Send an unnumbered frame to the device and return the response."""
         unnumbered = UnnumberedFrame(
             command_id=command_id,
-            command_seq=zigpy.types.uint8_t(self._command_seq),
+            command_seq=zigpy.types.uint8_t(self._command_seq),  # type: ignore[no-untyped-call]
             payload=command_payload,
         )
         frame = CPCTransportFrame(
             endpoint=cpc_types.EndpointId.SYSTEM,
-            control=zigpy.types.uint8_t(
+            control=zigpy.types.uint8_t(  # type: ignore[no-untyped-call]
                 (cpc_types.FrameType.UNNUMBERED << 6)
                 | (cpc_types.UnnumberedFrameType.POLL_FINAL << 0)
             ),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -216,9 +217,7 @@ async def test_unsolicited_response_ignored() -> None:
     assert not client._pending_frames
 
 
-async def test_duplicate_response_ignored(caplog) -> None:
-    import logging
-
+async def test_duplicate_response_ignored(caplog: pytest.LogCaptureFixture) -> None:
     client, server = await _make_pair()
 
     async def _respond_twice():

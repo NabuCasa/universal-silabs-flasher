@@ -1,6 +1,6 @@
 import zigpy.types as zigpy_t
 
-FLAG = zigpy_t.uint8_t(0x14)
+FLAG = zigpy_t.uint8_t(0x14)  # type: ignore[no-untyped-call]
 
 
 class FrameType(zigpy_t.enum2):

@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import asyncio
 import logging
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +51,9 @@ class PairedTransport(asyncio.Transport):
                 chunk = data[i : i + self._chunk_size]
                 self._loop.call_soon(self._other_protocol.data_received, chunk)
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes | bytearray | memoryview[Any]) -> None:
+        data = bytes(data)
+
         _LOGGER.debug(
             "Writing to %s: %r", self._other_protocol.__class__.__name__, data
         )

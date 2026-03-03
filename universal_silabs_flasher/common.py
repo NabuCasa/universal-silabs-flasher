@@ -21,6 +21,8 @@ else:
 if typing.TYPE_CHECKING:
     from typing_extensions import Self
 
+__all__ = ["asyncio_timeout"]
+
 _LOGGER = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 1
@@ -51,13 +53,13 @@ CRC_KERMIT = crc.Calculator(
 
 
 # Used by both CPC and XModem
-def crc16_ccitt(data: bytes) -> int:
-    return CRC_CCITT.checksum(data)
+def crc16_ccitt(data: bytes | bytearray) -> int:
+    return int(CRC_CCITT.checksum(data))
 
 
 # Used by HDLC-Lite
-def crc16_kermit(data: bytes) -> int:
-    return CRC_KERMIT.checksum(data)
+def crc16_kermit(data: bytes | bytearray) -> int:
+    return int(CRC_KERMIT.checksum(data))
 
 
 def pad_to_multiple(data: bytes, multiple: int, padding: bytes) -> bytes:
@@ -86,9 +88,9 @@ class StateMachine:
         self._states = states
         self._state = initial
 
-        self._futures_for_state: collections.defaultdict[str, list[asyncio.Future]] = (
-            collections.defaultdict(list)
-        )
+        self._futures_for_state: collections.defaultdict[
+            str, list[asyncio.Future[None]]
+        ] = collections.defaultdict(list)
 
     @property
     def state(self) -> str:
@@ -116,7 +118,7 @@ class StateMachine:
         if self.state == state:
             return
 
-        future = asyncio.get_running_loop().create_future()
+        future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._futures_for_state[state].append(future)
 
         try:
@@ -263,7 +265,7 @@ class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
         )
 
         if hasattr(self._transport, "set_signals"):
-            await self._transport.set_signals(rts=rts, cts=cts, dtr=dtr)  # type: ignore[union-attr]
+            await self._transport.set_signals(rts=rts, cts=cts, dtr=dtr)
             return
 
         loop = asyncio.get_running_loop()

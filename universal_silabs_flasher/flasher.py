@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import logging
 import typing
@@ -88,22 +89,34 @@ class BaseFlasher:
         self.app_baudrate = app_baudrate
         self.bootloader_baudrate = bootloader_baudrate
 
-    def _connect_gecko_bootloader(self, baudrate: int):
+    def _connect_gecko_bootloader(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[GeckoBootloaderProtocol]:
         return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)
 
-    def _connect_cpc(self, baudrate: int):
+    def _connect_cpc(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[CPCProtocol]:
         return connect_protocol(self._device, baudrate, CPCProtocol)
 
-    def _connect_ezsp(self, baudrate: int):
+    def _connect_ezsp(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[bellows.ezsp.EZSP]:
         return connect_ezsp(self._device, baudrate)
 
-    def _connect_router(self, baudrate: int):
+    def _connect_router(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[RouterProtocol]:
         return connect_protocol(self._device, baudrate, RouterProtocol)
 
-    def _connect_spinel(self, baudrate: int):
+    def _connect_spinel(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[SpinelProtocol]:
         return connect_protocol(self._device, baudrate, SpinelProtocol)
 
-    def _connect_zwave(self, baudrate: int):
+    def _connect_zwave(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[ZWaveProtocol]:
         return connect_protocol(self._device, baudrate, ZWaveProtocol)
 
     async def probe_gecko_bootloader(
@@ -416,7 +429,7 @@ class BaseFlasher:
 
     async def flash_firmware(
         self,
-        firmware: FirmwareImage,
+        firmware: FirmwareImage[typing.Any],
         run_firmware: bool = True,
         progress_callback: typing.Callable[[int, int], typing.Any] | None = None,
     ) -> None:
@@ -448,7 +461,7 @@ class Flasher(BaseFlasher):
         self,
         *,
         bootloader_reset: str | tuple[ResetTarget, ...] = (),
-        **kwargs,
+        **kwargs: typing.Any,
     ):
         super().__init__(**kwargs)
 

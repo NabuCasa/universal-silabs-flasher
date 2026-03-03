@@ -210,7 +210,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
             _LOGGER.debug("Sending chunk %d", self._xmodem_chunk_index)
             assert self._xmodem_firmware is not None
             packet = XmodemCRCPacket(
-                number=zigpy.types.uint8_t((self._xmodem_chunk_index + 1) & 0xFF),
+                number=zigpy.types.uint8_t((self._xmodem_chunk_index + 1) & 0xFF),  # type: ignore[no-untyped-call]
                 payload=self._xmodem_firmware[
                     XMODEM_BLOCK_SIZE * self._xmodem_chunk_index : XMODEM_BLOCK_SIZE
                     * (self._xmodem_chunk_index + 1)

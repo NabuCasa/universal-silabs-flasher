@@ -155,7 +155,7 @@ class FirmwareImage(typing.Generic[TagId]):
     tags: list[tuple[TagId, bytes]]
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> FirmwareImage:
+    def from_bytes(cls, data: bytes) -> FirmwareImage[typing.Any]:
         raise NotImplementedError()
 
     def serialize(self) -> bytes:
@@ -232,7 +232,7 @@ class EBLImage(FirmwareImage[EBLTagId]):
         raise KeyError("Metadata not supported for EBL")
 
 
-def parse_firmware_image(data: bytes) -> FirmwareImage:
+def parse_firmware_image(data: bytes) -> FirmwareImage[typing.Any]:
     fw_classes: list[type[GBLImage] | type[EBLImage]] = [GBLImage, EBLImage]
     for fw_cls in fw_classes:
         try:
