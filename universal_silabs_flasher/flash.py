@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+from io import BytesIO
 import json
 import logging
 import os.path
+from pathlib import Path
 import sys
+import zipfile
 
+import aiohttp
 import coloredlogs
 import tqdm
 import zigpy.ota.validators
@@ -18,6 +23,35 @@ from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 _LOGGER = logging.getLogger(__name__)
 LOG_LEVELS = ["INFO", "DEBUG"]
+
+
+async def _load_firmware_data(source: str) -> tuple[bytes, str]:
+    """Load firmware bytes from a local file path or an HTTP/HTTPS URL.
+
+    If the loaded file is a ZIP archive, the first .gbl entry is used;
+    falling back to the very first entry if none have a .gbl extension.
+    """
+    if source.startswith(("http://", "https://")):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(source, allow_redirects=True) as resp:
+                resp.raise_for_status()
+                data = await resp.read()
+    else:
+        data = await asyncio.to_thread(Path(source).read_bytes)
+
+    data_io = BytesIO(data)
+
+    if zipfile.is_zipfile(data_io):
+        with zipfile.ZipFile(data_io) as zf:
+            names = zf.namelist()
+
+            # Prefer the first .gbl file, if one exists
+            entry = next((n for n in names if n.lower().endswith(".gbl")), names[0])
+            _LOGGER.debug("Extracting %r from ZIP archive %r", entry, source)
+
+            return zf.read(entry), entry
+
+    return data, source
 
 
 def parse_probe_methods(value: str) -> list[tuple[ApplicationType, int]]:
@@ -119,7 +153,6 @@ async def main(argv: list[str] | None = None) -> None:
     dump_parser = subparsers.add_parser("dump-gbl-metadata", parents=[global_parser])
     dump_parser.add_argument(
         "--firmware",
-        type=argparse.FileType("rb"),
         required=True,
     )
 
@@ -143,7 +176,6 @@ async def main(argv: list[str] | None = None) -> None:
     flash_parser = subparsers.add_parser("flash", parents=[global_parser])
     flash_parser.add_argument(
         "--firmware",
-        type=argparse.FileType("rb"),
         required=True,
     )
     flash_parser.add_argument(
@@ -201,14 +233,17 @@ async def main(argv: list[str] | None = None) -> None:
 
 
 async def _cmd_dump_gbl_metadata(args: argparse.Namespace) -> None:
-    firmware_data = args.firmware.read()
-    args.firmware.close()
+    try:
+        firmware_data, firmware_name = await _load_firmware_data(args.firmware)
+    except (OSError, aiohttp.ClientResponseError) as e:
+        print(f"Error: Failed to load firmware {args.firmware!r}: {e}", file=sys.stderr)
+        sys.exit(1)
 
     try:
         fw_image = parse_firmware_image(firmware_data)
     except zigpy.ota.validators.ValidationError as e:
         print(
-            f"Error: {args.firmware.name!r} does not appear to be a valid firmware"
+            f"Error: {firmware_name!r} does not appear to be a valid firmware"
             f" image: {e!r}",
             file=sys.stderr,
         )
@@ -252,14 +287,17 @@ async def _cmd_write_ieee(args: argparse.Namespace, flasher: Flasher) -> None:
 async def _cmd_flash(
     args: argparse.Namespace, flasher: Flasher, verbosity: int
 ) -> None:
-    firmware_data = args.firmware.read()
-    args.firmware.close()
+    try:
+        firmware_data, firmware_name = await _load_firmware_data(args.firmware)
+    except (OSError, aiohttp.ClientResponseError) as e:
+        print(f"Error: Failed to load firmware {args.firmware!r}: {e}", file=sys.stderr)
+        sys.exit(1)
 
     try:
         fw_image = parse_firmware_image(firmware_data)
     except (zigpy.ota.validators.ValidationError, ValueError) as e:
         print(
-            f"Error: {args.firmware.name!r} does not appear to be a valid firmware"
+            f"Error: {firmware_name!r} does not appear to be a valid firmware"
             f" image: {e!r}",
             file=sys.stderr,
         )
@@ -283,7 +321,7 @@ async def _cmd_flash(
 
     with tqdm.tqdm(
         total=len(firmware_data),
-        desc=os.path.basename(args.firmware.name),
+        desc=os.path.basename(firmware_name),
         unit="B",
         unit_scale=True,
         disable=verbosity > 1,

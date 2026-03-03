@@ -2,8 +2,11 @@
 
 from dataclasses import dataclass
 import io
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
+import zipfile
 
+from aioresponses import aioresponses
 import pytest
 
 from universal_silabs_flasher.const import (
@@ -13,6 +16,9 @@ from universal_silabs_flasher.const import (
 )
 from universal_silabs_flasher.flash import main
 from universal_silabs_flasher.flasher import BaseFlasher, Zbt2Flasher
+
+FIRMWARE_URL = "https://example.com/firmware/skyconnect_zigbee_ncp_7.4.4.0.gbl"
+FIRMWARE_PATH = Path("tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl")
 
 
 @dataclass
@@ -367,3 +373,55 @@ async def test_invalid_argument_combinations_with_mocked_device(
     assert result.exit_code != 0
     combined = result.output.lower() + result.stderr.lower()
     assert expected_error_fragment.lower() in combined
+
+
+def make_zip(entries: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in entries.items():
+            zf.writestr(name, data)
+
+    return buf.getvalue()
+
+
+async def test_firmware_download_gbl():
+    """A plain .gbl downloaded over HTTP is flashed successfully."""
+    with aioresponses() as m:
+        m.get(FIRMWARE_URL, status=200, body=FIRMWARE_PATH.read_bytes())
+        result = await invoke_main(
+            ["--device", "/dev/ttyUSB0", "flash", "--firmware", FIRMWARE_URL]
+        )
+
+    assert result.exit_code == 0
+
+
+async def test_firmware_download_zip_picks_gbl():
+    """A ZIP with a .gbl and another file: the .gbl entry is extracted and flashed."""
+    zip_url = "https://example.com/firmware/update.zip"
+    zip_bytes = make_zip(
+        {
+            "readme.txt": b"hello",
+            "firmware.gbl": FIRMWARE_PATH.read_bytes(),
+        }
+    )
+
+    with aioresponses() as m:
+        m.get(zip_url, status=200, body=zip_bytes)
+        result = await invoke_main(
+            ["--device", "/dev/ttyUSB0", "flash", "--firmware", zip_url]
+        )
+
+    assert result.exit_code == 0
+
+
+async def test_firmware_download_failure():
+    """An HTTP error status is reported as a CLI error."""
+    with aioresponses() as m:
+        m.get(FIRMWARE_URL, status=404)
+        result = await invoke_main(
+            ["--device", "/dev/ttyUSB0", "flash", "--firmware", FIRMWARE_URL]
+        )
+
+    assert result.exit_code != 0
+    assert "error" in result.stderr.lower()
