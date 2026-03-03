@@ -210,7 +210,7 @@ class BaseFlasher:
             _LOGGER.warning(
                 "When using %s bootloader reset ensure no other CP2102 USB serial"
                 " devices are connected.",
-                config.target.value,
+                config.chip_type,
             )
 
             chip = await find_gpiochip_by_label(config.chip_type)
