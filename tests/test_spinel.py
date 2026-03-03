@@ -8,13 +8,12 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from universal_silabs_flasher.spinel import (
-    CommandID,
     HDLCLiteFrame,
     SpinelFrame,
     SpinelHeader,
     SpinelProtocol,
 )
-from universal_silabs_flasher.spinel_types import PackedUInt21, PropertyID
+from universal_silabs_flasher.spinel_types import CommandID, PackedUInt21, PropertyID
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -79,7 +78,7 @@ def test_hdlc_lite_encoding_decoding(encoded, decoded):
                     network_link_id=0,
                     flag=0b10,
                 ),
-                command_id=spinel.CommandID.PROP_VALUE_IS,
+                command_id=CommandID.PROP_VALUE_IS,
                 data=b"\x02OPENTHREAD/6ff1ac0-dirty; EFR32; Dec 23 2022 18:08:00\x00",
             ),
         ),
@@ -128,7 +127,7 @@ async def create_spinel_test_pair() -> tuple[SpinelProtocol, Conversation]:
     return client, conversation
 
 
-async def test_ignore_duplicate_response(caplog) -> None:
+async def test_ignore_duplicate_response(caplog: pytest.CapLogFixture) -> None:
     """Test that duplicate responses are ignored."""
     client, conversation = await create_spinel_test_pair()
 
@@ -167,7 +166,7 @@ async def test_ignore_duplicate_response(caplog) -> None:
     assert f"Ignoring duplicate response for TID {tid}" in caplog.text
 
 
-async def test_ignore_tid_zero_response(caplog) -> None:
+async def test_ignore_tid_zero_response(caplog: pytest.CapLogFixture) -> None:
     """Test that responses with TID 0 are ignored if no future is pending."""
     client, conversation = await create_spinel_test_pair()
 

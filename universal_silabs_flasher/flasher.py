@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import logging
 import typing
@@ -24,6 +25,7 @@ from .const import (
     ApplicationType,
     BaudrateResetConfig,
     GpioResetConfig,
+    ModemPinResetConfig,
     ResetTarget,
 )
 from .cpc import CPCProtocol
@@ -87,22 +89,34 @@ class BaseFlasher:
         self.app_baudrate = app_baudrate
         self.bootloader_baudrate = bootloader_baudrate
 
-    def _connect_gecko_bootloader(self, baudrate: int):
+    def _connect_gecko_bootloader(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[GeckoBootloaderProtocol]:
         return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)
 
-    def _connect_cpc(self, baudrate: int):
+    def _connect_cpc(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[CPCProtocol]:
         return connect_protocol(self._device, baudrate, CPCProtocol)
 
-    def _connect_ezsp(self, baudrate: int):
+    def _connect_ezsp(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[bellows.ezsp.EZSP]:
         return connect_ezsp(self._device, baudrate)
 
-    def _connect_router(self, baudrate: int):
+    def _connect_router(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[RouterProtocol]:
         return connect_protocol(self._device, baudrate, RouterProtocol)
 
-    def _connect_spinel(self, baudrate: int):
+    def _connect_spinel(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[SpinelProtocol]:
         return connect_protocol(self._device, baudrate, SpinelProtocol)
 
-    def _connect_zwave(self, baudrate: int):
+    def _connect_zwave(
+        self, baudrate: int
+    ) -> contextlib.AbstractAsyncContextManager[ZWaveProtocol]:
         return connect_protocol(self._device, baudrate, ZWaveProtocol)
 
     async def probe_gecko_bootloader(
@@ -199,9 +213,19 @@ class BaseFlasher:
 
                 # Write command on the last baudrate if specified
                 if baudrate == config.baudrates[-1] and config.command:
+                    assert uart._transport is not None
                     uart._transport.write(config.command)
 
         await asyncio.sleep(config.delay_after_final)
+
+    async def _trigger_modem_pin_reset(self, config: ModemPinResetConfig) -> None:
+        # The baudrate isn't necessary, since we're just using flow control pins
+        async with connect_protocol(
+            self._device, 115200, FlowControlSerialProtocol
+        ) as uart:
+            for pattern in config.pattern:
+                await uart.set_signals(**pattern.pins)
+                await asyncio.sleep(pattern.delay_after)
 
     async def _trigger_gpio_reset(self, config: GpioResetConfig) -> None:
         chip = config.chip
@@ -215,16 +239,8 @@ class BaseFlasher:
 
             chip = await find_gpiochip_by_label(config.chip_type)
 
-        if config.chip_type == "uart":
-            # The baudrate isn't necessary, since we're just using flow control pins
-            async with connect_protocol(
-                self._device, 115200, FlowControlSerialProtocol
-            ) as uart:
-                for pattern in config.pattern:
-                    await uart.set_signals(**pattern.pins)
-                    await asyncio.sleep(pattern.delay_after)
-        else:
-            await send_gpio_pattern(chip, config.pattern)
+        assert chip is not None
+        await send_gpio_pattern(chip, config.pattern)
 
     async def _detect_gecko_bootloader(
         self, *, run_firmware: bool
@@ -363,6 +379,8 @@ class BaseFlasher:
         if self.app_type is None:
             await self.probe_app_type()
 
+        assert self.app_baudrate is not None
+
         if self.app_type is ApplicationType.GECKO_BOOTLOADER:
             # No firmware
             pass
@@ -411,7 +429,7 @@ class BaseFlasher:
 
     async def flash_firmware(
         self,
-        firmware: FirmwareImage,
+        firmware: FirmwareImage[typing.Any],
         run_firmware: bool = True,
         progress_callback: typing.Callable[[int, int], typing.Any] | None = None,
     ) -> None:
@@ -443,7 +461,7 @@ class Flasher(BaseFlasher):
         self,
         *,
         bootloader_reset: str | tuple[ResetTarget, ...] = (),
-        **kwargs,
+        **kwargs: typing.Any,
     ):
         super().__init__(**kwargs)
 
@@ -473,6 +491,8 @@ class Flasher(BaseFlasher):
 
             if isinstance(config, BaudrateResetConfig):
                 await self._trigger_baudrate_reset(config)
+            elif isinstance(config, ModemPinResetConfig):
+                await self._trigger_modem_pin_reset(config)
             elif isinstance(config, GpioResetConfig):
                 await self._trigger_gpio_reset(config)
 
@@ -484,6 +504,7 @@ class Flasher(BaseFlasher):
         if self.app_type != ApplicationType.EZSP:
             raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
 
+        assert self.app_baudrate is not None
         async with self._connect_ezsp(self.app_baudrate) as ezsp:
             for config in bellows.types.EzspConfigId:
                 v = await ezsp.getConfigurationValue(configId=config)
@@ -499,6 +520,7 @@ class Flasher(BaseFlasher):
         if self.app_type != ApplicationType.EZSP:
             raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
 
+        assert self.app_baudrate is not None
         async with self._connect_ezsp(self.app_baudrate) as ezsp:
             (current_ieee,) = await ezsp.getEui64()
             _LOGGER.info("Current device IEEE: %s", current_ieee)
@@ -520,7 +542,7 @@ class DeviceSpecificFlasher(BaseFlasher):
 class ResetConfigFlasher(DeviceSpecificFlasher):
     """Flasher for a device with an existing GPIO or baudrate reset method."""
 
-    _reset_config: GpioResetConfig | BaudrateResetConfig
+    _reset_config: GpioResetConfig | ModemPinResetConfig | BaudrateResetConfig
 
     def _can_trigger_bootloader_reset(self) -> bool:
         return True
@@ -529,7 +551,12 @@ class ResetConfigFlasher(DeviceSpecificFlasher):
         self, *, run_firmware: bool
     ) -> ProbeResult | None:
         """Reset into the bootloader."""
-        await self._trigger_gpio_reset(self._reset_config)
+        if isinstance(self._reset_config, GpioResetConfig):
+            await self._trigger_gpio_reset(self._reset_config)
+        elif isinstance(self._reset_config, ModemPinResetConfig):
+            await self._trigger_modem_pin_reset(self._reset_config)
+        elif isinstance(self._reset_config, BaudrateResetConfig):
+            await self._trigger_baudrate_reset(self._reset_config)
         await asyncio.sleep(self._bootloader_launch_delay)
 
         return await self._detect_gecko_bootloader(run_firmware=run_firmware)
@@ -560,7 +587,7 @@ class YellowFlasher(ResetConfigFlasher):
 
 
 @register_flasher
-class Zbt1Flasher(ResetConfigFlasher):
+class Zbt1Flasher(DeviceSpecificFlasher):
     name = "zbt1"
 
     def _can_trigger_bootloader_reset(self) -> bool:

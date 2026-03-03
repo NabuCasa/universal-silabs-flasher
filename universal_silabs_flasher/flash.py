@@ -18,7 +18,7 @@ import zigpy.types
 
 from .const import DEFAULT_PROBE_METHODS, ApplicationType, ResetTarget
 from .firmware import parse_firmware_image
-from .flasher import DEVICE_SPECIFIC_FLASHERS, Flasher
+from .flasher import DEVICE_SPECIFIC_FLASHERS, BaseFlasher, Flasher
 from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 _LOGGER = logging.getLogger(__name__)
@@ -214,7 +214,7 @@ async def main(argv: list[str] | None = None) -> None:
             )
 
         flasher_cls = DEVICE_SPECIFIC_FLASHERS[args.profile]
-        flasher = flasher_cls(device=getattr(args, "device", None))
+        flasher: BaseFlasher = flasher_cls(device=args.device)
     else:
         flasher = Flasher(
             device=getattr(args, "device", None),
@@ -225,8 +225,10 @@ async def main(argv: list[str] | None = None) -> None:
     if args.command == "dump-gbl-metadata":
         await _cmd_dump_gbl_metadata(args)
     elif args.command == "probe":
+        assert isinstance(flasher, Flasher)
         await _cmd_probe(flasher)
     elif args.command == "write-ieee":
+        assert isinstance(flasher, Flasher)
         await _cmd_write_ieee(args, flasher)
     elif args.command == "flash":
         await _cmd_flash(args, flasher, getattr(args, "verbose", 0))
@@ -285,7 +287,7 @@ async def _cmd_write_ieee(args: argparse.Namespace, flasher: Flasher) -> None:
 
 
 async def _cmd_flash(
-    args: argparse.Namespace, flasher: Flasher, verbosity: int
+    args: argparse.Namespace, flasher: BaseFlasher, verbosity: int
 ) -> None:
     try:
         firmware_data, firmware_name = await _load_firmware_data(args.firmware)

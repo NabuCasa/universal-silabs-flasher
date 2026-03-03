@@ -50,7 +50,7 @@ class HDLCLiteFrame:
         return bytes([HDLCSpecial.FLAG]) + bytes(encoded) + bytes([HDLCSpecial.FLAG])
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> HDLCLiteFrame:
+    def from_bytes(cls, data: bytes | bytearray) -> HDLCLiteFrame:
         unescaped = bytearray()
         unescaping = False
 
@@ -107,9 +107,9 @@ class SpinelFrame:
         if header.flag != 0b10:
             raise ValueError(f"Spinel header flag is invalid in frame: {orig_data!r}")
 
-        command_id, data = CommandID.deserialize(data)
+        raw_command_id, data = CommandID.deserialize(data)
 
-        return cls(header=header, command_id=command_id, data=data)
+        return cls(header=header, command_id=CommandID(raw_command_id), data=data)  # type: ignore[no-untyped-call]
 
     def serialize(self) -> bytes:
         return self.header.serialize() + self.command_id.serialize() + self.data
@@ -121,10 +121,10 @@ class SpinelProtocol(SerialProtocol):
     def __init__(self) -> None:
         super().__init__()
         self._transaction_id: int = 1
-        self._pending_frames: dict[int, asyncio.Future] = {}
-        self._property_listeners: defaultdict[PropertyID, list[Callable]] = defaultdict(
-            list
-        )
+        self._pending_frames: dict[int, asyncio.Future[SpinelFrame]] = {}
+        self._property_listeners: defaultdict[
+            PropertyID, list[Callable[[bytes], None]]
+        ] = defaultdict(list)
 
     def send_data(self, data: bytes) -> None:
         assert self._transport is not None
@@ -182,7 +182,7 @@ class SpinelProtocol(SerialProtocol):
 
         if frame.command_id == CommandID.PROP_VALUE_IS:
             prop_id, data = PackedUInt21.deserialize(frame.data)
-            prop_id = PropertyID(prop_id)
+            prop_id = PropertyID(prop_id)  # type: ignore[no-untyped-call]
 
             for listener in self._property_listeners[prop_id]:
                 try:
@@ -235,9 +235,11 @@ class SpinelProtocol(SerialProtocol):
             tid = 1 + self._transaction_id
 
         # Replace the transaction ID
-        new_frame = dataclasses.replace(
-            frame, header=frame.header.replace(transaction_id=tid)
+        new_header = typing.cast(
+            SpinelHeader,
+            frame.header.replace(transaction_id=tid),  # type: ignore[arg-type]  # zigpy Struct.replace kwargs annotation is wrong
         )
+        new_frame = dataclasses.replace(frame, header=new_header)
 
         if not wait_response:
             _LOGGER.debug("Sending frame %r", new_frame)
@@ -277,7 +279,7 @@ class SpinelProtocol(SerialProtocol):
         raise AssertionError("Unreachable")
 
     async def send_command(
-        self, command_id: CommandID, data: bytes, **kwargs
+        self, command_id: CommandID, data: bytes, **kwargs: typing.Any
     ) -> SpinelFrame:
         frame = SpinelFrame(
             header=SpinelHeader(
@@ -289,7 +291,7 @@ class SpinelProtocol(SerialProtocol):
             data=data,
         )
 
-        return await self.send_frame(frame, **kwargs)
+        return await self.send_frame(frame, **kwargs)  # type: ignore[no-any-return]
 
     def add_property_listener(
         self, property_id: PropertyID, callback: Callable[[bytes], None]
@@ -303,7 +305,7 @@ class SpinelProtocol(SerialProtocol):
 
     async def iter_property_changes(
         self, property_id: PropertyID
-    ) -> typing.AsyncIterator:
+    ) -> typing.AsyncIterator[bytes]:
         queue: asyncio.Queue[bytes] = asyncio.Queue()
 
         try:

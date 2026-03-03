@@ -3,7 +3,7 @@ import asyncio
 from .flash import main as async_main
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     asyncio.run(async_main())
 

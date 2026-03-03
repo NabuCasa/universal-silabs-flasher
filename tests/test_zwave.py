@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -153,19 +154,20 @@ def test_protocol_bad_checksum_recovers() -> None:
     assert mock.call_count == 1
 
 
-async def _make_pair() -> tuple[ZWaveProtocol, asyncio.Protocol]:
+class EchoSide(asyncio.Protocol):
+    def __init__(self) -> None:
+        self.transport: asyncio.Transport | None = None
+        self.received = bytearray()
+
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        self.transport = transport  # type: ignore[assignment]
+
+    def data_received(self, data: bytes) -> None:
+        self.received.extend(data)
+
+
+async def _make_pair() -> tuple[ZWaveProtocol, EchoSide]:
     loop = asyncio.get_running_loop()
-
-    class EchoSide(asyncio.Protocol):
-        def __init__(self):
-            self.transport = None
-            self.received = bytearray()
-
-        def connection_made(self, transport):
-            self.transport = transport
-
-        def data_received(self, data):
-            self.received.extend(data)
 
     client = ZWaveProtocol()
     server = EchoSide()
@@ -181,6 +183,7 @@ async def test_probe() -> None:
 
     async def _respond():
         await asyncio.sleep(0.01)
+        assert server.transport is not None
         server.transport.write(GET_CAPABILITIES_RESPONSE.serialize())
 
     asyncio.create_task(_respond())
@@ -208,18 +211,18 @@ async def test_unsolicited_response_ignored() -> None:
     client, server = await _make_pair()
 
     # Send an unsolicited response with no pending future — should not raise
+    assert server.transport is not None
     server.transport.write(GET_CAPABILITIES_RESPONSE.serialize())
     await asyncio.sleep(0.01)
     assert not client._pending_frames
 
 
-async def test_duplicate_response_ignored(caplog) -> None:
-    import logging
-
+async def test_duplicate_response_ignored(caplog: pytest.LogCaptureFixture) -> None:
     client, server = await _make_pair()
 
     async def _respond_twice():
         await asyncio.sleep(0.01)
+        assert server.transport is not None
         server.transport.write(GET_CAPABILITIES_RESPONSE.serialize())
         server.transport.write(GET_CAPABILITIES_RESPONSE.serialize())
 

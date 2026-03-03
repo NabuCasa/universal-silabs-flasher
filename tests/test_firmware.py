@@ -4,6 +4,7 @@ import pytest
 
 from universal_silabs_flasher import firmware
 from universal_silabs_flasher.common import Version
+from universal_silabs_flasher.const import FirmwareImageType
 
 FIRMWARES_DIR = pathlib.Path(__file__).parent / "firmwares"
 
@@ -46,7 +47,7 @@ def test_firmware_gbl_valid_with_metadata():
         ezsp_version=None,
         cpc_version=None,
         zwave_version=None,
-        fw_type=firmware.FirmwareImageType.MULTIPAN,
+        fw_type=FirmwareImageType.MULTIPAN,
         fw_variant=None,
         ot_rcp_version=None,
         baudrate=None,
@@ -70,7 +71,7 @@ def test_firmware_gbl_valid_with_metadata_v2():
         ezsp_version=Version("7.4.4.0"),
         cpc_version=None,
         zwave_version=None,
-        fw_type=firmware.FirmwareImageType.ZIGBEE_NCP,
+        fw_type=FirmwareImageType.ZIGBEE_NCP,
         fw_variant=None,
         ot_rcp_version=None,
         baudrate=115200,

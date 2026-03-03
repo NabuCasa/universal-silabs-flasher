@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import dataclasses
 import enum
 
@@ -66,7 +67,7 @@ class ResetTarget(enum.Enum):
 
 @dataclasses.dataclass
 class GpioPattern:
-    pins: dict[str | int, bool]
+    pins: dict[int, bool]
     delay_after: float
 
 
@@ -78,15 +79,28 @@ class GpioResetConfig:
 
 
 @dataclasses.dataclass
+class ModemPinPattern:
+    pins: dict[str, bool]
+    delay_after: float
+
+
+@dataclasses.dataclass
+class ModemPinResetConfig:
+    pattern: list[ModemPinPattern]
+
+
+@dataclasses.dataclass
 class BaudrateResetConfig:
-    baudrates: list[int]
+    baudrates: Sequence[int]
     delay_after_each: float
     delay_after_final: float
     command: bytes | None = None
 
 
 # fmt: off
-RESET_CONFIGS: dict[ResetTarget, GpioResetConfig | BaudrateResetConfig] = {
+RESET_CONFIGS: dict[
+    ResetTarget, GpioResetConfig | ModemPinResetConfig | BaudrateResetConfig
+] = {
     ResetTarget.YELLOW: GpioResetConfig(
         chip="/dev/gpiochip0",
         chip_type=None,
@@ -117,13 +131,11 @@ RESET_CONFIGS: dict[ResetTarget, GpioResetConfig | BaudrateResetConfig] = {
             GpioPattern(pins={4: True,  5: True},  delay_after=0.0),
         ]
     ),
-    ResetTarget.RTS_DTR: GpioResetConfig(
-        chip=None,
-        chip_type="uart",
+    ResetTarget.RTS_DTR: ModemPinResetConfig(
         pattern=[
-            GpioPattern(pins={"dtr": False, "rts": True},  delay_after=0.1),
-            GpioPattern(pins={"dtr": True,  "rts": False}, delay_after=0.5),
-            GpioPattern(pins={"dtr": False, "rts": False}, delay_after=0.0),
+            ModemPinPattern(pins={"dtr": False, "rts": True},  delay_after=0.1),
+            ModemPinPattern(pins={"dtr": True,  "rts": False}, delay_after=0.5),
+            ModemPinPattern(pins={"dtr": False, "rts": False}, delay_after=0.0),
         ]
     ),
     ResetTarget.BAUDRATE: BaudrateResetConfig(

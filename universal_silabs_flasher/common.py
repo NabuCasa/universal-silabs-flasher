@@ -21,6 +21,8 @@ else:
 if typing.TYPE_CHECKING:
     from typing_extensions import Self
 
+__all__ = ["asyncio_timeout"]
+
 _LOGGER = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 1
@@ -51,13 +53,13 @@ CRC_KERMIT = crc.Calculator(
 
 
 # Used by both CPC and XModem
-def crc16_ccitt(data: bytes) -> int:
-    return CRC_CCITT.checksum(data)
+def crc16_ccitt(data: bytes | bytearray) -> int:
+    return int(CRC_CCITT.checksum(data))
 
 
 # Used by HDLC-Lite
-def crc16_kermit(data: bytes) -> int:
-    return CRC_KERMIT.checksum(data)
+def crc16_kermit(data: bytes | bytearray) -> int:
+    return int(CRC_KERMIT.checksum(data))
 
 
 def pad_to_multiple(data: bytes, multiple: int, padding: bytes) -> bytes:
@@ -86,9 +88,9 @@ class StateMachine:
         self._states = states
         self._state = initial
 
-        self._futures_for_state: collections.defaultdict[str, list[asyncio.Future]] = (
-            collections.defaultdict(list)
-        )
+        self._futures_for_state: collections.defaultdict[
+            str, list[asyncio.Future[None]]
+        ] = collections.defaultdict(list)
 
     @property
     def state(self) -> str:
@@ -116,7 +118,7 @@ class StateMachine:
         if self.state == state:
             return
 
-        future = asyncio.get_running_loop().create_future()
+        future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._futures_for_state[state].append(future)
 
         try:
@@ -127,23 +129,31 @@ class StateMachine:
             self._futures_for_state[state].remove(future)
 
 
+P = typing.TypeVar("P", bound=zigpy.serial.SerialProtocol)
+
+
 @contextlib.asynccontextmanager
-async def connect_protocol(port, baudrate, factory):
+async def connect_protocol(
+    port: str,
+    baudrate: int,
+    factory: type[P],
+) -> typing.AsyncIterator[P]:
     loop = asyncio.get_running_loop()
 
     async with asyncio_timeout(CONNECT_TIMEOUT):
         _, protocol = await zigpy.serial.create_serial_connection(
-            loop=loop,
+            loop=loop,  # type: ignore[arg-type]  # zigpy expects BaseEventLoop
             protocol_factory=factory,
             url=port,
             baudrate=baudrate,
         )
-        await protocol.wait_until_connected()
+        serial_protocol = typing.cast(P, protocol)
+        await serial_protocol.wait_until_connected()
 
     try:
-        yield protocol
+        yield serial_protocol
     finally:
-        await protocol.disconnect()
+        await serial_protocol.disconnect()
 
 
 def put_first(lst: list[typing.Any], elements: list[typing.Any]) -> list[typing.Any]:
@@ -255,7 +265,7 @@ class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
         )
 
         if hasattr(self._transport, "set_signals"):
-            await self._transport.set_signals(rts=rts, cts=cts, dtr=dtr)  # type: ignore[union-attr]
+            await self._transport.set_signals(rts=rts, cts=cts, dtr=dtr)
             return
 
         loop = asyncio.get_running_loop()

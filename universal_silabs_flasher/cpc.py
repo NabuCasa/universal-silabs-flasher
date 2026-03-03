@@ -21,11 +21,19 @@ def parse_subframe(cpc_frame: CPCTransportFrame) -> UnnumberedFrame:
     if frame_type != cpc_types.FrameType.UNNUMBERED:
         raise ValueError(f"Unsupported frame type: {frame_type!r}")
 
+    assert isinstance(cpc_frame.payload, (bytes, bytearray))
     return UnnumberedFrame.from_bytes(cpc_frame.payload)
 
 
 class Command:
     """Base class for unnumbered commands."""
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Command:
+        raise NotImplementedError
+
+    def to_bytes(self) -> bytes:
+        raise NotImplementedError
 
 
 @dataclasses.dataclass(frozen=True)
@@ -75,9 +83,14 @@ class UnnumberedFrame:
 
     command_id: cpc_types.UnnumberedFrameCommandId
     command_seq: zigpy.types.uint8_t
-    payload: bytes
+    payload: Command
 
-    _COMMANDS = {
+    _COMMANDS: typing.ClassVar[
+        dict[
+            cpc_types.UnnumberedFrameCommandId,
+            type[PropertyCommand] | type[ResetCommand],
+        ]
+    ] = {
         cpc_types.UnnumberedFrameCommandId.PROP_VALUE_GET: PropertyCommand,
         cpc_types.UnnumberedFrameCommandId.PROP_VALUE_SET: PropertyCommand,
         cpc_types.UnnumberedFrameCommandId.PROP_VALUE_IS: PropertyCommand,
@@ -110,7 +123,7 @@ class UnnumberedFrame:
         return (
             self.command_id.serialize()
             + self.command_seq.serialize()
-            + zigpy.types.uint16_t(len(payload)).serialize()
+            + zigpy.types.uint16_t(len(payload)).serialize()  # type: ignore[no-untyped-call]
             + payload
         )
 
@@ -121,12 +134,13 @@ class CPCTransportFrame:
 
     endpoint: cpc_types.EndpointId
     control: zigpy.types.uint8_t
-    payload: bytes
+    payload: bytes | UnnumberedFrame
 
     def serialize(self) -> bytes:
         """Serialize the transport frame and compute lengths and checksums."""
+        assert isinstance(self.payload, UnnumberedFrame)
         payload = self.payload.to_bytes()
-        length = zigpy.types.uint16_t(len(payload) + 2)
+        length = zigpy.types.uint16_t(len(payload) + 2)  # type: ignore[no-untyped-call]
 
         header = (
             cpc_types.FLAG.serialize()
@@ -141,12 +155,12 @@ class CPCTransportFrame:
         return header + header_checksum + payload + payload_checksum
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[CPCTransportFrame, bytes]:
+    def deserialize(cls, data: bytes | bytearray) -> tuple[CPCTransportFrame, bytes]:
         if len(data) < 7:
             raise BufferTooShort("Data is too short to contain packet header")
 
         orig_data = data
-        flag, data = zigpy.types.uint8_t.deserialize(data)
+        flag, data = zigpy.types.uint8_t.deserialize(data)  # type: ignore[arg-type]
 
         if flag != cpc_types.FLAG:
             raise ValueError("Invalid flag")
@@ -186,7 +200,7 @@ class CPCTransportFrame:
         if frame_type == 0:
             frame_type = 1
 
-        return cpc_types.FrameType(frame_type)
+        return cpc_types.FrameType(frame_type)  # type: ignore[no-untyped-call]
 
     def seq(self) -> int:
         return (self.control & 0b01110000) >> 4
@@ -200,7 +214,7 @@ class CPCTransportFrame:
 
     def unnumbered_type(self) -> cpc_types.UnnumberedFrameType:
         assert self.frame_type() == cpc_types.FrameType.UNNUMBERED
-        return cpc_types.UnnumberedFrameType((self.control & 0b00111111) >> 0)
+        return cpc_types.UnnumberedFrameType((self.control & 0b00111111) >> 0)  # type: ignore[no-untyped-call]
 
     def poll_final(self) -> bool:
         return bool((self.control & 0b00001000) >> 3)
@@ -214,7 +228,7 @@ class CPCProtocol(SerialProtocol):
     def __init__(self) -> None:
         super().__init__()
         self._command_seq: int = 0
-        self._pending_frames: dict[int, asyncio.Future] = {}
+        self._pending_frames: dict[int, asyncio.Future[CPCTransportFrame]] = {}
 
     async def probe(self) -> Version:
         cpc_version = await self.get_cpc_version()
@@ -255,6 +269,8 @@ class CPCProtocol(SerialProtocol):
             retries=3,
         )
 
+        assert isinstance(rsp.payload, UnnumberedFrame)
+        assert isinstance(rsp.payload.payload, PropertyCommand)
         version_bytes = rsp.payload.payload.value
         major, version_bytes = zigpy.types.uint32_t.deserialize(version_bytes)
         minor, version_bytes = zigpy.types.uint32_t.deserialize(version_bytes)
@@ -274,6 +290,8 @@ class CPCProtocol(SerialProtocol):
             retries=3,
         )
 
+        assert isinstance(rsp.payload, UnnumberedFrame)
+        assert isinstance(rsp.payload.payload, PropertyCommand)
         version_bytes = rsp.payload.payload.value
 
         if version_bytes == b"UNDEFINED\x00":
@@ -313,6 +331,7 @@ class CPCProtocol(SerialProtocol):
         _LOGGER.debug("Parsed frame %s %s", frame.unnumbered_type(), frame)
 
         if frame.unnumbered_type() == cpc_types.UnnumberedFrameType.POLL_FINAL:
+            assert isinstance(frame.payload, UnnumberedFrame)
             if frame.payload.command_seq not in self._pending_frames:
                 _LOGGER.debug("Received an unsolicited frame: %s", frame)
                 return
@@ -328,26 +347,27 @@ class CPCProtocol(SerialProtocol):
         retries: int = 3,
         timeout: float = 1,
         retry_delay: float = 0.1,
-    ) -> Command:
+    ) -> CPCTransportFrame:
         """Send an unnumbered frame to the device and return the response."""
+        unnumbered = UnnumberedFrame(
+            command_id=command_id,
+            command_seq=zigpy.types.uint8_t(self._command_seq),  # type: ignore[no-untyped-call]
+            payload=command_payload,
+        )
         frame = CPCTransportFrame(
             endpoint=cpc_types.EndpointId.SYSTEM,
-            control=zigpy.types.uint8_t(
+            control=zigpy.types.uint8_t(  # type: ignore[no-untyped-call]
                 (cpc_types.FrameType.UNNUMBERED << 6)
                 | (cpc_types.UnnumberedFrameType.POLL_FINAL << 0)
             ),
-            payload=UnnumberedFrame(
-                command_id=command_id,
-                command_seq=zigpy.types.uint8_t(self._command_seq),
-                payload=command_payload,
-            ),
+            payload=unnumbered,
         )
         self._command_seq = (self._command_seq + 1) & 0xFF
 
         assert self._command_seq not in self._pending_frames
 
         future = asyncio.get_running_loop().create_future()
-        self._pending_frames[frame.payload.command_seq] = future
+        self._pending_frames[unnumbered.command_seq] = future
 
         try:
             for attempt in range(retries + 1):
@@ -371,6 +391,6 @@ class CPCProtocol(SerialProtocol):
 
                     await asyncio.sleep(retry_delay)
         finally:
-            self._pending_frames.pop(frame.payload.command_seq, None)
+            self._pending_frames.pop(unnumbered.command_seq, None)
 
         raise AssertionError("Unreachable")
