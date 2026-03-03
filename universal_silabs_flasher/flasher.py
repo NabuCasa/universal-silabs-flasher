@@ -65,7 +65,9 @@ def register_flasher(cls: T) -> T:
 
 
 class BaseFlasher:
-    _default_probe_methods: typing.Sequence[tuple[ApplicationType, int]]
+    _default_probe_methods: typing.Sequence[tuple[ApplicationType, int]] = (
+        DEFAULT_PROBE_METHODS
+    )
     _bootloader_launch_delay: float = 3
 
     def __init__(
