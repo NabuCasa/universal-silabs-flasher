@@ -272,7 +272,7 @@ async def test_trigger_modem_pin_reset():
 
 
 async def test_reset_config_flasher_trigger_bootloader_reset():
-    flasher = YellowFlasher(device="/dev/ttyMOCK", probe_methods=[])
+    flasher = YellowFlasher(device="/dev/ttyMOCK")
 
     assert flasher._can_trigger_bootloader_reset() is True
 
@@ -294,7 +294,7 @@ async def test_reset_config_flasher_trigger_bootloader_reset():
 
 
 async def test_zbt1_flasher():
-    flasher = Zbt1Flasher(device="/dev/ttyMOCK", probe_methods=[])
+    flasher = Zbt1Flasher(device="/dev/ttyMOCK")
 
     assert flasher._can_trigger_bootloader_reset() is False
 
