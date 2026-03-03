@@ -63,10 +63,6 @@ asyncio_default_fixture_loop_scope = "function"
 check_untyped_defs = true
 show_error_codes = true
 show_error_context = true
-disable_error_code = [
-	"attr-defined",
-	"arg-type",
-]
 
 
 [tool.ruff]
