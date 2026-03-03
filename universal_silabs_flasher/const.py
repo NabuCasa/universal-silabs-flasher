@@ -86,7 +86,7 @@ class BaudrateResetConfig:
 
 
 # fmt: off
-RESET_CONFIGS = {
+RESET_CONFIGS: dict[ResetTarget, GpioResetConfig | BaudrateResetConfig] = {
     ResetTarget.YELLOW: GpioResetConfig(
         chip="/dev/gpiochip0",
         chip_type=None,

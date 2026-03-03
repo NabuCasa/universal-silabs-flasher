@@ -98,3 +98,12 @@ split-on-trailing-comma = false
 
 [tool.coverage.run]
 source = ["universal_silabs_flasher"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "raise NotImplementedError()",
+]

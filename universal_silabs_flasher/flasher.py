@@ -40,8 +40,7 @@ from .spinel import SpinelProtocol
 from .zwave import ZWaveProtocol
 
 _LOGGER = logging.getLogger(__name__)
-
-BOOTLOADER_LAUNCH_DELAY = 3
+T = typing.TypeVar("T", bound="type[DeviceSpecificFlasher]")
 
 
 class FailedToEnterBootloaderError(Exception):
@@ -55,76 +54,38 @@ class ProbeResult:
     baudrate: int
 
 
-class Flasher:
+DEVICE_SPECIFIC_FLASHERS: dict[str, type[BaseFlasher]] = {}
+
+
+def register_flasher(cls: T) -> T:
+    DEVICE_SPECIFIC_FLASHERS[cls.name] = cls
+    return cls
+
+
+class BaseFlasher:
+    _default_probe_methods: typing.Sequence[tuple[ApplicationType, int]]
+    _bootloader_launch_delay: float = 3
+
     def __init__(
         self,
         *,
-        probe_methods: typing.Sequence[
-            tuple[ApplicationType, int]
-        ] = DEFAULT_PROBE_METHODS,
         device: str,
-        bootloader_reset: str | tuple[ResetTarget, ...] = (),
+        probe_methods: typing.Sequence[tuple[ApplicationType, int]] | None = None,
         # To restore flasher "state", we can pass these to the constructor
         app_type: ApplicationType | None = None,
         app_version: Version | None = None,
         app_baudrate: int | None = None,
         bootloader_baudrate: int | None = None,
     ):
-        self._probe_methods = probe_methods
+        self._probe_methods = (
+            probe_methods if probe_methods is not None else self._default_probe_methods
+        )
         self._device = device
 
         self.app_type = app_type
         self.app_version = app_version
         self.app_baudrate = app_baudrate
         self.bootloader_baudrate = bootloader_baudrate
-
-        if isinstance(bootloader_reset, str):
-            bootloader_reset = (ResetTarget(bootloader_reset),)
-
-        self._reset_targets: list[ResetTarget] = [
-            ResetTarget(target) for target in bootloader_reset if target
-        ]
-
-    async def trigger_bootloader(self, target: ResetTarget) -> None:
-        config = RESET_CONFIGS[target]
-
-        if isinstance(config, BaudrateResetConfig):
-            # Baudrate command mode uses a pattern of baudrates to enter a command mode
-            for baudrate in config.baudrates:
-                async with connect_protocol(
-                    self._device, baudrate, FlowControlSerialProtocol
-                ) as uart:
-                    await asyncio.sleep(config.delay_after_each)
-
-                    # Write command on the last baudrate if specified
-                    if baudrate == config.baudrates[-1] and config.command:
-                        uart._transport.write(config.command)
-
-            await asyncio.sleep(config.delay_after_final)
-        elif isinstance(config, GpioResetConfig):
-            chip = config.chip
-
-            if config.chip_type == "cp210x":
-                _LOGGER.warning(
-                    "When using %s bootloader reset ensure no other CP2102 USB serial"
-                    " devices are connected.",
-                    target.value,
-                )
-
-                chip = await find_gpiochip_by_label(config.chip_type)
-
-            if config.chip_type == "uart":
-                # The baudrate isn't necessary, since we're just using flow control pins
-                async with connect_protocol(
-                    self._device, 115200, FlowControlSerialProtocol
-                ) as uart:
-                    for pattern in config.pattern:
-                        await uart.set_signals(**pattern.pins)
-                        await asyncio.sleep(pattern.delay_after)
-            else:
-                await send_gpio_pattern(chip, config.pattern)
-        else:
-            raise TypeError(f"Invalid reset configuration for {target!r}")
 
     def _connect_gecko_bootloader(self, baudrate: int):
         return connect_protocol(self._device, baudrate, GeckoBootloaderProtocol)
@@ -223,18 +184,47 @@ class Flasher:
     ) -> ProbeResult | None:
         """Reset into the bootloader by trying the probing methods, one by one."""
 
-        # If we have no way to enter the bootloader, don't try
-        if not self._reset_targets:
-            return None
+        raise NotImplementedError
 
-        # We don't really care which method works, just try them all at once
-        for target in self._reset_targets:
-            _LOGGER.info(f"Triggering {target.value} bootloader")
-            await self.trigger_bootloader(target)
+    def _can_trigger_bootloader_reset(self) -> bool:
+        return True
 
-        await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
+    async def _trigger_baudrate_reset(self, config: BaudrateResetConfig) -> None:
+        # Baudrate command mode uses a pattern of baudrates to enter a command mode
+        for baudrate in config.baudrates:
+            async with connect_protocol(
+                self._device, baudrate, FlowControlSerialProtocol
+            ) as uart:
+                await asyncio.sleep(config.delay_after_each)
 
-        return await self._detect_gecko_bootloader(run_firmware=run_firmware)
+                # Write command on the last baudrate if specified
+                if baudrate == config.baudrates[-1] and config.command:
+                    uart._transport.write(config.command)
+
+        await asyncio.sleep(config.delay_after_final)
+
+    async def _trigger_gpio_reset(self, config: GpioResetConfig) -> None:
+        chip = config.chip
+
+        if config.chip_type == "cp210x":
+            _LOGGER.warning(
+                "When using %s bootloader reset ensure no other CP2102 USB serial"
+                " devices are connected.",
+                config.chip_type,
+            )
+
+            chip = await find_gpiochip_by_label(config.chip_type)
+
+        if config.chip_type == "uart":
+            # The baudrate isn't necessary, since we're just using flow control pins
+            async with connect_protocol(
+                self._device, 115200, FlowControlSerialProtocol
+            ) as uart:
+                for pattern in config.pattern:
+                    await uart.set_signals(**pattern.pins)
+                    await asyncio.sleep(pattern.delay_after)
+        else:
+            await send_gpio_pattern(chip, config.pattern)
 
     async def _detect_gecko_bootloader(
         self, *, run_firmware: bool
@@ -281,7 +271,8 @@ class Flasher:
             m == ApplicationType.GECKO_BOOTLOADER for m, _ in probe_methods
         )
 
-        run_firmware = self._reset_targets and not only_probe_bootloader
+        can_trigger_bootloader_reset = self._can_trigger_bootloader_reset()
+        run_firmware = can_trigger_bootloader_reset and not only_probe_bootloader
 
         probe_funcs = {
             ApplicationType.GECKO_BOOTLOADER: (
@@ -340,7 +331,7 @@ class Flasher:
                 break
 
         if self.app_type is None:
-            if not bootloader_probe or not self._reset_targets:
+            if not bootloader_probe or not can_trigger_bootloader_reset:
                 raise RuntimeError("Failed to probe running application type")
 
             # We have no valid application image but can still re-enter the
@@ -409,7 +400,7 @@ class Flasher:
             raise RuntimeError(f"Invalid application type: {self.app_type}")
 
         if self.app_type is not ApplicationType.GECKO_BOOTLOADER:
-            await asyncio.sleep(BOOTLOADER_LAUNCH_DELAY)
+            await asyncio.sleep(self._bootloader_launch_delay)
 
         # Verify the bootloader has launched
         bootloader_probe = await self._detect_gecko_bootloader(run_firmware=False)
@@ -442,6 +433,53 @@ class Flasher:
             if run_firmware:
                 await gecko.run_firmware()
 
+
+class Flasher(BaseFlasher):
+    """Backwards compatible generic flasher."""
+
+    _default_probe_methods = DEFAULT_PROBE_METHODS
+
+    def __init__(
+        self,
+        *,
+        bootloader_reset: str | tuple[ResetTarget, ...] = (),
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        if isinstance(bootloader_reset, str):
+            bootloader_reset = (ResetTarget(bootloader_reset),)
+
+        self._reset_targets: list[ResetTarget] = [
+            ResetTarget(target) for target in bootloader_reset if target
+        ]
+
+    def _can_trigger_bootloader_reset(self) -> bool:
+        return bool(self._reset_targets)
+
+    async def trigger_bootloader_reset(
+        self, *, run_firmware: bool
+    ) -> ProbeResult | None:
+        """Reset into the bootloader by trying the probing methods, one by one."""
+
+        # If we have no way to enter the bootloader, don't try
+        if not self._reset_targets:
+            return None
+
+        # We don't really care which method works, just try them all at once
+        for target in self._reset_targets:
+            _LOGGER.info(f"Triggering {target.value} bootloader")
+            config = RESET_CONFIGS[target]
+
+            if isinstance(config, BaudrateResetConfig):
+                await self._trigger_baudrate_reset(config)
+            elif isinstance(config, GpioResetConfig):
+                await self._trigger_gpio_reset(config)
+
+        await asyncio.sleep(self._bootloader_launch_delay)
+
+        return await self._detect_gecko_bootloader(run_firmware=run_firmware)
+
     async def dump_emberznet_config(self) -> None:
         if self.app_type != ApplicationType.EZSP:
             raise RuntimeError(f"Device is not running EmberZNet: {self.app_type}")
@@ -473,3 +511,122 @@ class Flasher:
             _LOGGER.info("Wrote new device IEEE: %s", new_ieee)
 
         return True
+
+
+class DeviceSpecificFlasher(BaseFlasher):
+    name: str
+
+
+class ResetConfigFlasher(DeviceSpecificFlasher):
+    """Flasher for a device with an existing GPIO or baudrate reset method."""
+
+    _reset_config: GpioResetConfig | BaudrateResetConfig
+
+    def _can_trigger_bootloader_reset(self) -> bool:
+        return True
+
+    async def trigger_bootloader_reset(
+        self, *, run_firmware: bool
+    ) -> ProbeResult | None:
+        """Reset into the bootloader."""
+        await self._trigger_gpio_reset(self._reset_config)
+        await asyncio.sleep(self._bootloader_launch_delay)
+
+        return await self._detect_gecko_bootloader(run_firmware=run_firmware)
+
+
+@register_flasher
+class IhostFlasher(ResetConfigFlasher):
+    name = "ihost"
+    _reset_config = RESET_CONFIGS[ResetTarget.IHOST]
+
+
+@register_flasher
+class Slzb07Flasher(ResetConfigFlasher):
+    name = "slzb07"
+    _reset_config = RESET_CONFIGS[ResetTarget.SLZB07]
+
+
+@register_flasher
+class GenericRtsDtrFlasher(ResetConfigFlasher):
+    name = "rts_dtr"
+    _reset_config = RESET_CONFIGS[ResetTarget.RTS_DTR]
+
+
+@register_flasher
+class YellowFlasher(ResetConfigFlasher):
+    name = "yellow"
+    _reset_config = RESET_CONFIGS[ResetTarget.YELLOW]
+
+
+@register_flasher
+class Zbt1Flasher(ResetConfigFlasher):
+    name = "zbt1"
+
+    def _can_trigger_bootloader_reset(self) -> bool:
+        return False
+
+    async def trigger_bootloader_reset(
+        self, *, run_firmware: bool
+    ) -> ProbeResult | None:
+        """Reset into the bootloader."""
+        return None
+
+
+@register_flasher
+class Zbt2Flasher(DeviceSpecificFlasher):
+    name = "zbt2"
+    _default_probe_methods = (
+        (ApplicationType.GECKO_BOOTLOADER, 115200),
+        (ApplicationType.EZSP, 460800),
+        (ApplicationType.SPINEL, 460800),
+        (ApplicationType.ROUTER, 115200),
+    )
+
+    _esp32_trigger_baudrates = (150, 300, 1200)
+    _reconnect_timeout: float = 10
+
+    async def _send_esp32_command(self, command: str) -> None:
+        await self._trigger_baudrate_reset(
+            BaudrateResetConfig(
+                baudrates=self._esp32_trigger_baudrates,
+                delay_after_each=0.1,
+                delay_after_final=0.5,
+                command=command.encode("ascii"),
+            )
+        )
+
+    async def trigger_bootloader_reset(
+        self, *, run_firmware: bool
+    ) -> ProbeResult | None:
+        # Try to trigger the bootloader nicely
+        await self._send_esp32_command("BZ")
+
+        bootloader_probe = await self._detect_gecko_bootloader(
+            run_firmware=run_firmware
+        )
+        if bootloader_probe is not None:
+            return bootloader_probe
+
+        # We failed and the ESP firmware's UART thread is stuck. Hard reset...
+        _LOGGER.debug("Failed to trigger bootloader, trying hard reset")
+        try:
+            await self._send_esp32_command("RE")
+        except Exception as exc:
+            _LOGGER.debug("Expected failure when sending reset command: %r", exc)
+
+        # Wait for a while for the stick to come back
+        async with asyncio_timeout(self._reconnect_timeout):
+            while True:
+                try:
+                    await self._send_esp32_command("BZ")
+                    break
+                except Exception as exc:
+                    await asyncio.sleep(0.5)
+                    _LOGGER.debug(
+                        "Device unavailable, waiting for it to reappear: %r", exc
+                    )
+
+        await asyncio.sleep(self._bootloader_launch_delay)
+
+        return await self._detect_gecko_bootloader(run_firmware=run_firmware)

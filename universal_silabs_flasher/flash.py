@@ -11,15 +11,9 @@ import tqdm
 import zigpy.ota.validators
 import zigpy.types
 
-from .common import put_first
-from .const import (
-    DEFAULT_PROBE_METHODS,
-    FW_IMAGE_TYPE_TO_APPLICATION_TYPE,
-    ApplicationType,
-    ResetTarget,
-)
+from .const import DEFAULT_PROBE_METHODS, ApplicationType, ResetTarget
 from .firmware import parse_firmware_image
-from .flasher import Flasher
+from .flasher import DEVICE_SPECIFIC_FLASHERS, Flasher
 from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
 _LOGGER = logging.getLogger(__name__)
@@ -152,16 +146,20 @@ async def main(argv: list[str] | None = None) -> None:
         type=argparse.FileType("rb"),
         required=True,
     )
+    flash_parser.add_argument(
+        "--profile",
+        choices=list(reversed(DEVICE_SPECIFIC_FLASHERS)),
+        default=argparse.SUPPRESS,
+        help=(
+            "Use a predefined flashing profile. Cannot be used with"
+            " --probe-methods or --bootloader-reset."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
     coloredlogs.install(
-        fmt=(
-            "%(asctime)s.%(msecs)03d"
-            " %(hostname)s"
-            " %(name)s"
-            " %(levelname)s %(message)s"
-        ),
+        fmt=("%(asctime)s.%(msecs)03d %(hostname)s %(name)s %(levelname)s %(message)s"),
         level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, getattr(args, "verbose", 0))],
     )
 
@@ -169,11 +167,28 @@ async def main(argv: list[str] | None = None) -> None:
     if not hasattr(args, "device") and args.command != "dump-gbl-metadata":
         parser.error("Missing option '--device'")
 
-    flasher = Flasher(
-        device=getattr(args, "device", None),
-        probe_methods=list(getattr(args, "probe_methods", DEFAULT_PROBE_METHODS)),
-        bootloader_reset=tuple(getattr(args, "bootloader_reset", [])),
-    )
+    if args.command == "flash" and hasattr(args, "profile"):
+        incompatible_args = []
+
+        if hasattr(args, "probe_methods"):
+            incompatible_args.append("--probe-methods")
+
+        if hasattr(args, "bootloader_reset"):
+            incompatible_args.append("--bootloader-reset")
+
+        if incompatible_args:
+            parser.error(
+                "--profile cannot be used with " + ", ".join(incompatible_args)
+            )
+
+        flasher_cls = DEVICE_SPECIFIC_FLASHERS[args.profile]
+        flasher = flasher_cls(device=getattr(args, "device", None))
+    else:
+        flasher = Flasher(
+            device=getattr(args, "device", None),
+            probe_methods=list(getattr(args, "probe_methods", DEFAULT_PROBE_METHODS)),
+            bootloader_reset=tuple(getattr(args, "bootloader_reset", [])),
+        )
 
     if args.command == "dump-gbl-metadata":
         await _cmd_dump_gbl_metadata(args)
@@ -257,18 +272,6 @@ async def _cmd_flash(
         metadata = None
     else:
         _LOGGER.info("Extracted GBL metadata: %s", metadata)
-
-    # Prefer to probe with the current firmware's settings to speed up startup after the
-    # firmware is flashed for the first time
-    if metadata is not None and metadata.fw_type is not None:
-        app_type = FW_IMAGE_TYPE_TO_APPLICATION_TYPE[metadata.fw_type]
-
-        _LOGGER.debug(
-            "Probing app type %s at %s baud first", app_type, metadata.baudrate
-        )
-        flasher._probe_methods = put_first(
-            flasher._probe_methods, [(app_type, metadata.baudrate)]
-        )
 
     try:
         await flasher.probe_app_type()
