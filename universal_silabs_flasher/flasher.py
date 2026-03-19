@@ -5,6 +5,7 @@ import contextlib
 import dataclasses
 import logging
 import typing
+from typing import cast
 
 import bellows.config
 import bellows.ezsp
@@ -628,7 +629,11 @@ class Zbt2Flasher(DeviceSpecificFlasher):
     async def trigger_bootloader_reset(
         self, *, run_firmware: bool
     ) -> ProbeResult | None:
-        # Try to trigger the bootloader nicely
+        # One batch used a different trigger
+        rts_dtr_config = cast(ModemPinResetConfig, RESET_CONFIGS[ResetTarget.RTS_DTR])
+        await self._trigger_modem_pin_reset(rts_dtr_config)
+
+        # The rest use a command mode
         await self._send_esp32_command("BZ")
 
         bootloader_probe = await self._detect_gecko_bootloader(
