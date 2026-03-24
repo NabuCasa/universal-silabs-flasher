@@ -7,6 +7,7 @@ import zigpy.types as t
 
 from universal_silabs_flasher.common import FlowControlSerialProtocol, Version
 from universal_silabs_flasher.const import (
+    RESET_CONFIGS,
     ApplicationType,
     BaudrateResetConfig,
     GpioPattern,
@@ -310,6 +311,7 @@ async def test_zbt2_flasher_trigger_bootloader_reset_first_attempt_succeeds():
     )
 
     with (
+        patch.object(flasher, "_trigger_modem_pin_reset") as mock_modem_pin_reset,
         patch.object(flasher, "_trigger_baudrate_reset") as mock_baudrate_reset,
         patch.object(
             flasher, "_detect_gecko_bootloader", return_value=probe_result
@@ -318,6 +320,7 @@ async def test_zbt2_flasher_trigger_bootloader_reset_first_attempt_succeeds():
         result = await flasher.trigger_bootloader_reset(run_firmware=False)
 
     assert result == probe_result
+    assert mock_modem_pin_reset.mock_calls == [call(RESET_CONFIGS[ResetTarget.RTS_DTR])]
     assert mock_baudrate_reset.mock_calls == [
         call(
             BaudrateResetConfig(
@@ -340,6 +343,7 @@ async def test_zbt2_flasher_trigger_bootloader_reset_hard_reset_fallback():
     )
 
     with (
+        patch.object(flasher, "_trigger_modem_pin_reset") as mock_modem_pin_reset,
         patch.object(
             flasher,
             "_trigger_baudrate_reset",
@@ -363,6 +367,8 @@ async def test_zbt2_flasher_trigger_bootloader_reset_hard_reset_fallback():
         result = await flasher.trigger_bootloader_reset(run_firmware=False)
 
     assert result == probe_result
+    # RTS/DTR reset is only attempted once (before the first BZ)
+    assert mock_modem_pin_reset.mock_calls == [call(RESET_CONFIGS[ResetTarget.RTS_DTR])]
     # 4 baudrate reset calls: BZ, RE(fail), BZ(fail), BZ(success)
     assert len(mock_baudrate_reset.mock_calls) == 4
     # 2 detect calls: first returns None, second returns result
