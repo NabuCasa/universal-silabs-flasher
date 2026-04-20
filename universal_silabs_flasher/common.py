@@ -7,21 +7,13 @@ import dataclasses
 import functools
 import logging
 import re
-import sys
 import typing
 
 import crc
 import zigpy.serial
 
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
-
 if typing.TYPE_CHECKING:
-    from typing_extensions import Self
-
-__all__ = ["asyncio_timeout"]
+    from typing import Self
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,7 +114,7 @@ class StateMachine:
         self._futures_for_state[state].append(future)
 
         try:
-            async with asyncio_timeout(timeout):
+            async with asyncio.timeout(timeout):
                 return await future
         finally:
             # Always clean up the future
@@ -140,7 +132,7 @@ async def connect_protocol(
 ) -> typing.AsyncIterator[P]:
     loop = asyncio.get_running_loop()
 
-    async with asyncio_timeout(CONNECT_TIMEOUT):
+    async with asyncio.timeout(CONNECT_TIMEOUT):
         _, protocol = await zigpy.serial.create_serial_connection(
             loop=loop,
             protocol_factory=factory,

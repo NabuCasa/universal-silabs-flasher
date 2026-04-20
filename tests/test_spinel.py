@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from unittest.mock import MagicMock, call
 
 import pytest
 
+from universal_silabs_flasher.common import crc16_kermit
+import universal_silabs_flasher.spinel as spinel
 from universal_silabs_flasher.spinel import (
     HDLCLiteFrame,
     SpinelFrame,
@@ -14,14 +15,6 @@ from universal_silabs_flasher.spinel import (
     SpinelProtocol,
 )
 from universal_silabs_flasher.spinel_types import CommandID, PackedUInt21, PropertyID
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
-
-from universal_silabs_flasher.common import crc16_kermit
-import universal_silabs_flasher.spinel as spinel
 
 from .common import PairedTransport
 
@@ -159,7 +152,7 @@ async def test_ignore_duplicate_response(caplog: pytest.CapLogFixture) -> None:
         await asyncio.sleep(0.01)
 
     # The future should be resolved with the first response
-    async with asyncio_timeout(1):
+    async with asyncio.timeout(1):
         result = await fut
 
     assert result == response1
@@ -241,7 +234,7 @@ async def test_iter_property_changes() -> None:
         )
         await conversation.send(HDLCLiteFrame(data=response.serialize()).serialize())
 
-    async with asyncio_timeout(1):
+    async with asyncio.timeout(1):
         results = [await queue.get() for _ in range(5)]
 
     assert results == [f"test {i}".encode("ascii") for i in range(5)]

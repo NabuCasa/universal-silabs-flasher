@@ -9,7 +9,7 @@ from zigpy.serial import SerialProtocol
 import zigpy.types
 
 from . import cpc_types
-from .common import BufferTooShort, Version, asyncio_timeout, crc16_ccitt
+from .common import BufferTooShort, Version, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -375,9 +375,9 @@ class CPCProtocol(SerialProtocol):
                 self.send_data(frame.serialize())
 
                 try:
-                    async with asyncio_timeout(timeout):
+                    async with asyncio.timeout(timeout):
                         return await asyncio.shield(future)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     _LOGGER.debug(
                         "Failed to send %s, trying again in %0.2fs (attempt %s of %s)",
                         frame,

@@ -10,7 +10,7 @@ import typing
 from zigpy.serial import SerialProtocol
 import zigpy.types
 
-from .common import PROBE_TIMEOUT, StateMachine, Version, asyncio_timeout, crc16_ccitt
+from .common import PROBE_TIMEOUT, StateMachine, Version, crc16_ccitt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ UPLOAD_STATUS_REGEX = re.compile(
 )  # fmt: skip
 
 
-class State(str, enum.Enum):
+class State(enum.StrEnum):
     WAITING_FOR_MENU = "waiting_for_menu"
     IN_MENU = "in_menu"
     WAITING_XMODEM_READY = "waiting_xmodem_ready"
@@ -137,7 +137,7 @@ class GeckoBootloaderProtocol(SerialProtocol):
 
     async def probe(self) -> Version:
         """Attempt to communicate with the bootloader."""
-        async with asyncio_timeout(PROBE_TIMEOUT):
+        async with asyncio.timeout(PROBE_TIMEOUT):
             return await self.ebl_info()
 
     async def ebl_info(self) -> Version:
@@ -162,9 +162,9 @@ class GeckoBootloaderProtocol(SerialProtocol):
         self.send_data(GeckoBootloaderOption.RUN_FIRMWARE)
 
         try:
-            async with asyncio_timeout(RUN_APPLICATION_DELAY):
+            async with asyncio.timeout(RUN_APPLICATION_DELAY):
                 await self._state_machine.wait_for_state(State.IN_MENU)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # The menu did not appear so the application must be running
             return
         else:
@@ -267,9 +267,9 @@ class GeckoBootloaderProtocol(SerialProtocol):
         # and transitions: UPLOAD_DONE -> WAITING_FOR_MENU -> IN_MENU.
         # (if menu is buffered). The menu is sometimes sent immediately after upload.
         try:
-            async with asyncio_timeout(MENU_AFTER_UPLOAD_TIMEOUT):
+            async with asyncio.timeout(MENU_AFTER_UPLOAD_TIMEOUT):
                 await self._state_machine.wait_for_state(State.IN_MENU)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # If not, trigger it manually
             await self.ebl_info()
 

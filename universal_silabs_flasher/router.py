@@ -7,14 +7,14 @@ import re
 
 from zigpy.serial import SerialProtocol
 
-from .common import PROBE_TIMEOUT, StateMachine, Version, asyncio_timeout
+from .common import PROBE_TIMEOUT, StateMachine, Version
 
 _LOGGER = logging.getLogger(__name__)
 
 ROUTER_INFO_REGEX = re.compile(rb"stack ver\. \[(?P<version>.*?)\]\r\n")
 
 
-class State(str, enum.Enum):
+class State(enum.StrEnum):
     STARTUP = "startup"
     BOOTWAIT = "bootwait"
     INFO = "info"
@@ -37,7 +37,7 @@ class RouterProtocol(SerialProtocol):
 
     async def probe(self) -> Version:
         """Attempt to communicate with the router."""
-        async with asyncio_timeout(PROBE_TIMEOUT):
+        async with asyncio.timeout(PROBE_TIMEOUT):
             return await self.router_info()
 
     async def router_info(self) -> Version:

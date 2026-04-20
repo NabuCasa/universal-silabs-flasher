@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import pathlib
-import sys
 from unittest.mock import MagicMock, call
 
 import pytest
@@ -17,12 +16,6 @@ from universal_silabs_flasher.gecko_bootloader import (
     UploadError,
     XModemPacketType,
 )
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
-
 
 from .common import PairedTransport
 
@@ -92,14 +85,14 @@ class Conversation(asyncio.Protocol):
         timeout: float = 1.5,
     ) -> None:
         """Expect a command, preceded by a newline."""
-        async with asyncio_timeout(timeout):
+        async with asyncio.timeout(timeout):
             data = await self._reader.read(len(command) + 1)
         assert data.endswith(command)
 
     async def expect_packet(self, number: int, timeout: float = 2.0) -> bytes:
         """Read and validate a full XMODEM packet, returning its payload."""
         # 3 bytes header, 128 bytes payload, 2 bytes CRC
-        async with asyncio_timeout(timeout):
+        async with asyncio.timeout(timeout):
             data = await self._reader.read(133)
 
         assert data[0] == XModemPacketType.SOH
@@ -113,7 +106,7 @@ class Conversation(asyncio.Protocol):
         return payload
 
     async def expect_eot(self, timeout: float = 1.0) -> None:
-        async with asyncio_timeout(timeout):
+        async with asyncio.timeout(timeout):
             data = await self._reader.read(1)
         assert data == bytes([XModemPacketType.EOT])
 
@@ -177,7 +170,7 @@ async def test_xmodem_happy_path() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
+    async with asyncio.timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FULL_FIRMWARE
@@ -228,7 +221,7 @@ async def test_xmodem_with_retries() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
+    async with asyncio.timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -274,7 +267,7 @@ async def test_xmodem_timeout() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
+    async with asyncio.timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -299,7 +292,7 @@ async def test_xmodem_cancellation() -> None:
     await conversation.send_can()
 
     with pytest.raises(ReceiverCancelled):
-        async with asyncio_timeout(1):
+        async with asyncio.timeout(1):
             await upload_task
 
 
@@ -383,7 +376,7 @@ async def test_xmodem_multiple_c_bytes() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
+    async with asyncio.timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -421,7 +414,7 @@ async def test_xmodem_spurious_ack() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
+    async with asyncio.timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -459,7 +452,7 @@ async def test_xmodem_spurious_nak() -> None:
     await conversation.expect_command(GeckoBootloaderOption.EBL_INFO)
     await conversation.send_menu()
 
-    async with asyncio_timeout(UPLOAD_COMPLETION_TIMEOUT):
+    async with asyncio.timeout(UPLOAD_COMPLETION_TIMEOUT):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -577,7 +570,7 @@ async def test_xmodem_empty_buffer_during_transfer() -> None:
     await conversation.send_upload_complete()
     await conversation.send_menu()
 
-    async with asyncio_timeout(1):
+    async with asyncio.timeout(1):
         await upload_task
 
 
@@ -637,7 +630,7 @@ async def test_xmodem_reverts_to_line_parsing() -> None:
     await conversation.send_menu()
 
     # The upload task should complete successfully
-    async with asyncio_timeout(1):
+    async with asyncio.timeout(1):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -673,7 +666,7 @@ async def test_xmodem_reverts_to_line_parsing_byte_by_byte() -> None:
     await conversation.send_menu()
 
     # The upload task should complete successfully
-    async with asyncio_timeout(1):
+    async with asyncio.timeout(1):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -710,7 +703,7 @@ async def test_xmodem_reverts_to_line_parsing_with_write_aggregation() -> None:
     await conversation.send_menu()
 
     # The upload task should complete successfully
-    async with asyncio_timeout(1):
+    async with asyncio.timeout(1):
         await upload_task
 
     assert received_firmware == FIRMWARE
@@ -742,7 +735,7 @@ async def test_parser_needs_more_data() -> None:
     await conversation.send(rest_of_menu)
 
     # The info task should complete
-    async with asyncio_timeout(1):
+    async with asyncio.timeout(1):
         await info_task
 
 
