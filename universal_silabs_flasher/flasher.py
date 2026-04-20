@@ -10,11 +10,11 @@ from typing import cast
 import bellows.config
 import bellows.ezsp
 import bellows.types
+import zigpy.serial
 import zigpy.types
 
 from .common import (
     PROBE_TIMEOUT,
-    FlowControlSerialProtocol,
     Version,
     asyncio_timeout,
     connect_protocol,
@@ -210,7 +210,7 @@ class BaseFlasher:
         # Baudrate command mode uses a pattern of baudrates to enter a command mode
         for baudrate in config.baudrates:
             async with connect_protocol(
-                self._device, baudrate, FlowControlSerialProtocol
+                self._device, baudrate, zigpy.serial.SerialProtocol
             ) as uart:
                 await asyncio.sleep(config.delay_after_each)
 
@@ -224,10 +224,11 @@ class BaseFlasher:
     async def _trigger_modem_pin_reset(self, config: ModemPinResetConfig) -> None:
         # The baudrate isn't necessary, since we're just using flow control pins
         async with connect_protocol(
-            self._device, 115200, FlowControlSerialProtocol
+            self._device, 115200, zigpy.serial.SerialProtocol
         ) as uart:
+            assert uart._transport is not None
             for pattern in config.pattern:
-                await uart.set_signals(**pattern.pins)
+                await uart._transport.set_modem_pins(**pattern.pins)  # type: ignore[arg-type]
                 await asyncio.sleep(pattern.delay_after)
 
     async def _trigger_gpio_reset(self, config: GpioResetConfig) -> None:
