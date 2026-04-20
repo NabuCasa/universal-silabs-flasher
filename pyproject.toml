@@ -20,7 +20,7 @@ dependencies = [
     "crc",
     "bellows>=0.49.0",
     'gpiod; platform_system=="Linux"',
-    "coloredlogs",
+    "colorlog",
     "typing_extensions",
 ]
 

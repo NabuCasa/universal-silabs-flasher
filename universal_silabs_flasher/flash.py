@@ -11,7 +11,7 @@ import sys
 import zipfile
 
 import aiohttp
-import coloredlogs
+import colorlog
 import tqdm
 import zigpy.ota.validators
 import zigpy.types
@@ -190,9 +190,15 @@ async def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    coloredlogs.install(
-        fmt=("%(asctime)s.%(msecs)03d %(hostname)s %(name)s %(levelname)s %(message)s"),
+    handler = colorlog.StreamHandler()
+    handler.setFormatter(
+        colorlog.ColoredFormatter(
+            "%(log_color)s%(asctime)s.%(msecs)03d %(name)s %(levelname)s %(message)s"
+        )
+    )
+    logging.basicConfig(
         level=LOG_LEVELS[min(len(LOG_LEVELS) - 1, getattr(args, "verbose", 0))],
+        handlers=[handler],
     )
 
     # --device is required for all subcommands except dump-gbl-metadata
