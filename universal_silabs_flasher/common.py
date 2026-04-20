@@ -7,21 +7,13 @@ import dataclasses
 import functools
 import logging
 import re
-import sys
 import typing
 
 import crc
 import zigpy.serial
 
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
-
 if typing.TYPE_CHECKING:
-    from typing_extensions import Self
-
-__all__ = ["asyncio_timeout"]
+    from typing import Self
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,7 +114,7 @@ class StateMachine:
         self._futures_for_state[state].append(future)
 
         try:
-            async with asyncio_timeout(timeout):
+            async with asyncio.timeout(timeout):
                 return await future
         finally:
             # Always clean up the future
@@ -140,9 +132,9 @@ async def connect_protocol(
 ) -> typing.AsyncIterator[P]:
     loop = asyncio.get_running_loop()
 
-    async with asyncio_timeout(CONNECT_TIMEOUT):
+    async with asyncio.timeout(CONNECT_TIMEOUT):
         _, protocol = await zigpy.serial.create_serial_connection(
-            loop=loop,  # type: ignore[arg-type]  # zigpy expects BaseEventLoop
+            loop=loop,
             protocol_factory=factory,
             url=port,
             baudrate=baudrate,
@@ -226,49 +218,3 @@ class Version:
             return f"{concatenated!r}"
 
         return f"{concatenated!r} ({comparable})"
-
-
-class FlowControlSerialProtocol(zigpy.serial.SerialProtocol):
-    def _set_signals(
-        self,
-        *,
-        rts: bool | None = None,
-        cts: bool | None = None,
-        dtr: bool | None = None,
-    ) -> None:
-        assert self._transport is not None
-        assert self._transport.serial is not None
-
-        if rts is not None:
-            self._transport.serial.rts = rts
-
-        if cts is not None:
-            self._transport.serial.cts = cts
-
-        if dtr is not None:
-            self._transport.serial.dtr = dtr
-
-    async def set_signals(
-        self,
-        *,
-        rts: bool | None = None,
-        cts: bool | None = None,
-        dtr: bool | None = None,
-    ) -> None:
-        assert self._transport is not None
-
-        _LOGGER.debug(
-            "Setting UART signals: rts=%s, cts=%s, dtr=%s",
-            int(rts) if rts is not None else "-",
-            int(cts) if cts is not None else "-",
-            int(dtr) if dtr is not None else "-",
-        )
-
-        if hasattr(self._transport, "set_signals"):
-            await self._transport.set_signals(rts=rts, cts=cts, dtr=dtr)
-            return
-
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None, lambda: self._set_signals(rts=rts, cts=cts, dtr=dtr)
-        )

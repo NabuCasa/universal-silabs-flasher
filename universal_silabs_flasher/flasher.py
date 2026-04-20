@@ -10,16 +10,10 @@ from typing import cast
 import bellows.config
 import bellows.ezsp
 import bellows.types
+import zigpy.serial
 import zigpy.types
 
-from .common import (
-    PROBE_TIMEOUT,
-    FlowControlSerialProtocol,
-    Version,
-    asyncio_timeout,
-    connect_protocol,
-    pad_to_multiple,
-)
+from .common import PROBE_TIMEOUT, Version, connect_protocol, pad_to_multiple
 from .const import (
     DEFAULT_PROBE_METHODS,
     RESET_CONFIGS,
@@ -210,7 +204,7 @@ class BaseFlasher:
         # Baudrate command mode uses a pattern of baudrates to enter a command mode
         for baudrate in config.baudrates:
             async with connect_protocol(
-                self._device, baudrate, FlowControlSerialProtocol
+                self._device, baudrate, zigpy.serial.SerialProtocol
             ) as uart:
                 await asyncio.sleep(config.delay_after_each)
 
@@ -224,10 +218,11 @@ class BaseFlasher:
     async def _trigger_modem_pin_reset(self, config: ModemPinResetConfig) -> None:
         # The baudrate isn't necessary, since we're just using flow control pins
         async with connect_protocol(
-            self._device, 115200, FlowControlSerialProtocol
+            self._device, 115200, zigpy.serial.SerialProtocol
         ) as uart:
+            assert uart._transport is not None
             for pattern in config.pattern:
-                await uart.set_signals(**pattern.pins)
+                await uart._transport.set_modem_pins(**pattern.pins)  # type: ignore[arg-type]
                 await asyncio.sleep(pattern.delay_after)
 
     async def _trigger_gpio_reset(self, config: GpioResetConfig) -> None:
@@ -264,7 +259,7 @@ class BaseFlasher:
                 probe_result = await self.probe_gecko_bootloader(
                     run_firmware=run_firmware, baudrate=baudrate
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             else:
                 return probe_result
@@ -331,7 +326,7 @@ class BaseFlasher:
 
             try:
                 result = await probe_funcs[probe_method](baudrate=baudrate)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 _LOGGER.debug("Probe timed out")
                 continue
 
@@ -389,25 +384,25 @@ class BaseFlasher:
             pass
         elif self.app_type is ApplicationType.CPC:
             async with self._connect_cpc(self.app_baudrate) as cpc:
-                async with asyncio_timeout(PROBE_TIMEOUT):
+                async with asyncio.timeout(PROBE_TIMEOUT):
                     await cpc.enter_bootloader()
         elif self.app_type is ApplicationType.SPINEL:
             async with self._connect_spinel(self.app_baudrate) as spinel:
-                async with asyncio_timeout(PROBE_TIMEOUT):
+                async with asyncio.timeout(PROBE_TIMEOUT):
                     await spinel.enter_bootloader()
         elif self.app_type is ApplicationType.ROUTER:
             async with self._connect_router(self.app_baudrate) as router:
-                async with asyncio_timeout(PROBE_TIMEOUT):
+                async with asyncio.timeout(PROBE_TIMEOUT):
                     await router.enter_bootloader()
         elif self.app_type is ApplicationType.ZWAVE:
             async with self._connect_zwave(self.app_baudrate) as zwave:
-                async with asyncio_timeout(PROBE_TIMEOUT):
+                async with asyncio.timeout(PROBE_TIMEOUT):
                     await zwave.enter_bootloader()
         elif self.app_type is ApplicationType.EZSP:
             async with self._connect_ezsp(self.app_baudrate) as ezsp:
                 try:
                     res = await ezsp.launchStandaloneBootloader(mode=0x01)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     _LOGGER.warning(
                         "Application failed to respond to bootloader launching command."
                         " Assuming bootloader has launched."
@@ -650,7 +645,7 @@ class Zbt2Flasher(DeviceSpecificFlasher):
             _LOGGER.debug("Expected failure when sending reset command: %r", exc)
 
         # Wait for a while for the stick to come back
-        async with asyncio_timeout(self._reconnect_timeout):
+        async with asyncio.timeout(self._reconnect_timeout):
             while True:
                 try:
                     await self._send_esp32_command("BZ")

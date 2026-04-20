@@ -3,9 +3,10 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+import zigpy.serial
 import zigpy.types as t
 
-from universal_silabs_flasher.common import FlowControlSerialProtocol, Version
+from universal_silabs_flasher.common import Version
 from universal_silabs_flasher.const import (
     RESET_CONFIGS,
     ApplicationType,
@@ -78,15 +79,15 @@ async def test_baudrate_reset_pattern():
 
     assert mock_connect_protocol.mock_calls == [
         # Connect with 150 baud
-        call("/dev/ttyMOCK", 150, FlowControlSerialProtocol),
+        call("/dev/ttyMOCK", 150, zigpy.serial.SerialProtocol),
         call().__aenter__(),
         call().__aexit__(None, None, None),
         # Connect with 300 baud
-        call("/dev/ttyMOCK", 300, FlowControlSerialProtocol),
+        call("/dev/ttyMOCK", 300, zigpy.serial.SerialProtocol),
         call().__aenter__(),
         call().__aexit__(None, None, None),
         # Connect with 1200 baud
-        call("/dev/ttyMOCK", 1200, FlowControlSerialProtocol),
+        call("/dev/ttyMOCK", 1200, zigpy.serial.SerialProtocol),
         call().__aenter__(),
         call().__aenter__()._transport.write(b"BZ"),
         call().__aexit__(None, None, None),
@@ -260,13 +261,13 @@ async def test_trigger_modem_pin_reset():
         "universal_silabs_flasher.flasher.connect_protocol"
     ) as mock_connect_protocol:
         mock_uart = mock_connect_protocol.return_value.__aenter__.return_value
-        mock_uart.set_signals = AsyncMock()
+        mock_uart._transport.set_modem_pins = AsyncMock()
         await flasher._trigger_modem_pin_reset(config)
 
     assert mock_connect_protocol.mock_calls[0] == call(
-        "/dev/ttyMOCK", 115200, FlowControlSerialProtocol
+        "/dev/ttyMOCK", 115200, zigpy.serial.SerialProtocol
     )
-    assert mock_uart.set_signals.mock_calls == [
+    assert mock_uart._transport.set_modem_pins.mock_calls == [
         call(dtr=False, rts=True),
         call(dtr=True, rts=False),
     ]

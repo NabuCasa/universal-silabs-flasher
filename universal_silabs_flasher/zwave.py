@@ -4,12 +4,12 @@ import asyncio
 import dataclasses
 import logging
 import typing
+from typing import Self
 
-from typing_extensions import Self
 from zigpy.serial import SerialProtocol
 import zigpy.types as t
 
-from .common import BufferTooShort, Version, asyncio_timeout
+from .common import BufferTooShort, Version
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -175,9 +175,9 @@ class ZWaveProtocol(SerialProtocol):
                 self.send_data(frame.serialize())
 
                 try:
-                    async with asyncio_timeout(timeout):
+                    async with asyncio.timeout(timeout):
                         return await future
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     _LOGGER.debug(
                         "Failed to send %r, trying again in %0.2fs (attempt %s of %s)",
                         frame,

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections.abc import Callable
 import dataclasses
 import logging
 import typing
-from typing import Callable
 
 from zigpy.serial import SerialProtocol
 import zigpy.types
 
-from .common import Version, asyncio_timeout, crc16_kermit
+from .common import Version, crc16_kermit
 from .spinel_types import (
     CommandID,
     HDLCSpecial,
@@ -258,9 +258,9 @@ class SpinelProtocol(SerialProtocol):
                 self.send_data(HDLCLiteFrame(data=new_frame.serialize()).serialize())
 
                 try:
-                    async with asyncio_timeout(timeout):
+                    async with asyncio.timeout(timeout):
                         return await asyncio.shield(future)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     _LOGGER.debug(
                         "Failed to send %s, trying again in %0.2fs (attempt %s of %s)",
                         frame,
@@ -356,10 +356,10 @@ class SpinelProtocol(SerialProtocol):
             return
 
         try:
-            async with asyncio_timeout(RESET_TIMEOUT):
+            async with asyncio.timeout(RESET_TIMEOUT):
                 await self.wait_for_property(
                     PropertyID.LAST_STATUS, Status.RESET_POWER_ON.serialize()
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # OTBR itself uses this logic, we match it
             _LOGGER.debug("Device did not respond to reset, continuing")
