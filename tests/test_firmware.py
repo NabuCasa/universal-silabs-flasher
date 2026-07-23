@@ -84,3 +84,42 @@ def test_firmware_gbl_valid_with_metadata_v2():
             "sdk_version": "4.4.4",
         },
     )
+
+
+def test_generate_nvm3_erase_gbl():
+    import zlib
+
+    fw = firmware.generate_nvm3_erase_gbl(address=0x08176000, size=40960)
+    data = fw.serialize()
+
+    # Round-trips through the strict GBL parser (validates structure)
+    parsed = firmware.parse_firmware_image(data)
+    assert isinstance(parsed, firmware.GBLImage)
+    assert parsed.serialize() == data
+
+    # Whole-file CRC32 leaves the standard Silabs residue
+    assert zlib.crc32(data) == 0x2144DF1C
+
+    # No metadata tag in the generated image
+    with pytest.raises(KeyError):
+        parsed.get_nabucasa_metadata()
+
+    # Program-data tag covers the requested region with erased-flash bytes
+    prog = parsed.get_first_tag(firmware.GBLTagId.PROGRAM_DATA2)
+    assert int.from_bytes(prog[:4], "little") == 0x08176000
+    assert prog[4:] == b"\xff" * 40960
+
+
+@pytest.mark.parametrize(
+    ("address", "size"),
+    [
+        (0x08176000, 0),
+        (0x08176000, -4096),
+        (0x08176001, 4096),
+        (0x08176000, 4097),
+        (0xFFFFF000, 40960),
+    ],
+)
+def test_generate_nvm3_erase_gbl_validation(address, size):
+    with pytest.raises(ValueError):
+        firmware.generate_nvm3_erase_gbl(address=address, size=size)

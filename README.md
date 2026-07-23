@@ -11,10 +11,10 @@ $ pip install universal-silabs-flasher
 ```console
 usage: universal-silabs-flasher [-h] [-v] [--device DEVICE] [--probe-methods PROBE_METHODS]
                                 [--bootloader-reset BOOTLOADER_RESET]
-                                {dump-gbl-metadata,probe,write-ieee,flash} ...
+                                {dump-gbl-metadata,probe,write-ieee,flash,erase-nvm3} ...
 
 positional arguments:
-  {dump-gbl-metadata,probe,write-ieee,flash}
+  {dump-gbl-metadata,probe,write-ieee,flash,erase-nvm3}
 
 options:
   -h, --help            show this help message and exit
@@ -78,6 +78,32 @@ $ universal-silabs-flasher \
     --firmware ncp-uart-hw-v7.4.5.0-zbdonglee-115200.gbl
 ```
 
+
+## Erasing NVM3
+Erase the NVM3 token store (network settings, keys, frame counters) via the Gecko
+bootloader. Because this works at the bootloader level, it can recover a device
+whose application firmware no longer boots — for example after a firmware
+downgrade left an incompatible NVM3 format behind:
+
+```bash
+$ universal-silabs-flasher \
+    --device /dev/cu.SLAB_USBtoUART \
+    --bootloader-reset rts_dtr \
+    erase-nvm3 \
+    --address 0x08176000 \
+    --size 40960
+```
+
+NVM3 sits at the top of main flash, so `--address` is
+`flash base + flash size - NVM3 size`. The size is firmware-specific (the SDK
+default is `40960`; `32768` is also common) and must be a multiple of the flash
+page size. Per-chip geometry is documented in
+[Nerivec/silabs-firmware-recovery](https://github.com/Nerivec/silabs-firmware-recovery),
+whose published recovery images this command replicates by generating an
+equivalent erase GBL locally.
+
+**This is destructive**: the device loses its network and must be re-joined or
+re-commissioned afterwards.
 
 ## Writing IEEE address
 Ensure a target device running EmberZNet firmware has the correct node IEEE address:

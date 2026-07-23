@@ -4,6 +4,7 @@ import dataclasses
 import json
 import logging
 import typing
+import zlib
 
 from zigpy.ota.validators import ValidationError, parse_silabs_ebl, parse_silabs_gbl
 import zigpy.types as zigpy_t
@@ -14,6 +15,9 @@ from .const import LEGACY_FIRMWARE_TYPE_REMAPPING, FirmwareImageType
 _LOGGER = logging.getLogger(__name__)
 
 NABUCASA_METADATA_VERSION = 2
+
+# Byte-exact header payload used by plain (unsigned, unencrypted) GBL v3 images
+GBL_PLAIN_HEADER_PAYLOAD = bytes.fromhex("0000000300000000")
 
 
 class GBLTagId(zigpy_t.enum32):
@@ -202,6 +206,53 @@ class GBLImage(FirmwareImage[GBLTagId]):
         metadata = self.get_first_tag(GBLTagId.METADATA)
 
         return NabuCasaMetadata.from_json(json.loads(metadata))
+
+
+def generate_nvm3_erase_gbl(address: int, size: int) -> GBLImage:
+    """Generate a GBL image that erases a flash region by programming `0xFF`.
+
+    Intended for wiping the NVM3 token store (located at the top of main
+    flash) via the Gecko bootloader, restoring a device whose application
+    cannot boot — e.g. after an EmberZNet downgrade left an incompatible
+    NVM3 format behind. Programming `0xFF` makes the bootloader erase the
+    affected pages, which is exactly the erased-flash state NVM3 expects
+    for a fresh initialization.
+
+    The layout mirrors the images published by
+    https://github.com/Nerivec/silabs-firmware-recovery: a plain v3 header,
+    an all-zero APP_INFO tag, one PROGRAM_DATA tag covering the region, and
+    an END tag with the file CRC32.
+    """
+    if size <= 0:
+        raise ValueError(f"Erase size must be positive, got {size}")
+
+    if size % 4 != 0 or address % 4 != 0:
+        raise ValueError(
+            f"Erase address and size must be multiples of 4,"
+            f" got address=0x{address:08X} size={size}"
+        )
+
+    if not 0 <= address <= 0xFFFFFFFF - size:
+        raise ValueError(f"Erase region 0x{address:08X}+{size} is out of range")
+
+    tags: list[tuple[GBLTagId, bytes]] = [
+        (GBLTagId.HEADER, GBL_PLAIN_HEADER_PAYLOAD),
+        (GBLTagId.APP_INFO, bytes(28)),
+        (
+            GBLTagId.PROGRAM_DATA2,
+            address.to_bytes(4, "little") + b"\xff" * size,
+        ),
+    ]
+
+    partial = b"".join(
+        tag_id.serialize() + len(value).to_bytes(4, "little") + value
+        for tag_id, value in tags
+    )
+    partial += GBLTagId.END.serialize() + (4).to_bytes(4, "little")
+
+    tags.append((GBLTagId.END, zlib.crc32(partial).to_bytes(4, "little")))
+
+    return GBLImage(tags=tags)
 
 
 @dataclasses.dataclass(frozen=True)

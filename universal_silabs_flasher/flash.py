@@ -17,7 +17,7 @@ import zigpy.ota.validators
 import zigpy.types
 
 from .const import DEFAULT_PROBE_METHODS, ApplicationType, ResetTarget
-from .firmware import parse_firmware_image
+from .firmware import generate_nvm3_erase_gbl, parse_firmware_image
 from .flasher import DEVICE_SPECIFIC_FLASHERS, BaseFlasher, Flasher
 from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
@@ -87,6 +87,14 @@ def parse_probe_methods(value: str) -> list[tuple[ApplicationType, int]]:
         result.append((app_type, baudrate))
 
     return result
+
+
+def parse_any_int(value: str) -> int:
+    """Parse a decimal or prefixed (0x/0o/0b) integer argument."""
+    try:
+        return int(value, 0)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a valid integer")
 
 
 def parse_reset_methods(value: str) -> list[ResetTarget]:
@@ -188,6 +196,29 @@ async def main(argv: list[str] | None = None) -> None:
         ),
     )
 
+    # erase-nvm3
+    erase_nvm3_parser = subparsers.add_parser("erase-nvm3", parents=[global_parser])
+    erase_nvm3_parser.add_argument(
+        "--address",
+        required=True,
+        type=parse_any_int,
+        help=(
+            "Start address of the NVM3 region (decimal or 0x-prefixed hex)."
+            " NVM3 sits at the top of main flash:"
+            " flash base + flash size - NVM3 size."
+        ),
+    )
+    erase_nvm3_parser.add_argument(
+        "--size",
+        required=True,
+        type=parse_any_int,
+        help=(
+            "Size of the NVM3 region in bytes (decimal or 0x-prefixed hex),"
+            " e.g. 40960 (the SDK default) or 32768. Must be a multiple of the"
+            " device's flash page size."
+        ),
+    )
+
     args = parser.parse_args(argv)
 
     coloredlogs.install(
@@ -232,6 +263,8 @@ async def main(argv: list[str] | None = None) -> None:
         await _cmd_write_ieee(args, flasher)
     elif args.command == "flash":
         await _cmd_flash(args, flasher, getattr(args, "verbose", 0))
+    elif args.command == "erase-nvm3":
+        await _cmd_erase_nvm3(args, flasher, getattr(args, "verbose", 0))
 
 
 async def _cmd_dump_gbl_metadata(args: argparse.Namespace) -> None:
@@ -284,6 +317,54 @@ async def _cmd_write_ieee(args: argparse.Namespace, flasher: Flasher) -> None:
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+async def _cmd_erase_nvm3(
+    args: argparse.Namespace, flasher: BaseFlasher, verbosity: int
+) -> None:
+    try:
+        fw_image = generate_nvm3_erase_gbl(address=args.address, size=args.size)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    firmware_data = fw_image.serialize()
+
+    _LOGGER.info(
+        "Erasing NVM3 region 0x%08X - 0x%08X (%d bytes)",
+        args.address,
+        args.address + args.size - 1,
+        args.size,
+    )
+
+    try:
+        await flasher.probe_app_type()
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    await flasher.enter_bootloader()
+
+    with tqdm.tqdm(
+        total=len(firmware_data),
+        desc="NVM3 erase",
+        unit="B",
+        unit_scale=True,
+        disable=verbosity > 1,
+    ) as pbar:
+        try:
+            await flasher.flash_firmware(
+                fw_image,
+                run_firmware=True,
+                progress_callback=lambda current, _: pbar.update(XMODEM_BLOCK_SIZE),
+            )
+        except ReceiverCancelled:
+            print(
+                "Error: The erase image was rejected by the device. The bootloader"
+                " may require signed images.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
 
 async def _cmd_flash(
