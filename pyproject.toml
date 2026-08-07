@@ -22,6 +22,7 @@ dependencies = [
     'gpiod; platform_system=="Linux"',
     "coloredlogs",
     "typing_extensions",
+    "pygbl>=1.0.0",
     "aiospinel>=1.2.0",
 ]
 
