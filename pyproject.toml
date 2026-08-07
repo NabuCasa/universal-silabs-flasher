@@ -22,6 +22,7 @@ dependencies = [
     'gpiod; platform_system=="Linux"',
     "coloredlogs",
     "typing_extensions",
+    "aiospinel>=1.2.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -35,6 +36,7 @@ testing = [
     "pytest-mock>=3.10.0",
     "pytest-cov>=4.1.0",
     "pytest-github-actions-annotate-failures",
+    "aioresponses",
 ]
 
 [tool.setuptools-git-versioning]

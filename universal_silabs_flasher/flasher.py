@@ -7,6 +7,7 @@ import logging
 import typing
 from typing import cast
 
+from aiospinel import SpinelProtocol
 import bellows.config
 import bellows.ezsp
 import bellows.types
@@ -33,7 +34,6 @@ from .gecko_bootloader import (
 )
 from .gpio import find_gpiochip_by_label, send_gpio_pattern
 from .router import RouterProtocol
-from .spinel import SpinelProtocol
 from .zwave import ZWaveProtocol
 
 _LOGGER = logging.getLogger(__name__)
@@ -175,7 +175,7 @@ class BaseFlasher:
             version = await spinel.probe()
 
         return ProbeResult(
-            version=version,
+            version=Version(version),
             baudrate=baudrate,
             continue_probing=False,
         )

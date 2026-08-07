@@ -9,6 +9,7 @@ import logging
 import re
 import typing
 
+import aiospinel
 import crc
 import zigpy.serial
 
@@ -32,26 +33,10 @@ CRC_CCITT = crc.Calculator(
     )
 )
 
-CRC_KERMIT = crc.Calculator(
-    crc.Configuration(
-        width=16,
-        polynomial=0x1021,
-        init_value=0xFFFF,
-        final_xor_value=0xFFFF,
-        reverse_input=True,
-        reverse_output=True,
-    )
-)
-
 
 # Used by both CPC and XModem
 def crc16_ccitt(data: bytes | bytearray) -> int:
     return int(CRC_CCITT.checksum(data))
-
-
-# Used by HDLC-Lite
-def crc16_kermit(data: bytes | bytearray) -> int:
-    return int(CRC_KERMIT.checksum(data))
 
 
 def pad_to_multiple(data: bytes, multiple: int, padding: bytes) -> bytes:
@@ -121,7 +106,9 @@ class StateMachine:
             self._futures_for_state[state].remove(future)
 
 
-P = typing.TypeVar("P", bound=zigpy.serial.SerialProtocol)
+# `aiospinel` ships its own copy of the protocol base class rather than depending on
+# zigpy, but the two are interchangeable here
+P = typing.TypeVar("P", bound="zigpy.serial.SerialProtocol | aiospinel.SerialProtocol")
 
 
 @contextlib.asynccontextmanager
