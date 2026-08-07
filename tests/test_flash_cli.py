@@ -1,12 +1,15 @@
 """CLI integration tests to ensure argument parsing works correctly."""
 
+from collections.abc import AsyncIterator
+import contextlib
 from dataclasses import dataclass
 import io
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 import zipfile
 
-from aioresponses import aioresponses
+from aiohttp import web
+from aiohttp.test_utils import TestServer as AiohttpTestServer
 import pytest
 
 from universal_silabs_flasher.const import (
@@ -17,7 +20,6 @@ from universal_silabs_flasher.const import (
 from universal_silabs_flasher.flash import main
 from universal_silabs_flasher.flasher import BaseFlasher, Flasher, Zbt2Flasher
 
-FIRMWARE_URL = "https://example.com/firmware/skyconnect_zigbee_ncp_7.4.4.0.gbl"
 FIRMWARE_PATH = Path("tests/firmwares/skyconnect_zigbee_ncp_7.4.4.0.gbl")
 
 
@@ -385,12 +387,34 @@ def make_zip(entries: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
+@contextlib.asynccontextmanager
+async def serve_firmware(
+    path: str, body: bytes = b"", status: int = 200
+) -> AsyncIterator[str]:
+    """Serves a canned response from a real local HTTP server, yielding its URL."""
+
+    async def handler(request: web.Request) -> web.Response:
+        return web.Response(status=status, body=body)
+
+    app = web.Application()
+    app.router.add_get(path, handler)
+
+    server = AiohttpTestServer(app)
+    await server.start_server()
+
+    try:
+        yield str(server.make_url(path))
+    finally:
+        await server.close()
+
+
 async def test_firmware_download_gbl():
     """A plain .gbl downloaded over HTTP is flashed successfully."""
-    with aioresponses() as m:
-        m.get(FIRMWARE_URL, status=200, body=FIRMWARE_PATH.read_bytes())
+    async with serve_firmware(
+        "/firmware/skyconnect_zigbee_ncp_7.4.4.0.gbl", FIRMWARE_PATH.read_bytes()
+    ) as url:
         result = await invoke_main(
-            ["--device", "/dev/ttyUSB0", "flash", "--firmware", FIRMWARE_URL]
+            ["--device", "/dev/ttyUSB0", "flash", "--firmware", url]
         )
 
     assert result.exit_code == 0
@@ -398,7 +422,6 @@ async def test_firmware_download_gbl():
 
 async def test_firmware_download_zip_picks_gbl():
     """A ZIP with a .gbl and another file: the .gbl entry is extracted and flashed."""
-    zip_url = "https://example.com/firmware/update.zip"
     zip_bytes = make_zip(
         {
             "readme.txt": b"hello",
@@ -406,10 +429,9 @@ async def test_firmware_download_zip_picks_gbl():
         }
     )
 
-    with aioresponses() as m:
-        m.get(zip_url, status=200, body=zip_bytes)
+    async with serve_firmware("/firmware/update.zip", zip_bytes) as url:
         result = await invoke_main(
-            ["--device", "/dev/ttyUSB0", "flash", "--firmware", zip_url]
+            ["--device", "/dev/ttyUSB0", "flash", "--firmware", url]
         )
 
     assert result.exit_code == 0
@@ -417,10 +439,11 @@ async def test_firmware_download_zip_picks_gbl():
 
 async def test_firmware_download_failure():
     """An HTTP error status is reported as a CLI error."""
-    with aioresponses() as m:
-        m.get(FIRMWARE_URL, status=404)
+    async with serve_firmware(
+        "/firmware/skyconnect_zigbee_ncp_7.4.4.0.gbl", status=404
+    ) as url:
         result = await invoke_main(
-            ["--device", "/dev/ttyUSB0", "flash", "--firmware", FIRMWARE_URL]
+            ["--device", "/dev/ttyUSB0", "flash", "--firmware", url]
         )
 
     assert result.exit_code != 0
