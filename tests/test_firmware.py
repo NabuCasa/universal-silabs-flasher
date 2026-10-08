@@ -1,47 +1,48 @@
 import pathlib
 
+from pygbl import EBLImage, GBL3Image, parse_firmware_image
 import pytest
 
-from universal_silabs_flasher import firmware
 from universal_silabs_flasher.common import Version
 from universal_silabs_flasher.const import FirmwareImageType
+from universal_silabs_flasher.firmware import NabuCasaMetadata, get_nabucasa_metadata
 
 FIRMWARES_DIR = pathlib.Path(__file__).parent / "firmwares"
 
 
 def test_firmware_ebl_valid():
     data = (FIRMWARES_DIR / "ncp-uart-sw-6.4.1.ebl").read_bytes()
-    fw = firmware.parse_firmware_image(data)
+    fw = parse_firmware_image(data)
 
-    assert isinstance(fw, firmware.EBLImage)
+    assert isinstance(fw, EBLImage)
     assert fw.serialize() == data
 
     with pytest.raises(KeyError):
-        fw.get_nabucasa_metadata()
+        get_nabucasa_metadata(fw)
 
 
 def test_firmware_gbl_valid_no_metadata():
     data = (
         FIRMWARES_DIR / "NabuCasa_EZSP_v6.10.3.0_PB32_ncp-uart-hw_115200.gbl"
     ).read_bytes()
-    fw = firmware.parse_firmware_image(data)
+    fw = parse_firmware_image(data)
 
-    assert isinstance(fw, firmware.GBLImage)
+    assert isinstance(fw, GBL3Image)
     assert fw.serialize() == data
 
     with pytest.raises(KeyError):
-        fw.get_nabucasa_metadata()
+        get_nabucasa_metadata(fw)
 
 
 def test_firmware_gbl_valid_with_metadata():
     data = (
         FIRMWARES_DIR / "NabuCasa_SkyConnect_RCP_v4.1.3_rcp-uart-hw-802154_115200.gbl"
     ).read_bytes()
-    fw = firmware.parse_firmware_image(data)
+    fw = parse_firmware_image(data)
 
-    assert isinstance(fw, firmware.GBLImage)
+    assert isinstance(fw, GBL3Image)
     assert fw.serialize() == data
-    assert fw.get_nabucasa_metadata() == firmware.NabuCasaMetadata(
+    assert get_nabucasa_metadata(fw) == NabuCasaMetadata(
         metadata_version=1,
         sdk_version=Version("4.1.3"),
         ezsp_version=None,
@@ -61,11 +62,11 @@ def test_firmware_gbl_valid_with_metadata():
 
 def test_firmware_gbl_valid_with_metadata_v2():
     data = (FIRMWARES_DIR / "skyconnect_zigbee_ncp_7.4.4.0.gbl").read_bytes()
-    fw = firmware.parse_firmware_image(data)
+    fw = parse_firmware_image(data)
 
-    assert isinstance(fw, firmware.GBLImage)
+    assert isinstance(fw, GBL3Image)
     assert fw.serialize() == data
-    assert fw.get_nabucasa_metadata() == firmware.NabuCasaMetadata(
+    assert get_nabucasa_metadata(fw) == NabuCasaMetadata(
         metadata_version=2,
         sdk_version=Version("4.4.4"),
         ezsp_version=Version("7.4.4.0"),

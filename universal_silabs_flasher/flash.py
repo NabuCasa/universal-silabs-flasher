@@ -12,12 +12,12 @@ import zipfile
 
 import aiohttp
 import coloredlogs
+from pygbl import GBLError, parse_firmware_image
 import tqdm
-import zigpy.ota.validators
 import zigpy.types
 
 from .const import DEFAULT_PROBE_METHODS, ApplicationType, ResetTarget
-from .firmware import parse_firmware_image
+from .firmware import get_nabucasa_metadata
 from .flasher import DEVICE_SPECIFIC_FLASHERS, BaseFlasher, Flasher
 from .gecko_bootloader import XMODEM_BLOCK_SIZE, ReceiverCancelled
 
@@ -243,7 +243,7 @@ async def _cmd_dump_gbl_metadata(args: argparse.Namespace) -> None:
 
     try:
         fw_image = parse_firmware_image(firmware_data)
-    except zigpy.ota.validators.ValidationError as e:
+    except GBLError as e:
         print(
             f"Error: {firmware_name!r} does not appear to be a valid firmware"
             f" image: {e!r}",
@@ -252,7 +252,7 @@ async def _cmd_dump_gbl_metadata(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        metadata = fw_image.get_nabucasa_metadata()
+        metadata = get_nabucasa_metadata(fw_image)
     except KeyError:
         metadata_obj = None
     else:
@@ -297,7 +297,7 @@ async def _cmd_flash(
 
     try:
         fw_image = parse_firmware_image(firmware_data)
-    except (zigpy.ota.validators.ValidationError, ValueError) as e:
+    except (GBLError, ValueError) as e:
         print(
             f"Error: {firmware_name!r} does not appear to be a valid firmware"
             f" image: {e!r}",
@@ -306,7 +306,7 @@ async def _cmd_flash(
         sys.exit(1)
 
     try:
-        metadata = fw_image.get_nabucasa_metadata()
+        metadata = get_nabucasa_metadata(fw_image)
     except Exception as exc:
         _LOGGER.info(f"Failed to read firmware metadata: {exc!r}")
         metadata = None

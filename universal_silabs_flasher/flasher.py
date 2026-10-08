@@ -7,9 +7,11 @@ import logging
 import typing
 from typing import cast
 
+from aiospinel import SpinelProtocol
 import bellows.config
 import bellows.ezsp
 import bellows.types
+from pygbl import FirmwareImage
 import zigpy.serial
 import zigpy.types
 
@@ -25,7 +27,6 @@ from .const import (
 )
 from .cpc import CPCProtocol
 from .emberznet import connect_ezsp
-from .firmware import FirmwareImage
 from .gecko_bootloader import (
     XMODEM_BLOCK_SIZE,
     GeckoBootloaderProtocol,
@@ -33,7 +34,6 @@ from .gecko_bootloader import (
 )
 from .gpio import find_gpiochip_by_label, send_gpio_pattern
 from .router import RouterProtocol
-from .spinel import SpinelProtocol
 from .zwave import ZWaveProtocol
 
 _LOGGER = logging.getLogger(__name__)
@@ -175,7 +175,7 @@ class BaseFlasher:
             version = await spinel.probe()
 
         return ProbeResult(
-            version=version,
+            version=Version(version),
             baudrate=baudrate,
             continue_probing=False,
         )
@@ -427,7 +427,7 @@ class BaseFlasher:
 
     async def flash_firmware(
         self,
-        firmware: FirmwareImage[typing.Any],
+        firmware: FirmwareImage,
         run_firmware: bool = True,
         progress_callback: typing.Callable[[int, int], typing.Any] | None = None,
     ) -> None:

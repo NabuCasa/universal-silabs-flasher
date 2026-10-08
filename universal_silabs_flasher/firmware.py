@@ -5,61 +5,14 @@ import json
 import logging
 import typing
 
-from zigpy.ota.validators import ValidationError, parse_silabs_ebl, parse_silabs_gbl
-import zigpy.types as zigpy_t
+from pygbl import FirmwareImage, GBL3Image
 
-from .common import Version, pad_to_multiple
+from .common import Version
 from .const import LEGACY_FIRMWARE_TYPE_REMAPPING, FirmwareImageType
 
 _LOGGER = logging.getLogger(__name__)
 
 NABUCASA_METADATA_VERSION = 2
-
-
-class GBLTagId(zigpy_t.enum32):
-    # First tag in the file. The header tag contains the version number of the GBL file
-    # specification, and flags indicating the type of GBL file – whether it is signed
-    # or encrypted.
-    HEADER = 0x03A617EB
-    # Information about the application update image that is contained in this GBL
-    # file.
-    APP_INFO = 0xF40A0AF4
-    # A complete encrypted Secure Element update image. Only applicable on Series 2
-    # devices.
-    SE_UPGRADE = 0x5EA617EB
-    # A complete bootloader update image.
-    BOOTLOADER = 0xF50909F5
-    # Information about what application data to program at a specific address into the
-    # main flash memory. The two tags are interchangeable.
-    PROGRAM_DATA1 = 0xFE0101FE
-    PROGRAM_DATA2 = 0xFD0303FD
-    # LZ4 compressed information about what application data to program at a specific
-    # address into the main flash memory.
-    PROGRAM_DATA_LZ4 = 0xFD0505FD
-    # LZMA compressed information about what application data to program at a specific
-    # address into the main flash memory.
-    PROGRAM_DATA_LZMA = 0xFD0707FD
-    # Metadata that the bootloader does not parse, but can be returned to the
-    # application through a callback.
-    METADATA = 0xF60808F6
-    # The ECDSA-P256 signature of all preceding data in the file.
-    SIGNATURE = 0xF70A0AF7
-    # End of the GBL file. It contains a 32-bit CRC for the entire file as an integrity
-    # check. The CRC is a non-cryptographic check. This must be the last tag.
-    END = 0xFC0404FC
-
-
-class EBLTagId(zigpy_t.enum16):
-    # TODO: flip the endianness
-    HEADER = 0x0000
-    PROG = 0x01FE
-    MFGPROG = 0xFE02
-    ERASEPROG = 0x03FD
-    END = 0x04FC
-    ENC_HEADER = 0x05FB
-    ENC_INIT = 0x06FA
-    ENC_EBL_DATA = 0x07F9
-    ENC_MAC = 0x09F7
 
 
 @dataclasses.dataclass(frozen=True)
@@ -147,97 +100,14 @@ class NabuCasaMetadata:
         )
 
 
-TagId = typing.TypeVar("TagId")
+def get_nabucasa_metadata(image: FirmwareImage) -> NabuCasaMetadata:
+    """Read the Nabu Casa metadata tag from a firmware image."""
+    if not isinstance(image, GBL3Image):
+        raise KeyError(f"Metadata is not supported for {type(image).__name__}")
 
+    metadata = image.get_metadata()
 
-@dataclasses.dataclass(frozen=True)
-class FirmwareImage(typing.Generic[TagId]):
-    tags: list[tuple[TagId, bytes]]
+    if metadata is None:
+        raise KeyError("Image contains no metadata tag")
 
-    @classmethod
-    def from_bytes(cls, data: bytes) -> FirmwareImage[typing.Any]:
-        raise NotImplementedError()
-
-    def serialize(self) -> bytes:
-        raise NotImplementedError()
-
-    def get_nabucasa_metadata(self) -> NabuCasaMetadata:
-        raise KeyError("Metadata not available for this firmware type")
-
-    def get_first_tag(self, tag_id: TagId) -> bytes:
-        try:
-            return next(v for t, v in self.tags if t == tag_id)
-        except StopIteration:
-            raise KeyError(f"No tag with id {tag_id!r} exists")
-
-
-@dataclasses.dataclass(frozen=True)
-class GBLImage(FirmwareImage[GBLTagId]):
-    @classmethod
-    def from_bytes(cls, data: bytes | memoryview) -> GBLImage:
-        if isinstance(data, memoryview):
-            data = data.tobytes()
-
-        tags = []
-
-        for tag_bytes, value in parse_silabs_gbl(data):
-            tag, _ = GBLTagId.deserialize(tag_bytes)
-            tags.append((tag, value))
-
-        return cls(tags=tags)
-
-    def serialize(self) -> bytes:
-        return pad_to_multiple(
-            b"".join(
-                [
-                    tag_id.serialize() + len(value).to_bytes(4, "little") + value
-                    for tag_id, value in self.tags
-                ]
-            ),
-            4,
-            b"\xff",
-        )
-
-    def get_nabucasa_metadata(self) -> NabuCasaMetadata:
-        metadata = self.get_first_tag(GBLTagId.METADATA)
-
-        return NabuCasaMetadata.from_json(json.loads(metadata))
-
-
-@dataclasses.dataclass(frozen=True)
-class EBLImage(FirmwareImage[EBLTagId]):
-    @classmethod
-    def from_bytes(cls, data: bytes) -> EBLImage:
-        tags = []
-
-        for tag_bytes, value in parse_silabs_ebl(data):
-            tag, _ = EBLTagId.deserialize(tag_bytes)
-            tags.append((tag, value))
-
-        return cls(tags=tags)
-
-    def serialize(self) -> bytes:
-        return pad_to_multiple(
-            b"".join(
-                [
-                    tag_id.serialize() + len(value).to_bytes(2, "big") + value
-                    for tag_id, value in self.tags
-                ]
-            ),
-            64,
-            b"\xff",
-        )
-
-    def get_nabucasa_metadata(self) -> NabuCasaMetadata:
-        raise KeyError("Metadata not supported for EBL")
-
-
-def parse_firmware_image(data: bytes) -> FirmwareImage[typing.Any]:
-    fw_classes: list[type[GBLImage] | type[EBLImage]] = [GBLImage, EBLImage]
-    for fw_cls in fw_classes:
-        try:
-            return fw_cls.from_bytes(data)
-        except ValidationError:
-            pass
-
-    raise ValueError("Unknown firmware image type")
+    return NabuCasaMetadata.from_json(json.loads(metadata))
