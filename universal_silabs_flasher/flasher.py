@@ -609,6 +609,7 @@ class Zbt2Flasher(DeviceSpecificFlasher):
     )
 
     _esp32_trigger_baudrates = (150, 300, 1200)
+    _esp32_settle_baudrate = 57600
     _reconnect_timeout: float = 10
 
     async def _send_esp32_command(self, command: str) -> None:
@@ -620,6 +621,13 @@ class Zbt2Flasher(DeviceSpecificFlasher):
                 command=command.encode("ascii"),
             )
         )
+
+        # The bridge's ESP32-S3 UART sometimes loses its baud divider when switching
+        # from low baudrates to high ones. Pick a a higher baudrate to mitigate this.
+        async with connect_protocol(
+            self._device, self._esp32_settle_baudrate, zigpy.serial.SerialProtocol
+        ):
+            await asyncio.sleep(0.1)
 
     async def trigger_bootloader_reset(
         self, *, run_firmware: bool

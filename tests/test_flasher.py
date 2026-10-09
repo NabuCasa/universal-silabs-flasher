@@ -317,6 +317,7 @@ async def test_zbt2_flasher_trigger_bootloader_reset_first_attempt_succeeds():
         patch.object(
             flasher, "_detect_gecko_bootloader", return_value=probe_result
         ) as mock_detect,
+        patch("universal_silabs_flasher.flasher.connect_protocol"),
     ):
         result = await flasher.trigger_bootloader_reset(run_firmware=False)
 
@@ -364,6 +365,7 @@ async def test_zbt2_flasher_trigger_bootloader_reset_hard_reset_fallback():
             "_detect_gecko_bootloader",
             side_effect=[None, probe_result],
         ) as mock_detect,
+        patch("universal_silabs_flasher.flasher.connect_protocol"),
     ):
         result = await flasher.trigger_bootloader_reset(run_firmware=False)
 
