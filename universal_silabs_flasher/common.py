@@ -8,6 +8,7 @@ import functools
 import logging
 import re
 import typing
+import urllib.parse
 
 import aiospinel
 import crc
@@ -18,8 +19,10 @@ if typing.TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-CONNECT_TIMEOUT = 1
 PROBE_TIMEOUT = 2
+CONNECT_TIMEOUT = 1
+# Opening an ESPHome serial proxy resolves the host over mDNS and does a Noise handshake
+ESPHOME_CONNECT_TIMEOUT = 5
 
 
 CRC_CCITT = crc.Calculator(
@@ -49,6 +52,14 @@ def pad_to_multiple(data: bytes, multiple: int, padding: bytes) -> bytes:
     padded_size = multiple * (num_complete_blocks + 1)
 
     return data + padding * (padded_size - len(data))
+
+
+def get_connect_timeout(port: str) -> float:
+    """Time allowed to open `port`, which depends on its URI scheme."""
+    if urllib.parse.urlparse(port).scheme == "esphome":
+        return ESPHOME_CONNECT_TIMEOUT
+
+    return CONNECT_TIMEOUT
 
 
 class BufferTooShort(Exception):
@@ -119,7 +130,7 @@ async def connect_protocol(
 ) -> typing.AsyncIterator[P]:
     loop = asyncio.get_running_loop()
 
-    async with asyncio.timeout(CONNECT_TIMEOUT):
+    async with asyncio.timeout(get_connect_timeout(port)):
         _, protocol = await zigpy.serial.create_serial_connection(
             loop=loop,
             protocol_factory=factory,
