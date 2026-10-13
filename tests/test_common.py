@@ -2,7 +2,14 @@ import asyncio
 
 import pytest
 
-from universal_silabs_flasher.common import StateMachine, Version, put_first
+from universal_silabs_flasher.common import (
+    CONNECT_TIMEOUT,
+    ESPHOME_CONNECT_TIMEOUT,
+    StateMachine,
+    Version,
+    get_connect_timeout,
+    put_first,
+)
 
 
 async def test_state_machine_bad_initial_state():
@@ -27,6 +34,19 @@ async def test_state_machine():
     await asyncio.gather(sm.wait_for_state("a"), sm.wait_for_state("a"))
 
     assert sm.state == "a"
+
+
+@pytest.mark.parametrize(
+    ("port", "timeout"),
+    [
+        ("/dev/ttyUSB0", CONNECT_TIMEOUT),
+        ("COM3", CONNECT_TIMEOUT),
+        ("socket://192.168.1.2:6638", CONNECT_TIMEOUT),
+        ("esphome://aux-2.local:6053/?port_name=Zigbee", ESPHOME_CONNECT_TIMEOUT),
+    ],
+)
+def test_get_connect_timeout(port: str, timeout: float) -> None:
+    assert get_connect_timeout(port) == timeout
 
 
 def test_put_first():
