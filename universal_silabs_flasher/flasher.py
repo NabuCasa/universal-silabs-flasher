@@ -7,7 +7,7 @@ import logging
 import typing
 from typing import cast
 
-from aiospinel import SpinelProtocol
+from aiospinel import PropertyStatusError, SpinelProtocol
 import bellows.config
 import bellows.ezsp
 import bellows.types
@@ -19,6 +19,7 @@ from .common import PROBE_TIMEOUT, Version, connect_protocol, pad_to_multiple
 from .const import (
     DEFAULT_PROBE_METHODS,
     RESET_CONFIGS,
+    SPINEL_PROP_VENDOR_ZIGGURAT,
     ApplicationType,
     BaudrateResetConfig,
     GpioResetConfig,
@@ -49,6 +50,8 @@ class ProbeResult:
     version: Version | None
     continue_probing: bool
     baudrate: int
+    # Set when the probed protocol can be spoken by more than one application type
+    app_type: ApplicationType | None = None
 
 
 DEVICE_SPECIFIC_FLASHERS: dict[str, type[BaseFlasher]] = {}
@@ -174,10 +177,18 @@ class BaseFlasher:
         async with self._connect_spinel(baudrate) as spinel:
             version = await spinel.probe()
 
+            try:
+                await spinel.get_property(SPINEL_PROP_VENDOR_ZIGGURAT)
+            except PropertyStatusError:
+                app_type = ApplicationType.SPINEL
+            else:
+                app_type = ApplicationType.SPINEL_ZIGGURAT
+
         return ProbeResult(
             version=Version(version),
             baudrate=baudrate,
             continue_probing=False,
+            app_type=app_type,
         )
 
     async def probe_zwave(self, baudrate: int) -> ProbeResult:
@@ -273,6 +284,12 @@ class BaseFlasher:
         if only is None:
             probe_methods = self._probe_methods
         else:
+            # One Spinel probe tells both Spinel application types apart
+            spinel_types = {ApplicationType.SPINEL, ApplicationType.SPINEL_ZIGGURAT}
+
+            if spinel_types & set(only):
+                only = [*only, *spinel_types]
+
             probe_methods = [
                 (method, baudrate)
                 for method, baudrate in self._probe_methods
@@ -297,6 +314,7 @@ class BaseFlasher:
             ApplicationType.CPC: self.probe_cpc,
             ApplicationType.EZSP: self.probe_ezsp,
             ApplicationType.SPINEL: self.probe_spinel,
+            ApplicationType.SPINEL_ZIGGURAT: self.probe_spinel,
             ApplicationType.ROUTER: self.probe_router,
             ApplicationType.ZWAVE: self.probe_zwave,
         }
@@ -339,7 +357,7 @@ class BaseFlasher:
                 self.bootloader_baudrate = bootloader_probe.baudrate
 
             if not result.continue_probing:
-                self.app_type = probe_method
+                self.app_type = result.app_type or probe_method
                 self.app_version = result.version
                 self.app_baudrate = result.baudrate
                 break
@@ -386,7 +404,7 @@ class BaseFlasher:
             async with self._connect_cpc(self.app_baudrate) as cpc:
                 async with asyncio.timeout(PROBE_TIMEOUT):
                     await cpc.enter_bootloader()
-        elif self.app_type is ApplicationType.SPINEL:
+        elif self.app_type in (ApplicationType.SPINEL, ApplicationType.SPINEL_ZIGGURAT):
             async with self._connect_spinel(self.app_baudrate) as spinel:
                 async with asyncio.timeout(PROBE_TIMEOUT):
                     await spinel.enter_bootloader()

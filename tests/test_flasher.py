@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from aiospinel import PropertyStatusError, Status
 import pytest
 import zigpy.serial
 import zigpy.types as t
@@ -9,6 +10,7 @@ import zigpy.types as t
 from universal_silabs_flasher.common import Version
 from universal_silabs_flasher.const import (
     RESET_CONFIGS,
+    SPINEL_PROP_VENDOR_ZIGGURAT,
     ApplicationType,
     BaudrateResetConfig,
     GpioPattern,
@@ -191,6 +193,129 @@ async def test_probe_app_type_fallback_to_bootloader() -> None:
     # trigger_bootloader_reset should be called twice - once at start and once
     # for fallback
     assert mock_trigger_reset.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("get_property", "app_type"),
+    [
+        (
+            AsyncMock(
+                side_effect=PropertyStatusError(
+                    SPINEL_PROP_VENDOR_ZIGGURAT, Status.PROP_NOT_FOUND
+                )
+            ),
+            ApplicationType.SPINEL,
+        ),
+        (AsyncMock(return_value=b""), ApplicationType.SPINEL_ZIGGURAT),
+    ],
+)
+async def test_probe_spinel_detects_ziggurat(
+    get_property: AsyncMock, app_type: ApplicationType
+) -> None:
+    flasher = Flasher(device="/dev/ttyMOCK")
+
+    with patch.object(flasher, "_connect_spinel") as mock_connect_spinel:
+        spinel = mock_connect_spinel.return_value.__aenter__.return_value
+        spinel.probe = AsyncMock(return_value="SL-OPENTHREAD/2.7.0.0_GitHub-abcdef")
+        spinel.get_property = get_property
+
+        result = await flasher.probe_spinel(baudrate=460800)
+
+    assert result == ProbeResult(
+        version=Version("SL-OPENTHREAD/2.7.0.0_GitHub-abcdef"),
+        continue_probing=False,
+        baudrate=460800,
+        app_type=app_type,
+    )
+    assert get_property.mock_calls == [call(SPINEL_PROP_VENDOR_ZIGGURAT)]
+
+
+async def test_probe_app_type_ziggurat() -> None:
+    flasher = Flasher(device="/dev/ttyMOCK")
+
+    with (
+        patch.object(flasher, "trigger_bootloader_reset", return_value=None),
+        patch.object(
+            flasher, "probe_gecko_bootloader", side_effect=asyncio.TimeoutError
+        ),
+        patch.object(flasher, "probe_ezsp", side_effect=asyncio.TimeoutError),
+        patch.object(
+            flasher,
+            "probe_spinel",
+            return_value=ProbeResult(
+                version=Version("SL-OPENTHREAD/2.7.0.0_GitHub-abcdef"),
+                continue_probing=False,
+                baudrate=460800,
+                app_type=ApplicationType.SPINEL_ZIGGURAT,
+            ),
+        ),
+    ):
+        await flasher.probe_app_type()
+
+    assert flasher.app_type == ApplicationType.SPINEL_ZIGGURAT
+    assert flasher.app_version == Version("SL-OPENTHREAD/2.7.0.0_GitHub-abcdef")
+    assert flasher.app_baudrate == 460800
+
+
+@pytest.mark.parametrize(
+    ("only", "probed_app_type"),
+    [
+        ([ApplicationType.SPINEL_ZIGGURAT], ApplicationType.SPINEL_ZIGGURAT),
+        ([ApplicationType.SPINEL_ZIGGURAT], ApplicationType.SPINEL),
+        ([ApplicationType.SPINEL], ApplicationType.SPINEL_ZIGGURAT),
+    ],
+)
+async def test_probe_app_type_only_spinel_types(
+    only: list[ApplicationType], probed_app_type: ApplicationType
+) -> None:
+    flasher = Flasher(device="/dev/ttyMOCK")
+
+    with (
+        patch.object(flasher, "trigger_bootloader_reset", return_value=None),
+        patch.object(
+            flasher,
+            "probe_spinel",
+            return_value=ProbeResult(
+                version=Version("SL-OPENTHREAD/2.7.0.0_GitHub-abcdef"),
+                continue_probing=False,
+                baudrate=460800,
+                app_type=probed_app_type,
+            ),
+        ) as mock_probe_spinel,
+    ):
+        await flasher.probe_app_type(only=only)
+
+    # The configured Spinel probe runs for either Spinel application type
+    assert mock_probe_spinel.mock_calls == [call(baudrate=460800)]
+    assert flasher.app_type == probed_app_type
+
+
+async def test_enter_bootloader_ziggurat() -> None:
+    flasher = Flasher(
+        device="/dev/ttyMOCK",
+        app_type=ApplicationType.SPINEL_ZIGGURAT,
+        app_baudrate=460800,
+    )
+
+    with (
+        patch.object(flasher, "trigger_bootloader_reset", return_value=None),
+        patch.object(flasher, "_connect_spinel") as mock_connect_spinel,
+        patch.object(
+            flasher,
+            "_detect_gecko_bootloader",
+            return_value=ProbeResult(
+                version=Version("2.4.2"), continue_probing=False, baudrate=115200
+            ),
+        ),
+    ):
+        spinel = mock_connect_spinel.return_value.__aenter__.return_value
+        spinel.enter_bootloader = AsyncMock()
+
+        await flasher.enter_bootloader()
+
+    assert mock_connect_spinel.mock_calls[0] == call(460800)
+    assert spinel.enter_bootloader.mock_calls == [call()]
+    assert flasher.bootloader_baudrate == 115200
 
 
 async def test_device_specific_probe_app_type_does_not_require_reset_targets() -> None:

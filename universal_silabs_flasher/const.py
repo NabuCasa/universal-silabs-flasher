@@ -31,6 +31,7 @@ class ApplicationType(enum.Enum):
     CPC = "cpc"
     EZSP = "ezsp"
     SPINEL = "spinel"
+    SPINEL_ZIGGURAT = "spinel_ziggurat"
     ROUTER = "router"
     ZWAVE = "zwave"
 
@@ -43,6 +44,10 @@ FW_IMAGE_TYPE_TO_APPLICATION_TYPE = {
     FirmwareImageType.ZIGBEE_ROUTER: ApplicationType.ROUTER,
     FirmwareImageType.ZWAVE_NCP: ApplicationType.ZWAVE,
 }
+
+
+# Ziggurat firmware is an OpenThread RCP that also implements this vendor property
+SPINEL_PROP_VENDOR_ZIGGURAT = 0x3D5A
 
 
 DEFAULT_PROBE_METHODS = (
