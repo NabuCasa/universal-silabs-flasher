@@ -284,6 +284,12 @@ class BaseFlasher:
         if only is None:
             probe_methods = self._probe_methods
         else:
+            # One Spinel probe tells both Spinel application types apart
+            spinel_types = {ApplicationType.SPINEL, ApplicationType.SPINEL_ZIGGURAT}
+
+            if spinel_types & set(only):
+                only = [*only, *spinel_types]
+
             probe_methods = [
                 (method, baudrate)
                 for method, baudrate in self._probe_methods

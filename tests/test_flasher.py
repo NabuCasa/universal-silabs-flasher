@@ -257,6 +257,39 @@ async def test_probe_app_type_ziggurat() -> None:
     assert flasher.app_baudrate == 460800
 
 
+@pytest.mark.parametrize(
+    ("only", "probed_app_type"),
+    [
+        ([ApplicationType.SPINEL_ZIGGURAT], ApplicationType.SPINEL_ZIGGURAT),
+        ([ApplicationType.SPINEL_ZIGGURAT], ApplicationType.SPINEL),
+        ([ApplicationType.SPINEL], ApplicationType.SPINEL_ZIGGURAT),
+    ],
+)
+async def test_probe_app_type_only_spinel_types(
+    only: list[ApplicationType], probed_app_type: ApplicationType
+) -> None:
+    flasher = Flasher(device="/dev/ttyMOCK")
+
+    with (
+        patch.object(flasher, "trigger_bootloader_reset", return_value=None),
+        patch.object(
+            flasher,
+            "probe_spinel",
+            return_value=ProbeResult(
+                version=Version("SL-OPENTHREAD/2.7.0.0_GitHub-abcdef"),
+                continue_probing=False,
+                baudrate=460800,
+                app_type=probed_app_type,
+            ),
+        ) as mock_probe_spinel,
+    ):
+        await flasher.probe_app_type(only=only)
+
+    # The configured Spinel probe runs for either Spinel application type
+    assert mock_probe_spinel.mock_calls == [call(baudrate=460800)]
+    assert flasher.app_type == probed_app_type
+
+
 async def test_enter_bootloader_ziggurat() -> None:
     flasher = Flasher(
         device="/dev/ttyMOCK",
