@@ -23,7 +23,7 @@ dependencies = [
     "colorlog",
     "typing_extensions",
     "pygbl>=1.0.0",
-    "aiospinel>=1.2.0",
+    "aiospinel>=1.3.0",
 ]
 
 [tool.setuptools.packages.find]
